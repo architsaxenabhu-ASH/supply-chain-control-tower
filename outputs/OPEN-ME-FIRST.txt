@@ -1,0 +1,61 @@
+SUPPLY CHAIN CONTROL TOWER
+OPEN ME FIRST
+
+You are building the Warehouse Inventory and Shipment Management Application.
+
+Core modules:
+1. Product Master
+2. Inventory and Batch Management
+3. Shipment Requests
+4. Shipment Line Items
+5. Dispatches
+6. Goods Receipts
+7. Physical Inventory Counts
+8. Expiry Management
+9. Customer Master
+10. User Roles and Security
+11. Dashboards
+12. AI Assistant
+
+Generated files to review:
+- outputs/wims-generated-deliverables.md
+  Summary of what was generated.
+
+- database/schema.sql
+  Database schema.
+
+- docs/wims-application-blueprint.md
+  Business application blueprint.
+
+- docs/workflows.md
+  Workflow diagrams.
+
+- docs/api-structure.md
+  API structure.
+
+- docs/reporting-framework.md
+  Dashboard and report structure.
+
+VS Code start:
+1. Open terminal.
+2. Run:
+   powershell -ExecutionPolicy Bypass -File .\scripts\check-environment.ps1
+
+If npm is missing:
+   winget install OpenJS.NodeJS.LTS
+
+Then close VS Code, open it again, and check:
+   node -v
+   npm.cmd -v
+
+Then start backend:
+   powershell -ExecutionPolicy Bypass -File .\scripts\start-backend.ps1
+
+Then open another terminal and start frontend:
+   powershell -ExecutionPolicy Bypass -File .\scripts\start-frontend.ps1
+
+Your role:
+Tell Codex the business rules.
+
+Codex role:
+Write the code and explain it simply.

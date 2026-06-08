@@ -1,0 +1,39 @@
+from fastapi import APIRouter, HTTPException
+
+from app.schemas.imports import ImportAssemblyRequest, ImportFileCandidate, ImportGoodsReceiptPostRequest
+from app.schemas.warehouse import WorkflowResult
+from app.services.import_repository import (
+    assemble_import_candidate_from_documents,
+    exp_0361_development_fixture,
+    latest_import_candidate,
+    post_import_goods_receipt,
+)
+
+
+router = APIRouter()
+
+
+@router.get("/latest-preview", response_model=ImportFileCandidate)
+def latest_preview() -> ImportFileCandidate:
+    return latest_import_candidate()
+
+
+@router.post("/assemble-from-documents", response_model=ImportFileCandidate)
+def assemble_from_documents(request: ImportAssemblyRequest) -> ImportFileCandidate:
+    try:
+        return assemble_import_candidate_from_documents(request)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@router.post("/post-goods-receipt", response_model=WorkflowResult)
+def post_goods_receipt_from_import(request: ImportGoodsReceiptPostRequest) -> WorkflowResult:
+    try:
+        return post_import_goods_receipt(request)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@router.get("/exp-0361-preview", response_model=ImportFileCandidate)
+def exp_0361_preview() -> ImportFileCandidate:
+    return exp_0361_development_fixture()

@@ -1,0 +1,16 @@
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+sqlalchemy
+psycopg[binary]
+alembic
+python-multipart
+httpx
+pandas
+openpyxl
+pymupdf
+pypdf
+pdfplumber
+pytesseract
+pillow

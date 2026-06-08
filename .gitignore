@@ -1,0 +1,17 @@
+data/uploads/
+data/extraction_masters/
+data/master_candidates/
+data/documents.json
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+backend/.env
+frontend/.env
+backend/.venv/
+frontend/node_modules/
+frontend/dist/
+outputs/*.zip
+work/
+__pycache__/
+*.pyc
+*.log
