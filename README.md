@@ -56,6 +56,7 @@ The first implementation milestone should focus on the document-to-validation pa
 - `docs/no-hardcoded-master-data.md`: rule that new business information must be captured and learned inside the app
 - `docs/git-and-data-backup.md`: rule that code goes to GitHub and operational data goes to database/document storage
 - `docs/cloud-database-next-step.md`: next step for moving runtime data from SQLite to PostgreSQL
+- `docs/postgresql-setup-for-non-it.md`: plain-language PostgreSQL setup steps and why they matter
 - `docs/ocr-setup.md`: Tesseract OCR installation and current AWB extraction result
 - `docs/portal-roadmap.md`: import, sales, inventory, and unified control tower phases
 - `docs/roadmap.md`: phased delivery roadmap

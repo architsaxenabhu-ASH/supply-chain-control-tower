@@ -48,6 +48,9 @@ Supply Chain Control Tower / Warehouse Inventory and Shipment Management Applica
 - Project initialized as a local Git repository on branch `main`
 - Safe project files committed to Git while runtime data, uploads, SQLite database files, logs, generated zip files, virtual environments, and node modules are ignored
 - Git/data boundary documented in `docs/git-and-data-backup.md`
+- Added non-IT PostgreSQL setup guide in `docs/postgresql-setup-for-non-it.md`
+- Added local secret-safe database URL setup script: `scripts/set-database-url.ps1`
+- Verified database setup script using a temporary `.env` path without changing the real backend settings
 - Frontend dependency lock file after npm installation
 - Deployment scaffold using Docker
 - Sample CSV files for document upload testing
