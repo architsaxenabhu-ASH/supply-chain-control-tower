@@ -3,9 +3,12 @@ import type { ComponentType, ReactNode } from "react";
 import {
   Activity,
   BarChart3,
+  BrainCircuit,
   Bot,
   Boxes,
   CheckCircle2,
+  ChevronRight,
+  CircleDot,
   ClipboardCheck,
   ClipboardList,
   Database,
@@ -13,14 +16,21 @@ import {
   FileCheck2,
   FileUp,
   FileSpreadsheet,
+  Gauge,
+  GitBranch,
   History,
   KeyRound,
+  Layers,
   Package,
+  Play,
   Plus,
+  RadioTower,
   RefreshCw,
+  ScanText,
   Search,
   ShieldCheck,
   Ship,
+  Sparkles,
   Truck,
   Upload,
   Users,
@@ -92,8 +102,21 @@ type Product = {
 
 type IconComponent = ComponentType<{
   size?: number;
+  className?: string;
   "aria-hidden"?: boolean | "true" | "false";
 }>;
+
+type PlatformStatus = "complete" | "partial" | "planned";
+
+type PlatformCapability = {
+  module: string;
+  area: string;
+  status: PlatformStatus;
+  progress: number;
+  whatDone: string;
+  stillLeft: string;
+  icon: IconComponent;
+};
 
 type InventoryBatch = {
   itemCode: string;
@@ -381,6 +404,7 @@ const fallbackSecurityOverview: ApiSecurityOverview = {
 
 const navItems = [
   { id: "dashboard", label: "Dashboard", icon: BarChart3 },
+  { id: "platform-progress", label: "Progress", icon: GitBranch },
   { id: "documents", label: "Documents", icon: FileUp },
   { id: "import-validation", label: "Import Validation", icon: ClipboardCheck },
   { id: "products", label: "Products", icon: Package },
@@ -394,6 +418,191 @@ const navItems = [
   { id: "security", label: "Security", icon: ShieldCheck },
   { id: "audit", label: "Audit", icon: History },
   { id: "assistant", label: "Assistant", icon: Bot },
+];
+
+const platformCapabilities: PlatformCapability[] = [
+  {
+    module: "Document upload portal",
+    area: "Documents",
+    status: "complete",
+    progress: 90,
+    whatDone: "PDF, Excel, CSV, JPG, and PNG upload with saved document records.",
+    stillLeft: "Multi-document bulk upload and TIFF support.",
+    icon: FileUp,
+  },
+  {
+    module: "OCR and extraction",
+    area: "Documents",
+    status: "partial",
+    progress: 45,
+    whatDone: "Text extraction, field catalog, extraction master, required-field checks.",
+    stillLeft: "Production OCR engines, table extraction confidence, layout learning.",
+    icon: ScanText,
+  },
+  {
+    module: "Import validation",
+    area: "Imports",
+    status: "complete",
+    progress: 78,
+    whatDone: "Invoice, Packing List, and AWB combine into one import validation file.",
+    stillLeft: "Country-specific customs and extra document flows.",
+    icon: ClipboardCheck,
+  },
+  {
+    module: "Learning engine",
+    area: "Intelligence",
+    status: "partial",
+    progress: 48,
+    whatDone: "First-time product profile questions, warehouse candidates, document rules.",
+    stillLeft: "Alias memory, correction scoring, supplier/customer layout memory.",
+    icon: BrainCircuit,
+  },
+  {
+    module: "RBAC and approvals",
+    area: "Security",
+    status: "complete",
+    progress: 74,
+    whatDone: "Email login, roles, permissions, approval matrix, session tokens.",
+    stillLeft: "Field-level rules and password reset workflow.",
+    icon: ShieldCheck,
+  },
+  {
+    module: "Audit trail",
+    area: "Compliance",
+    status: "complete",
+    progress: 72,
+    whatDone: "Critical actions record user, timestamp, old/new value, and reason.",
+    stillLeft: "Immutable audit export signatures and retention policy.",
+    icon: History,
+  },
+  {
+    module: "Goods receipt and inventory posting",
+    area: "Inventory",
+    status: "complete",
+    progress: 80,
+    whatDone: "Approved imports create GRNs and increase batch inventory.",
+    stillLeft: "Partial receipt splits and quality hold posting.",
+    icon: Database,
+  },
+  {
+    module: "Inventory and expiry control",
+    area: "Inventory",
+    status: "partial",
+    progress: 66,
+    whatDone: "Batch inventory, FEFO visibility, expiry buckets, valuation, filters.",
+    stillLeft: "Serial, UDI, GTIN, quarantine, transfer, and adjustment workflows.",
+    icon: Boxes,
+  },
+  {
+    module: "Shipment request, approval, dispatch",
+    area: "Shipments",
+    status: "complete",
+    progress: 76,
+    whatDone: "Shipment creation, approval, exact batch/warehouse dispatch deduction.",
+    stillLeft: "Milestone tracking, carrier status feeds, returns, and intercompany transfer.",
+    icon: Truck,
+  },
+  {
+    module: "Dashboards and alerts",
+    area: "Analytics",
+    status: "partial",
+    progress: 58,
+    whatDone: "Inventory value, expiry risk, route monitor, what-if delay simulator.",
+    stillLeft: "Role-specific dashboards and predictive KPI drilldowns.",
+    icon: Gauge,
+  },
+  {
+    module: "AI assistant",
+    area: "Decision Support",
+    status: "partial",
+    progress: 35,
+    whatDone: "Rule-based answers for inventory, expiry, shipment, and variance questions.",
+    stillLeft: "Real AI model integration, source citations, reasoning comparison, memory.",
+    icon: Sparkles,
+  },
+  {
+    module: "Forecasting",
+    area: "Planning",
+    status: "planned",
+    progress: 12,
+    whatDone: "Architecture planned.",
+    stillLeft: "Forecast upload, coverage calculation, demand forecast, variance reports.",
+    icon: Activity,
+  },
+  {
+    module: "Template and ERP upload engine",
+    area: "Integrations",
+    status: "planned",
+    progress: 10,
+    whatDone: "Template concept defined.",
+    stillLeft: "Template master, field mapping, Excel generation, SAP/ERP export.",
+    icon: FileSpreadsheet,
+  },
+  {
+    module: "Traceability and compliance",
+    area: "Medical Device",
+    status: "planned",
+    progress: 18,
+    whatDone: "Batch traceability concept and expiry logic started.",
+    stillLeft: "UDI, GTIN, recall readiness, regulatory document vault, QA workflows.",
+    icon: RadioTower,
+  },
+  {
+    module: "Sales, purchase, supplier, customer portals",
+    area: "Commercial",
+    status: "planned",
+    progress: 8,
+    whatDone: "Masters and shipment links started.",
+    stillLeft: "Sales orders, purchase orders, supplier performance, customer forecasts.",
+    icon: Users,
+  },
+  {
+    module: "Enterprise deployment readiness",
+    area: "Platform",
+    status: "partial",
+    progress: 52,
+    whatDone: "FastAPI, React, Neon/PostgreSQL persistence, GitHub source control.",
+    stillLeft: "Cloud deployment, backups, environment management, monitoring, CI/CD.",
+    icon: Layers,
+  },
+];
+
+const walkthroughSteps: Array<{
+  title: string;
+  detail: string;
+  viewId: string;
+  icon: IconComponent;
+}> = [
+  {
+    title: "Upload documents",
+    detail: "Start with Commercial Invoice, Packing List, and AWB. The document is the beginning of the import process.",
+    viewId: "documents",
+    icon: FileUp,
+  },
+  {
+    title: "Validate extracted data",
+    detail: "The system combines documents, highlights missing values, asks first-time questions, and learns corrections.",
+    viewId: "import-validation",
+    icon: ClipboardCheck,
+  },
+  {
+    title: "Approve and post inventory",
+    detail: "Country approval unlocks Goods Receipt. Inventory increases only through approved transactions.",
+    viewId: "import-validation",
+    icon: ShieldCheck,
+  },
+  {
+    title: "Create shipment and dispatch",
+    detail: "Shipment requests check stock, approval confirms quantity, dispatch reduces exact warehouse and batch.",
+    viewId: "shipments",
+    icon: Truck,
+  },
+  {
+    title: "Monitor intelligence",
+    detail: "Progress, dashboards, alerts, what-if delay simulation, and AI readiness show what needs attention.",
+    viewId: "platform-progress",
+    icon: BrainCircuit,
+  },
 ];
 
 const documentTypes: Array<{ label: string; value: DocumentType }> = [
@@ -465,6 +674,15 @@ function generateDispatchNumber(dispatches: Dispatch[]) {
     return Number.isFinite(currentNumber) ? Math.max(max, currentNumber + 1) : max;
   }, 1);
   return `${prefix}${String(nextNumber).padStart(4, "0")}`;
+}
+
+function getPlatformCompletionStats() {
+  const totalProgress = platformCapabilities.reduce((sum, capability) => sum + capability.progress, 0);
+  const score = Math.round(totalProgress / platformCapabilities.length);
+  const complete = platformCapabilities.filter((capability) => capability.status === "complete").length;
+  const partial = platformCapabilities.filter((capability) => capability.status === "partial").length;
+  const planned = platformCapabilities.filter((capability) => capability.status === "planned").length;
+  return { complete, partial, planned, score, total: platformCapabilities.length };
 }
 
 function downloadCsv(filename: string, rows: Array<Record<string, unknown>>) {
@@ -568,6 +786,17 @@ function getExportRows({
       extracted_field_count: document.extracted_field_count,
       missing_required_count: document.missing_required_count,
       created_at: document.created_at,
+    }));
+  }
+
+  if (activeView === "platform-progress") {
+    return platformCapabilities.map((capability) => ({
+      module: capability.module,
+      area: capability.area,
+      status: capability.status,
+      progress: capability.progress,
+      completed_scope: capability.whatDone,
+      remaining_work: capability.stillLeft,
     }));
   }
 
@@ -757,11 +986,22 @@ function loadStoredCurrentUser(): ApiAuthenticatedUser | null {
   }
 }
 
+function getInitialViewId() {
+  try {
+    const hashView = window.location.hash.replace("#", "");
+    return navItems.some((item) => item.id === hashView) ? hashView : "dashboard";
+  } catch {
+    return "dashboard";
+  }
+}
+
 export function App() {
   const [currentUser, setCurrentUser] = useState<ApiAuthenticatedUser | null>(() => loadStoredCurrentUser());
   const [loginMessage, setLoginMessage] = useState("Sign in with a configured Security User email.");
   const [isLoggingIn, setIsLoggingIn] = useState(false);
-  const [activeView, setActiveView] = useState("dashboard");
+  const [activeView, setActiveView] = useState(() => getInitialViewId());
+  const [isWalkthroughOpen, setIsWalkthroughOpen] = useState(false);
+  const [walkthroughStep, setWalkthroughStep] = useState(0);
   const [search, setSearch] = useState("");
   const [inventorySearch, setInventorySearch] = useState("");
   const [inventoryWarehouseFilter, setInventoryWarehouseFilter] = useState("all");
@@ -1204,6 +1444,22 @@ export function App() {
     }
   }, [activeView, currentUser]);
 
+  useEffect(() => {
+    function handleHashChange() {
+      setActiveView(getInitialViewId());
+    }
+
+    window.addEventListener("hashchange", handleHashChange);
+    return () => window.removeEventListener("hashchange", handleHashChange);
+  }, []);
+
+  useEffect(() => {
+    const nextHash = `#${activeView}`;
+    if (window.location.hash !== nextHash) {
+      window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}${nextHash}`);
+    }
+  }, [activeView]);
+
   function handleExportActiveView() {
     if (!canExportActiveView) {
       setApiStatus("Export is allowed for Admin or Finance User.");
@@ -1236,6 +1492,12 @@ export function App() {
 
   function handleRefreshApp() {
     window.location.reload();
+  }
+
+  function handleStartWalkthrough() {
+    setWalkthroughStep(0);
+    setIsWalkthroughOpen(true);
+    setActiveView(walkthroughSteps[0].viewId);
   }
 
   if (!currentUser) {
@@ -1288,6 +1550,10 @@ export function App() {
               <RefreshCw size={17} aria-hidden="true" />
               Refresh
             </button>
+            <button className="secondary-action" onClick={handleStartWalkthrough}>
+              <Play size={17} aria-hidden="true" />
+              Start Tour
+            </button>
             <button className="secondary-action" onClick={handleExportActiveView} disabled={!canExportActiveView}>
               <Download size={17} aria-hidden="true" />
               Export
@@ -1295,6 +1561,7 @@ export function App() {
           </div>
         </header>
 
+        <div className="view-stage" key={activeView}>
         {activeView === "dashboard" ? (
           <DashboardView
             expiredInventoryCount={expiredInventoryCount}
@@ -1400,6 +1667,26 @@ export function App() {
             onAsk={handleAskAssistant}
             question={assistantQuestion}
             setQuestion={setAssistantQuestion}
+          />
+        ) : null}
+        {activeView === "platform-progress" ? (
+          <PlatformProgressView
+            auditEvents={auditEvents}
+            documents={documents}
+            importQueue={importQueue}
+            inventory={inventory}
+            onNavigate={setActiveView}
+            securityOverview={securityOverview}
+            shipments={shipments}
+          />
+        ) : null}
+        </div>
+        {isWalkthroughOpen ? (
+          <GuidedWalkthrough
+            onClose={() => setIsWalkthroughOpen(false)}
+            onNavigate={setActiveView}
+            setStep={setWalkthroughStep}
+            step={walkthroughStep}
           />
         ) : null}
       </section>
@@ -1756,6 +2043,357 @@ function PulseItem({
       <span>{label}</span>
       <strong>{value}</strong>
     </article>
+  );
+}
+
+function PlatformProgressView({
+  auditEvents,
+  documents,
+  importQueue,
+  inventory,
+  onNavigate,
+  securityOverview,
+  shipments,
+}: {
+  auditEvents: ApiAuditEvent[];
+  documents: DocumentRecord[];
+  importQueue: ApiImportFileCandidate[];
+  inventory: InventoryBatch[];
+  onNavigate: (view: string) => void;
+  securityOverview: ApiSecurityOverview;
+  shipments: Shipment[];
+}) {
+  const stats = getPlatformCompletionStats();
+  const completeCapabilities = platformCapabilities.filter((capability) => capability.status === "complete");
+  const partialCapabilities = platformCapabilities.filter((capability) => capability.status === "partial");
+  const plannedCapabilities = platformCapabilities.filter((capability) => capability.status === "planned");
+  const openShipments = shipments.filter((shipment) =>
+    ["Draft", "Submitted", "Approved"].includes(shipment.status),
+  ).length;
+  const importFilesNeedingWork = importQueue.filter((candidate) =>
+    !["received", "closed"].includes(candidate.status),
+  ).length;
+  const expiryRisk = inventory.filter((batch) => batch.daysToExpiry >= 0 && batch.daysToExpiry <= 180).length;
+
+  return (
+    <>
+      <section className="progress-hero">
+        <div className="completion-orbit">
+          <PlatformScoreRing score={stats.score} />
+        </div>
+        <div className="progress-hero-copy">
+          <span className="section-label">Core idea assessment</span>
+          <h2>Production foundation is working. Enterprise intelligence is still being built.</h2>
+          <p>
+            The platform now handles document-led imports, validation, learning capture, approvals, inventory posting,
+            shipment approval, dispatch, dashboards, RBAC, audit logs, PostgreSQL persistence, and GitHub backup.
+          </p>
+          <div className="truth-grid">
+            <SummaryItem label="Completed modules" value={String(stats.complete)} />
+            <SummaryItem label="Partial modules" value={String(stats.partial)} />
+            <SummaryItem label="Planned modules" value={String(stats.planned)} />
+          </div>
+          <div className="form-action-row">
+            <button className="primary-action" onClick={() => onNavigate("documents")}>
+              <FileUp size={17} aria-hidden="true" />
+              Start document flow
+            </button>
+            <button className="secondary-action" onClick={() => onNavigate("dashboard")}>
+              <RadioTower size={17} aria-hidden="true" />
+              Open control tower
+            </button>
+          </div>
+        </div>
+        <div className="live-readiness-panel">
+          <StatusTag label="Honest progress" />
+          <strong>{stats.score}%</strong>
+          <span>Weighted build maturity</span>
+          <div className="readiness-lines">
+            <ReadinessLine label="Documents uploaded" value={documents.length} max={12} />
+            <ReadinessLine label="Active import files" value={importFilesNeedingWork} max={8} />
+            <ReadinessLine label="Open shipments" value={openShipments} max={8} />
+            <ReadinessLine label="Expiry risk batches" value={expiryRisk} max={12} />
+            <ReadinessLine label="Audit events" value={auditEvents.length} max={30} />
+          </div>
+        </div>
+      </section>
+
+      <Panel title="Platform architecture and data flow" meta="Document to decision">
+        <ProgressArchitectureFlow />
+      </Panel>
+
+      <section className="content-grid wide-left">
+        <Panel title="Completion matrix" meta={`${platformCapabilities.length} modules`}>
+          <div className="capability-grid">
+            {platformCapabilities.map((capability) => (
+              <CapabilityCard capability={capability} key={capability.module} />
+            ))}
+          </div>
+        </Panel>
+        <Panel title="What is left" meta="Build sequence">
+          <RemainingWorkPanel
+            completeCapabilities={completeCapabilities}
+            partialCapabilities={partialCapabilities}
+            plannedCapabilities={plannedCapabilities}
+          />
+        </Panel>
+      </section>
+
+      <section className="control-grid">
+        <GlobalIntelligenceMap importQueue={importQueue} shipments={shipments} />
+        <CopilotReadinessCard />
+      </section>
+
+      <Panel title="Next build sequence" meta="No distraction order">
+        <NextBuildSequence />
+      </Panel>
+    </>
+  );
+}
+
+function PlatformScoreRing({ score }: { score: number }) {
+  return (
+    <div
+      className="platform-score-ring"
+      style={{ background: `conic-gradient(var(--tower-emerald) ${score}%, rgba(138, 165, 181, 0.14) 0)` }}
+    >
+      <div>
+        <strong>{score}%</strong>
+        <span>complete</span>
+      </div>
+    </div>
+  );
+}
+
+function ReadinessLine({ label, max, value }: { label: string; max: number; value: number }) {
+  const width = `${Math.min(100, Math.max(8, (value / Math.max(max, 1)) * 100))}%`;
+  return (
+    <div className="readiness-line">
+      <div>
+        <span>{label}</span>
+        <strong>{value}</strong>
+      </div>
+      <div className="mini-track">
+        <span style={{ width }} />
+      </div>
+    </div>
+  );
+}
+
+function ProgressArchitectureFlow() {
+  const flowNodes = [
+    { label: "Docs", detail: "Upload", icon: FileUp, state: "complete" },
+    { label: "OCR", detail: "Extract", icon: ScanText, state: "partial" },
+    { label: "Validate", detail: "Review", icon: ClipboardCheck, state: "complete" },
+    { label: "Learn", detail: "Memory", icon: BrainCircuit, state: "partial" },
+    { label: "Approve", detail: "RBAC", icon: ShieldCheck, state: "complete" },
+    { label: "Stock", detail: "Post", icon: Boxes, state: "complete" },
+    { label: "Ship", detail: "Dispatch", icon: Truck, state: "complete" },
+    { label: "Analytics", detail: "KPIs", icon: BarChart3, state: "partial" },
+    { label: "AI", detail: "Recs", icon: Sparkles, state: "partial" },
+  ];
+
+  return (
+    <div className="architecture-flow">
+      {flowNodes.map((node, index) => {
+        const Icon = node.icon;
+        return (
+          <div className="architecture-flow-item" key={node.label}>
+            <article className={`architecture-node ${node.state}`}>
+              <Icon size={22} aria-hidden="true" />
+              <strong>{node.label}</strong>
+              <span>{node.detail}</span>
+            </article>
+            {index < flowNodes.length - 1 ? (
+              <div className="flow-connector">
+                <span />
+                <ChevronRight size={18} aria-hidden="true" />
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function CapabilityCard({ capability }: { capability: PlatformCapability }) {
+  const Icon = capability.icon;
+  return (
+    <article className={`capability-card ${capability.status}`}>
+      <div className="capability-card-head">
+        <Icon size={20} aria-hidden="true" />
+        <StatusTag label={capability.status} />
+      </div>
+      <strong>{capability.module}</strong>
+      <span>{capability.area}</span>
+      <div className="mini-track">
+        <span style={{ width: `${capability.progress}%` }} />
+      </div>
+      <small>{capability.whatDone}</small>
+    </article>
+  );
+}
+
+function RemainingWorkPanel({
+  completeCapabilities,
+  partialCapabilities,
+  plannedCapabilities,
+}: {
+  completeCapabilities: PlatformCapability[];
+  partialCapabilities: PlatformCapability[];
+  plannedCapabilities: PlatformCapability[];
+}) {
+  return (
+    <div className="remaining-stack">
+      <RemainingGroup title="Completed foundation" capabilities={completeCapabilities} state="complete" />
+      <RemainingGroup title="Partial, needs hardening" capabilities={partialCapabilities} state="partial" />
+      <RemainingGroup title="Still to build" capabilities={plannedCapabilities} state="planned" />
+    </div>
+  );
+}
+
+function RemainingGroup({
+  capabilities,
+  state,
+  title,
+}: {
+  capabilities: PlatformCapability[];
+  state: PlatformStatus;
+  title: string;
+}) {
+  return (
+    <article className={`remaining-group ${state}`}>
+      <div>
+        <strong>{title}</strong>
+        <span>{capabilities.length} module(s)</span>
+      </div>
+      {capabilities.slice(0, 5).map((capability) => (
+        <p key={capability.module}>
+          <CircleDot size={13} aria-hidden="true" />
+          {capability.module}
+        </p>
+      ))}
+    </article>
+  );
+}
+
+function GlobalIntelligenceMap({
+  importQueue,
+  shipments,
+}: {
+  importQueue: ApiImportFileCandidate[];
+  shipments: Shipment[];
+}) {
+  const activeImports = importQueue.filter((candidate) => candidate.status !== "received").length;
+  const activeShipments = shipments.filter((shipment) =>
+    ["Draft", "Submitted", "Approved"].includes(shipment.status),
+  ).length;
+
+  return (
+    <Panel title="Animated global control map" meta="India to subsidiaries">
+      <div className="global-map-shell">
+        <div className="rotating-globe">
+          <span className="map-node origin">India</span>
+          <span className="map-node node-eu">Europe</span>
+          <span className="map-node node-us">USA</span>
+          <span className="map-node node-me">UAE</span>
+          <i className="route-arc arc-one" />
+          <i className="route-arc arc-two" />
+          <i className="route-arc arc-three" />
+        </div>
+        <div className="map-signal-grid">
+          <SummaryItem label="Active import files" value={String(activeImports)} />
+          <SummaryItem label="Active shipments" value={String(activeShipments)} />
+          <SummaryItem label="Global origin" value="India" />
+          <SummaryItem label="Mode" value="Import first" />
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+function CopilotReadinessCard() {
+  const readiness = [
+    { label: "Data foundation", value: 72 },
+    { label: "Workflow automation", value: 68 },
+    { label: "Learning memory", value: 48 },
+    { label: "Predictive intelligence", value: 22 },
+    { label: "Natural language answers", value: 35 },
+  ];
+
+  return (
+    <Panel title="AI copilot readiness" meta="Current truth">
+      <div className="copilot-readiness">
+        <div className="brain-orbit">
+          <BrainCircuit size={52} aria-hidden="true" />
+          <span />
+          <span />
+          <span />
+        </div>
+        <strong>AI can assist. It cannot fully decide yet.</strong>
+        <p>
+          We need cleaner data, more validation history, and stronger traceability before real autonomous decisions.
+        </p>
+        <div className="readiness-lines">
+          {readiness.map((item) => (
+            <ReadinessLine key={item.label} label={item.label} max={100} value={item.value} />
+          ))}
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+function NextBuildSequence() {
+  const nextSteps = [
+    {
+      title: "Production OCR engine",
+      detail: "Add PaddleOCR/Tesseract pipeline, table extraction, confidence score, and correction memory.",
+      icon: ScanText,
+      target: "Stop manual document reading.",
+    },
+    {
+      title: "Template and ERP upload engine",
+      detail: "Let users upload Excel templates, map fields, generate ERP-ready files, and download.",
+      icon: FileSpreadsheet,
+      target: "Stop retyping into ERP upload files.",
+    },
+    {
+      title: "Traceability and compliance",
+      detail: "Add serial, UDI, GTIN, recall readiness, quality hold, and regulatory document linkage.",
+      icon: RadioTower,
+      target: "Make medical-device compliance defendable.",
+    },
+    {
+      title: "Forecast and stock coverage",
+      detail: "Upload forecasts, calculate coverage, identify stockout risk, and compare demand versus stock.",
+      icon: Activity,
+      target: "Move from reactive to proactive planning.",
+    },
+    {
+      title: "True AI copilot",
+      detail: "Connect model-backed assistant after the data foundation is strong enough to trust.",
+      icon: Sparkles,
+      target: "Ask questions, get sourced operational recommendations.",
+    },
+  ];
+
+  return (
+    <div className="next-build-grid">
+      {nextSteps.map((step, index) => {
+        const Icon = step.icon;
+        return (
+          <article className="next-build-card" key={step.title}>
+            <div className="next-build-index">{index + 1}</div>
+            <Icon size={22} aria-hidden="true" />
+            <strong>{step.title}</strong>
+            <span>{step.detail}</span>
+            <small>{step.target}</small>
+          </article>
+        );
+      })}
+    </div>
   );
 }
 
@@ -2583,7 +3221,7 @@ function canAccessView(user: ApiAuthenticatedUser | null, viewId: string) {
   if (!user) {
     return false;
   }
-  if (user.role_name === "Admin" || viewId === "dashboard" || viewId === "assistant") {
+  if (user.role_name === "Admin" || viewId === "dashboard" || viewId === "assistant" || viewId === "platform-progress") {
     return true;
   }
 
@@ -2602,6 +3240,80 @@ function canAccessView(user: ApiAuthenticatedUser | null, viewId: string) {
     audit: ["audit"],
   };
   return (permissionByView[viewId] ?? []).some((permission) => user.permissions.includes(permission));
+}
+
+function GuidedWalkthrough({
+  onClose,
+  onNavigate,
+  setStep,
+  step,
+}: {
+  onClose: () => void;
+  onNavigate: (viewId: string) => void;
+  setStep: (step: number) => void;
+  step: number;
+}) {
+  const currentStep = walkthroughSteps[step] ?? walkthroughSteps[0];
+  const Icon = currentStep.icon;
+  const isLastStep = step >= walkthroughSteps.length - 1;
+
+  useEffect(() => {
+    onNavigate(currentStep.viewId);
+  }, [currentStep.viewId, onNavigate]);
+
+  function handleNext() {
+    if (isLastStep) {
+      onClose();
+      return;
+    }
+    setStep(step + 1);
+  }
+
+  function handlePrevious() {
+    setStep(Math.max(0, step - 1));
+  }
+
+  return (
+    <aside className="walkthrough-panel" aria-live="polite">
+      <div className="walkthrough-header">
+        <div className="walkthrough-icon">
+          <Icon size={22} aria-hidden="true" />
+        </div>
+        <div>
+          <span>Guided walkthrough</span>
+          <strong>{currentStep.title}</strong>
+        </div>
+        <button className="walkthrough-close" onClick={onClose} aria-label="Close walkthrough">
+          x
+        </button>
+      </div>
+      <p>{currentStep.detail}</p>
+      <div className="walkthrough-rail">
+        {walkthroughSteps.map((item, index) => {
+          const StepIcon = item.icon;
+          return (
+            <button
+              className={index === step ? "walkthrough-step-dot active" : "walkthrough-step-dot"}
+              key={item.title}
+              onClick={() => setStep(index)}
+              aria-label={item.title}
+            >
+              <StepIcon size={16} aria-hidden="true" />
+            </button>
+          );
+        })}
+      </div>
+      <div className="walkthrough-actions">
+        <button className="secondary-action" onClick={handlePrevious} disabled={step === 0}>
+          Previous
+        </button>
+        <button className="primary-action" onClick={handleNext}>
+          {isLastStep ? "Finish" : "Next"}
+          <ChevronRight size={17} aria-hidden="true" />
+        </button>
+      </div>
+    </aside>
+  );
 }
 
 function LoginView({
