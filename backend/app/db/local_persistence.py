@@ -8,7 +8,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable, Iterable, TypeVar
 
-from sqlalchemy import Column, Integer, MetaData, String, Table, Text, create_engine, delete, select
+from sqlalchemy import Column, Integer, MetaData, String, Table, Text, create_engine, delete, desc, select
 from sqlalchemy.engine import Engine
 
 from app.core.config import settings
@@ -166,6 +166,33 @@ def record_audit_event(
         )
 
 
+def list_audit_events(limit: int = 100) -> list[dict[str, Any]]:
+    init_database()
+    safe_limit = max(1, min(limit, 500))
+    with get_engine().begin() as connection:
+        rows = connection.execute(
+            select(audit_events)
+            .order_by(desc(audit_events.c.id))
+            .limit(safe_limit)
+        ).mappings().all()
+
+    return [
+        {
+            "id": row["id"],
+            "action": row["action"],
+            "module_name": row["module_name"],
+            "entity_name": row["entity_name"],
+            "entity_id": row["entity_id"],
+            "actor": row["actor"],
+            "reason": row["reason"],
+            "old_value": parse_json_value(row["old_value_json"]),
+            "new_value": parse_json_value(row["new_value_json"]),
+            "created_at": row["created_at"],
+        }
+        for row in rows
+    ]
+
+
 def database_path() -> Path | str:
     init_database()
     database_url = configured_database_url()
@@ -178,6 +205,15 @@ def to_json_payload(value: Any) -> Any:
     if hasattr(value, "model_dump"):
         return value.model_dump(mode="json")
     return value
+
+
+def parse_json_value(value: str | None) -> Any:
+    if value is None:
+        return None
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError:
+        return value
 
 
 def json_default(value: Any) -> str:

@@ -1,15 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
-import type { ReactNode } from "react";
+import type { ComponentType, ReactNode } from "react";
 import {
+  Activity,
   BarChart3,
   Bot,
   Boxes,
+  CheckCircle2,
   ClipboardCheck,
   ClipboardList,
+  Database,
   Download,
+  FileCheck2,
   FileUp,
   FileSpreadsheet,
+  History,
   Package,
+  RefreshCw,
   Search,
   ShieldCheck,
   Ship,
@@ -23,9 +29,11 @@ import {
   approveImportCandidate,
   askAssistant,
   fetchCustomers,
+  fetchAuditEvents,
   fetchDashboardSummary,
   fetchDispatches,
   fetchGoodsReceipts,
+  fetchImportCandidates,
   fetchInventoryBatches,
   fetchInventoryCounts,
   fetchProducts,
@@ -43,6 +51,7 @@ import type {
   ApiCustomer,
   ApiDispatch,
   ApiGoodsReceipt,
+  ApiAuditEvent,
   ApiImportApprovalRequest,
   ApiImportAssemblyRequest,
   ApiImportGoodsReceiptPostRequest,
@@ -67,6 +76,11 @@ type Product = {
   status: "Active" | "Inactive";
   shelfLifeMonths?: number | null;
 };
+
+type IconComponent = ComponentType<{
+  size?: number;
+  "aria-hidden"?: boolean | "true" | "false";
+}>;
 
 type InventoryBatch = {
   itemCode: string;
@@ -304,6 +318,7 @@ const navItems = [
   { id: "expiry", label: "Expiry", icon: ClipboardList },
   { id: "customers", label: "Customers", icon: Users },
   { id: "security", label: "Security", icon: ShieldCheck },
+  { id: "audit", label: "Audit", icon: History },
   { id: "assistant", label: "Assistant", icon: Bot },
 ];
 
@@ -373,6 +388,7 @@ function escapeCsvValue(value: unknown) {
 
 function getExportRows({
   activeView,
+  auditEvents,
   counts,
   customers,
   dispatches,
@@ -384,6 +400,7 @@ function getExportRows({
   shipments,
 }: {
   activeView: string;
+  auditEvents: ApiAuditEvent[];
   counts: CountLine[];
   customers: Customer[];
   dispatches: Dispatch[];
@@ -469,6 +486,21 @@ function getExportRows({
 
   if (activeView === "customers") {
     return customers.map((customer) => ({ ...customer }));
+  }
+
+  if (activeView === "audit") {
+    return auditEvents.map((event) => ({
+      id: event.id,
+      action: event.action,
+      module: event.module_name,
+      entity: event.entity_name,
+      entity_id: event.entity_id,
+      actor: event.actor,
+      reason: event.reason,
+      old_value: formatAuditValue(event.old_value),
+      new_value: formatAuditValue(event.new_value),
+      created_at: event.created_at,
+    }));
   }
 
   return [];
@@ -578,6 +610,8 @@ export function App() {
   const [receipts, setReceipts] = useState<Receipt[]>(fallbackReceipts);
   const [counts, setCounts] = useState<CountLine[]>(fallbackCounts);
   const [customers, setCustomers] = useState<Customer[]>(fallbackCustomers);
+  const [auditEvents, setAuditEvents] = useState<ApiAuditEvent[]>([]);
+  const [importQueue, setImportQueue] = useState<ApiImportFileCandidate[]>([]);
   const [apiStatus, setApiStatus] = useState("Using sample data");
   const [assistantAnswer, setAssistantAnswer] = useState("Found 2 batches expiring within 180 days.");
   const [isAskingAssistant, setIsAskingAssistant] = useState(false);
@@ -607,6 +641,8 @@ export function App() {
           apiCounts,
           apiCustomers,
           apiSummary,
+          apiAuditEvents,
+          apiImportQueue,
         ] = await Promise.all([
           fetchProducts(),
           fetchInventoryBatches(),
@@ -616,7 +652,13 @@ export function App() {
           fetchInventoryCounts(),
           fetchCustomers(),
           fetchDashboardSummary(),
+          fetchAuditEvents(20),
+          fetchImportCandidates(),
         ]);
+        const initialImportCandidate = apiImportQueue[0] ?? null;
+        const initialWarehouses = initialImportCandidate
+          ? await fetchWarehouses(initialImportCandidate.destination_country)
+          : [];
 
         if (!isMounted) {
           return;
@@ -629,6 +671,11 @@ export function App() {
         setReceipts(flattenReceipts(apiReceipts));
         setCounts(flattenCounts(apiCounts));
         setCustomers(apiCustomers.map(mapCustomer));
+        setAuditEvents(apiAuditEvents);
+        setImportQueue(apiImportQueue);
+        setImportCandidate(initialImportCandidate);
+        setDestinationWarehouses(initialWarehouses);
+        setSelectedWarehouse(initialWarehouses[0]?.warehouse_code ?? "");
         setApiStatus(`Connected to backend / ${formatCurrency(apiSummary.total_inventory_value)}`);
       } catch {
         if (isMounted) {
@@ -708,7 +755,13 @@ export function App() {
     try {
       const candidate = await assembleImportFromDocuments(payload);
       const warehouses = await fetchWarehouses(candidate.destination_country);
+      const [apiImportQueue, apiAuditEvents] = await Promise.all([
+        fetchImportCandidates(),
+        fetchAuditEvents(20),
+      ]);
       setImportCandidate(candidate);
+      setImportQueue(apiImportQueue);
+      setAuditEvents(apiAuditEvents);
       setDestinationWarehouses(warehouses);
       setSelectedWarehouse(warehouses[0]?.warehouse_code ?? "");
       setImportMessage(
@@ -730,16 +783,28 @@ export function App() {
       fetchGoodsReceipts(),
       fetchDashboardSummary(),
     ]);
+    const [apiImportQueue, apiAuditEvents] = await Promise.all([
+      fetchImportCandidates(),
+      fetchAuditEvents(20),
+    ]);
     setInventory(apiInventory.map(mapInventoryBatch));
     setReceipts(flattenReceipts(apiReceipts));
     setImportCandidate((current) => current ? { ...current, status: "received" } : current);
+    setImportQueue(apiImportQueue);
+    setAuditEvents(apiAuditEvents);
     setApiStatus(`Connected to backend / ${formatCurrency(apiSummary.total_inventory_value)}`);
     return result.message;
   }
 
   async function handleApproveImportCandidate(payload: ApiImportApprovalRequest) {
     const approvedCandidate = await approveImportCandidate(payload);
+    const [apiImportQueue, apiAuditEvents] = await Promise.all([
+      fetchImportCandidates(),
+      fetchAuditEvents(20),
+    ]);
     setImportCandidate(approvedCandidate);
+    setImportQueue(apiImportQueue);
+    setAuditEvents(apiAuditEvents);
     setApiStatus(`Connected to backend / ${approvedCandidate.import_file_number} approved`);
     return `Import file approved by ${payload.approved_by}. Goods Receipt is now allowed.`;
   }
@@ -791,7 +856,7 @@ export function App() {
           product.category.toLowerCase().includes(query)
         );
       }),
-    [search],
+    [products, search],
   );
 
   const inventoryWarehouses = useMemo(
@@ -828,6 +893,7 @@ export function App() {
   function handleExportActiveView() {
     const rows = getExportRows({
       activeView,
+      auditEvents,
       counts,
       customers,
       dispatches,
@@ -846,6 +912,10 @@ export function App() {
 
     downloadCsv(`${activeView}-${getDateStamp()}.csv`, rows);
     setApiStatus(`Exported ${rows.length} row(s) from ${activeNav.label}`);
+  }
+
+  function handleRefreshApp() {
+    window.location.reload();
   }
 
   return (
@@ -880,6 +950,10 @@ export function App() {
           </div>
           <div className="topbar-actions">
             <span className="connection-status">{apiStatus}</span>
+            <button className="secondary-action" onClick={handleRefreshApp}>
+              <RefreshCw size={17} aria-hidden="true" />
+              Refresh
+            </button>
             <button className="secondary-action" onClick={handleExportActiveView}>
               <Download size={17} aria-hidden="true" />
               Export
@@ -899,7 +973,10 @@ export function App() {
             totalInventoryQuantity={totalInventoryQuantity}
             totalInventoryValue={totalInventoryValue}
             varianceTotal={varianceTotal}
+            auditEvents={auditEvents}
+            importQueue={importQueue}
             inventory={inventory}
+            onNavigate={setActiveView}
             shipments={shipments}
           />
         ) : null}
@@ -955,6 +1032,7 @@ export function App() {
         {activeView === "expiry" ? <ExpiryView inventory={inventory} /> : null}
         {activeView === "customers" ? <CustomersView customers={customers} /> : null}
         {activeView === "security" ? <SecurityView /> : null}
+        {activeView === "audit" ? <AuditView auditEvents={auditEvents} /> : null}
         {activeView === "assistant" ? (
           <AssistantView
             answer={assistantAnswer}
@@ -980,7 +1058,10 @@ function DashboardView({
   goodsReceivedToday,
   openShipments,
   varianceTotal,
+  auditEvents,
+  importQueue,
   inventory,
+  onNavigate,
   shipments,
 }: {
   expiredInventoryCount: number;
@@ -993,7 +1074,10 @@ function DashboardView({
   goodsReceivedToday: number;
   openShipments: number;
   varianceTotal: number;
+  auditEvents: ApiAuditEvent[];
+  importQueue: ApiImportFileCandidate[];
   inventory: InventoryBatch[];
+  onNavigate: (view: string) => void;
   shipments: Shipment[];
 }) {
   const warehouseValues = inventory.reduce<Record<string, number>>((totals, batch) => {
@@ -1006,9 +1090,41 @@ function DashboardView({
   }, {});
   const maxWarehouseValue = Math.max(...Object.values(warehouseValues), 1);
   const maxCategoryValue = Math.max(...Object.values(categoryValues), 1);
+  const activeImports = importQueue.filter((candidate) =>
+    !["received", "closed"].includes(candidate.status),
+  );
+  const pendingApproval = importQueue.filter((candidate) => candidate.status === "validation_pending").length;
+  const pendingReceipt = importQueue.filter((candidate) => candidate.status === "validated").length;
 
   return (
     <>
+      <section className="workflow-strip" aria-label="Import workflow">
+        <WorkflowStep
+          icon={FileUp}
+          label="Documents"
+          detail={`${importQueue.length} import file(s)`}
+          state={importQueue.length > 0 ? "done" : "active"}
+        />
+        <WorkflowStep
+          icon={ClipboardCheck}
+          label="Validation"
+          detail={`${pendingApproval} pending approval`}
+          state={pendingApproval > 0 ? "active" : "done"}
+        />
+        <WorkflowStep
+          icon={CheckCircle2}
+          label="Approval"
+          detail={`${pendingReceipt} ready for receipt`}
+          state={pendingReceipt > 0 ? "active" : "waiting"}
+        />
+        <WorkflowStep
+          icon={Database}
+          label="Inventory"
+          detail={`${formatNumber(totalInventoryQuantity)} on hand`}
+          state={goodsReceivedToday > 0 ? "done" : "waiting"}
+        />
+      </section>
+
       <section className="kpi-grid" aria-label="Key metrics">
         <MetricCard label="Total Inventory Value" value={formatCurrency(totalInventoryValue)} detail="All warehouses" />
         <MetricCard label="Total Inventory Qty" value={formatNumber(totalInventoryQuantity)} detail="On-hand stock" />
@@ -1021,6 +1137,34 @@ function DashboardView({
         <MetricCard label="Expired Inventory" value={String(expiredInventoryCount)} detail="Blocked review" />
         <MetricCard label="Variance Quantity" value={String(varianceTotal)} detail="Open count variance" />
       </section>
+
+      <section className="action-grid" aria-label="Next actions">
+        <ActionCard
+          icon={FileCheck2}
+          label="Import Work Queue"
+          value={String(activeImports.length)}
+          detail="Files waiting for approval, receipt, or closure"
+          action="Open imports"
+          onClick={() => onNavigate("import-validation")}
+        />
+        <ActionCard
+          icon={Activity}
+          label="Inventory Risk"
+          value={String(expiringIn90Days + expiredInventoryCount)}
+          detail="Expiry and blocked review items"
+          action="Review inventory"
+          onClick={() => onNavigate("inventory")}
+        />
+        <ActionCard
+          icon={History}
+          label="Audit Trail"
+          value={String(auditEvents.length)}
+          detail="Latest persisted workflow events"
+          action="Open audit"
+          onClick={() => onNavigate("audit")}
+        />
+      </section>
+
       <section className="content-grid">
         <Panel title="Inventory by warehouse" meta="Value">
           {Object.entries(warehouseValues).map(([warehouse, value]) => (
@@ -1037,8 +1181,16 @@ function DashboardView({
         <Panel title="Upcoming expiries" meta="FEFO">
           <InventoryTable rows={inventory.filter((batch) => batch.expiryBucket !== "Above 365 Days")} compact />
         </Panel>
+        <Panel title="Import work queue" meta={`${activeImports.length} active`}>
+          <ImportQueueList rows={importQueue.slice(0, 6)} />
+        </Panel>
+      </section>
+      <section className="content-grid wide-left">
         <Panel title="Open shipment requests" meta="Status">
           <ShipmentTable rows={shipments} compact />
+        </Panel>
+        <Panel title="Recent audit" meta={`${auditEvents.length} events`}>
+          <AuditEventList rows={auditEvents.slice(0, 5)} />
         </Panel>
       </section>
     </>
@@ -1789,6 +1941,36 @@ function formatDocumentOption(document: DocumentRecord): string {
   return `${document.filename}${createdLabel}`;
 }
 
+function formatTimestamp(value: string | null | undefined) {
+  if (!value) {
+    return "-";
+  }
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+}
+
+function formatAuditValue(value: unknown) {
+  if (value === null || value === undefined || value === "") {
+    return "-";
+  }
+
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+
+  if (Array.isArray(value)) {
+    return `${value.length} item(s)`;
+  }
+
+  if (typeof value === "object") {
+    const pairs = Object.entries(value as Record<string, unknown>).slice(0, 4);
+    return pairs.map(([key, item]) => `${key}: ${String(item)}`).join(", ");
+  }
+
+  return String(value);
+}
+
 function ProductsView({
   products,
   search,
@@ -2175,6 +2357,180 @@ function MetricCard({ label, value, detail }: { label: string; value: string; de
       <strong>{value}</strong>
       <small>{detail}</small>
     </article>
+  );
+}
+
+function WorkflowStep({
+  detail,
+  icon: Icon,
+  label,
+  state,
+}: {
+  detail: string;
+  icon: IconComponent;
+  label: string;
+  state: "active" | "done" | "waiting";
+}) {
+  return (
+    <article className={`workflow-step ${state}`}>
+      <div className="workflow-icon">
+        <Icon size={19} aria-hidden="true" />
+      </div>
+      <div>
+        <strong>{label}</strong>
+        <span>{detail}</span>
+      </div>
+    </article>
+  );
+}
+
+function ActionCard({
+  action,
+  detail,
+  icon: Icon,
+  label,
+  onClick,
+  value,
+}: {
+  action: string;
+  detail: string;
+  icon: IconComponent;
+  label: string;
+  onClick: () => void;
+  value: string;
+}) {
+  return (
+    <article className="action-card">
+      <div className="action-card-top">
+        <span className="action-icon">
+          <Icon size={20} aria-hidden="true" />
+        </span>
+        <strong>{value}</strong>
+      </div>
+      <div>
+        <h2>{label}</h2>
+        <p>{detail}</p>
+      </div>
+      <button className="secondary-action" onClick={onClick}>
+        {action}
+      </button>
+    </article>
+  );
+}
+
+function ImportQueueList({ rows }: { rows: ApiImportFileCandidate[] }) {
+  if (rows.length === 0) {
+    return <p className="empty-state">No import files are waiting right now.</p>;
+  }
+
+  return (
+    <div className="queue-list">
+      {rows.map((candidate) => (
+        <article className="queue-row" key={candidate.import_file_number}>
+          <div className="queue-row-main">
+            <div>
+              <strong>{candidate.import_file_number}</strong>
+              <span>
+                {candidate.destination_country} / invoice {candidate.invoice_number ?? "-"}
+              </span>
+            </div>
+            <StatusTag label={candidate.status.replace(/_/g, " ")} />
+          </div>
+          <div className="queue-row-meta">
+            <span>{candidate.lines.length} line(s)</span>
+            <span>AWB {candidate.awb_number ?? "-"}</span>
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function AuditEventList({ rows }: { rows: ApiAuditEvent[] }) {
+  if (rows.length === 0) {
+    return <p className="empty-state">No audit events recorded yet.</p>;
+  }
+
+  return (
+    <div className="audit-list">
+      {rows.map((event) => (
+        <article className="audit-event" key={event.id}>
+          <div className="audit-event-main">
+            <div>
+              <strong>{toTitleCase(event.action)}</strong>
+              <span>
+                {event.module_name} / {event.entity_name}
+              </span>
+            </div>
+            <span className="audit-time">{formatTimestamp(event.created_at)}</span>
+          </div>
+          <div className="audit-event-meta">
+            <span>{event.entity_id}</span>
+            <span>{event.actor ?? "system"}</span>
+          </div>
+          {event.reason ? <p>{event.reason}</p> : null}
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function AuditView({ auditEvents }: { auditEvents: ApiAuditEvent[] }) {
+  const importEvents = auditEvents.filter((event) => event.module_name === "import").length;
+  const learningEvents = auditEvents.filter((event) => event.module_name === "learning").length;
+
+  return (
+    <>
+      <section className="kpi-grid">
+        <MetricCard label="Audit Events" value={String(auditEvents.length)} detail="Latest loaded events" />
+        <MetricCard label="Import Events" value={String(importEvents)} detail="Document to receipt flow" />
+        <MetricCard label="Learning Events" value={String(learningEvents)} detail="Master learning actions" />
+        <MetricCard
+          label="Latest Action"
+          value={auditEvents[0] ? toTitleCase(auditEvents[0].action) : "-"}
+          detail={auditEvents[0]?.actor ?? "No actor yet"}
+        />
+      </section>
+
+      <Panel title="Audit trail" meta="Newest first">
+        <table>
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Action</th>
+              <th>Module</th>
+              <th>Entity</th>
+              <th>Actor</th>
+              <th>Reason</th>
+              <th>New Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            {auditEvents.length === 0 ? (
+              <tr>
+                <td colSpan={7}>No audit records yet.</td>
+              </tr>
+            ) : (
+              auditEvents.map((event) => (
+                <tr key={event.id}>
+                  <td>{formatTimestamp(event.created_at)}</td>
+                  <td>{toTitleCase(event.action)}</td>
+                  <td>{event.module_name}</td>
+                  <td>
+                    {event.entity_name}
+                    <br />
+                    <span className="muted-cell">{event.entity_id}</span>
+                  </td>
+                  <td>{event.actor ?? "system"}</td>
+                  <td>{event.reason ?? "-"}</td>
+                  <td>{formatAuditValue(event.new_value)}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </Panel>
+    </>
   );
 }
 

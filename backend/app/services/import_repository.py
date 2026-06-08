@@ -12,7 +12,7 @@ from app.schemas.imports import (
     ImportStatus,
 )
 from app.schemas.warehouse import CreateGoodsReceiptLineRequest, CreateGoodsReceiptRequest, CreateProductRequest, WorkflowResult
-from app.db.local_persistence import record_audit_event
+from app.db.local_persistence import load_collection, record_audit_event, save_collection
 from app.services.learning_repository import get_product_learning_profile
 from app.services.local_document_store import get_saved_document
 from app.services.simple_extraction import extract_text
@@ -20,7 +20,41 @@ from app.services.warehouse_repository import create_product, get_product, post_
 
 
 def latest_import_candidate() -> ImportFileCandidate:
-    return exp_0361_development_fixture()
+    candidates = list_import_candidates()
+    return candidates[0] if candidates else exp_0361_development_fixture()
+
+
+def list_import_candidates() -> list[ImportFileCandidate]:
+    return load_collection(
+        "import_candidates",
+        lambda payload: ImportFileCandidate(**payload),
+    )
+
+
+def get_import_candidate(import_file_number: str) -> ImportFileCandidate | None:
+    return next(
+        (
+            candidate
+            for candidate in list_import_candidates()
+            if candidate.import_file_number == import_file_number
+        ),
+        None,
+    )
+
+
+def save_import_candidate(candidate: ImportFileCandidate) -> ImportFileCandidate:
+    candidates = [
+        saved_candidate
+        for saved_candidate in list_import_candidates()
+        if saved_candidate.import_file_number != candidate.import_file_number
+    ]
+    candidates.insert(0, candidate)
+    save_collection(
+        "import_candidates",
+        candidates,
+        lambda saved_candidate: saved_candidate.import_file_number,
+    )
+    return candidate
 
 
 def assemble_import_candidate_from_documents(
@@ -103,7 +137,7 @@ def assemble_import_candidate_from_documents(
         *([awb_record.document_id] if awb_record else []),
     ]
 
-    return ImportFileCandidate(
+    candidate = ImportFileCandidate(
         import_file_number=import_file_number,
         supplier_name=invoice_header.get("supplier_name"),
         destination_entity=invoice_header.get("destination_entity")
@@ -125,6 +159,16 @@ def assemble_import_candidate_from_documents(
         source_document_ids=source_document_ids,
         extraction_warnings=warnings,
     )
+    save_import_candidate(candidate)
+    record_audit_event(
+        action="assemble",
+        module_name="import",
+        entity_name="import_file",
+        entity_id=candidate.import_file_number,
+        actor="document_upload_flow",
+        new_value={"status": candidate.status.value, "line_count": len(candidate.lines)},
+    )
+    return candidate
 
 
 def post_import_goods_receipt(request: ImportGoodsReceiptPostRequest) -> WorkflowResult:
@@ -178,6 +222,10 @@ def post_import_goods_receipt(request: ImportGoodsReceiptPostRequest) -> Workflo
             "posted_by": request.posted_by,
         }
     )
+    received_candidate = request.candidate.model_copy(
+        update={"status": ImportStatus.RECEIVED},
+    )
+    save_import_candidate(received_candidate)
     record_audit_event(
         action="post_goods_receipt",
         module_name="import",
@@ -208,6 +256,7 @@ def approve_import_candidate(request: ImportApprovalRequest) -> ImportFileCandid
     approved_candidate = request.candidate.model_copy(
         update={"status": ImportStatus.VALIDATED},
     )
+    save_import_candidate(approved_candidate)
     record_audit_event(
         action="approve",
         module_name="import",

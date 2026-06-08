@@ -166,6 +166,19 @@ export type ApiDashboardSummary = {
   top_customers: Array<Record<string, string | number>>;
 };
 
+export type ApiAuditEvent = {
+  id: number;
+  action: string;
+  module_name: string;
+  entity_name: string;
+  entity_id: string;
+  actor: string | null;
+  reason: string | null;
+  old_value: unknown;
+  new_value: unknown;
+  created_at: string;
+};
+
 export type ApiAssistantAnswer = {
   question: string;
   answer: string;
@@ -360,6 +373,10 @@ export function fetchLatestImportPreview(): Promise<ApiImportFileCandidate> {
   return getJson<ApiImportFileCandidate>("/imports/latest-preview");
 }
 
+export function fetchImportCandidates(): Promise<ApiImportFileCandidate[]> {
+  return getJson<ApiImportFileCandidate[]>("/imports");
+}
+
 export function assembleImportFromDocuments(
   payload: ApiImportAssemblyRequest,
 ): Promise<ApiImportFileCandidate> {
@@ -381,6 +398,10 @@ export function postImportGoodsReceipt(
 export function fetchWarehouses(country?: string): Promise<ApiWarehouseLocation[]> {
   const query = country ? `?country=${encodeURIComponent(country)}` : "";
   return getJson<ApiWarehouseLocation[]>(`/warehouses${query}`);
+}
+
+export function fetchAuditEvents(limit = 100): Promise<ApiAuditEvent[]> {
+  return getJson<ApiAuditEvent[]>(`/audit?limit=${limit}`);
 }
 
 export function saveProductFreeTextProfile(payload: {

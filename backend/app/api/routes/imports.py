@@ -7,6 +7,7 @@ from app.services.import_repository import (
     assemble_import_candidate_from_documents,
     exp_0361_development_fixture,
     latest_import_candidate,
+    list_import_candidates,
     post_import_goods_receipt,
 )
 
@@ -17,6 +18,11 @@ router = APIRouter()
 @router.get("/latest-preview", response_model=ImportFileCandidate)
 def latest_preview() -> ImportFileCandidate:
     return latest_import_candidate()
+
+
+@router.get("", response_model=list[ImportFileCandidate])
+def import_candidates() -> list[ImportFileCandidate]:
+    return list_import_candidates()
 
 
 @router.post("/assemble-from-documents", response_model=ImportFileCandidate)
