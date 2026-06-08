@@ -233,6 +233,12 @@ export type ApiImportGoodsReceiptPostRequest = {
   supplier_name?: string | null;
 };
 
+export type ApiImportApprovalRequest = {
+  candidate: ApiImportFileCandidate;
+  approved_by: string;
+  approval_note?: string | null;
+};
+
 export type ApiWarehouseLocation = {
   warehouse_code: string;
   warehouse_name: string;
@@ -358,6 +364,12 @@ export function assembleImportFromDocuments(
   payload: ApiImportAssemblyRequest,
 ): Promise<ApiImportFileCandidate> {
   return postJson<ApiImportFileCandidate, typeof payload>("/imports/assemble-from-documents", payload);
+}
+
+export function approveImportCandidate(
+  payload: ApiImportApprovalRequest,
+): Promise<ApiImportFileCandidate> {
+  return postJson<ApiImportFileCandidate, typeof payload>("/imports/approve", payload);
 }
 
 export function postImportGoodsReceipt(

@@ -1,8 +1,9 @@
 from fastapi import APIRouter, HTTPException
 
-from app.schemas.imports import ImportAssemblyRequest, ImportFileCandidate, ImportGoodsReceiptPostRequest
+from app.schemas.imports import ImportApprovalRequest, ImportAssemblyRequest, ImportFileCandidate, ImportGoodsReceiptPostRequest
 from app.schemas.warehouse import WorkflowResult
 from app.services.import_repository import (
+    approve_import_candidate,
     assemble_import_candidate_from_documents,
     exp_0361_development_fixture,
     latest_import_candidate,
@@ -22,6 +23,14 @@ def latest_preview() -> ImportFileCandidate:
 def assemble_from_documents(request: ImportAssemblyRequest) -> ImportFileCandidate:
     try:
         return assemble_import_candidate_from_documents(request)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@router.post("/approve", response_model=ImportFileCandidate)
+def approve_import(request: ImportApprovalRequest) -> ImportFileCandidate:
+    try:
+        return approve_import_candidate(request)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
 

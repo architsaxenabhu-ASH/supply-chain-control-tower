@@ -20,6 +20,7 @@ import {
 
 import {
   assembleImportFromDocuments,
+  approveImportCandidate,
   askAssistant,
   fetchCustomers,
   fetchDashboardSummary,
@@ -42,6 +43,7 @@ import type {
   ApiCustomer,
   ApiDispatch,
   ApiGoodsReceipt,
+  ApiImportApprovalRequest,
   ApiImportAssemblyRequest,
   ApiImportGoodsReceiptPostRequest,
   ApiInventoryBatch,
@@ -567,6 +569,7 @@ export function App() {
   const [search, setSearch] = useState("");
   const [inventorySearch, setInventorySearch] = useState("");
   const [inventoryWarehouseFilter, setInventoryWarehouseFilter] = useState("all");
+  const [inventoryVerticalFilter, setInventoryVerticalFilter] = useState("all");
   const [assistantQuestion, setAssistantQuestion] = useState("Show all batches expiring within 180 days.");
   const [products, setProducts] = useState<Product[]>(fallbackProducts);
   const [inventory, setInventory] = useState<InventoryBatch[]>(fallbackInventory);
@@ -729,8 +732,16 @@ export function App() {
     ]);
     setInventory(apiInventory.map(mapInventoryBatch));
     setReceipts(flattenReceipts(apiReceipts));
+    setImportCandidate((current) => current ? { ...current, status: "received" } : current);
     setApiStatus(`Connected to backend / ${formatCurrency(apiSummary.total_inventory_value)}`);
     return result.message;
+  }
+
+  async function handleApproveImportCandidate(payload: ApiImportApprovalRequest) {
+    const approvedCandidate = await approveImportCandidate(payload);
+    setImportCandidate(approvedCandidate);
+    setApiStatus(`Connected to backend / ${approvedCandidate.import_file_number} approved`);
+    return `Import file approved by ${payload.approved_by}. Goods Receipt is now allowed.`;
   }
 
   async function handleAskAssistant() {
@@ -788,6 +799,11 @@ export function App() {
     [inventory],
   );
 
+  const inventoryVerticals = useMemo(
+    () => Array.from(new Set(inventory.map((batch) => batch.category))).sort(),
+    [inventory],
+  );
+
   const filteredInventory = useMemo(
     () =>
       inventory.filter((batch) => {
@@ -800,9 +816,11 @@ export function App() {
           batch.category.toLowerCase().includes(query);
         const matchesWarehouse =
           inventoryWarehouseFilter === "all" || batch.warehouse === inventoryWarehouseFilter;
-        return matchesSearch && matchesWarehouse;
+        const matchesVertical =
+          inventoryVerticalFilter === "all" || batch.category === inventoryVerticalFilter;
+        return matchesSearch && matchesWarehouse && matchesVertical;
       }),
-    [inventory, inventorySearch, inventoryWarehouseFilter],
+    [inventory, inventorySearch, inventoryVerticalFilter, inventoryWarehouseFilter],
   );
 
   const activeNav = navItems.find((item) => item.id === activeView) ?? navItems[0];
@@ -906,6 +924,7 @@ export function App() {
             documents={documents}
             importMessage={importMessage}
             newWarehouseName={newWarehouseName}
+            onApproveImport={handleApproveImportCandidate}
             onAssembleImport={handleAssembleImportFromDocuments}
             onNewWarehouseNameChange={setNewWarehouseName}
             onPostGoodsReceipt={handlePostImportGoodsReceipt}
@@ -922,6 +941,9 @@ export function App() {
             search={inventorySearch}
             setSearch={setInventorySearch}
             setWarehouseFilter={setInventoryWarehouseFilter}
+            setVerticalFilter={setInventoryVerticalFilter}
+            verticalFilter={inventoryVerticalFilter}
+            verticals={inventoryVerticals}
             warehouseFilter={inventoryWarehouseFilter}
             warehouses={inventoryWarehouses}
           />
@@ -1203,6 +1225,7 @@ function ImportValidationView({
   documents,
   importMessage,
   newWarehouseName,
+  onApproveImport,
   onAssembleImport,
   onNewWarehouseNameChange,
   onPostGoodsReceipt,
@@ -1214,6 +1237,7 @@ function ImportValidationView({
   documents: DocumentRecord[];
   importMessage: string;
   newWarehouseName: string;
+  onApproveImport: (payload: ApiImportApprovalRequest) => Promise<string>;
   onAssembleImport: (payload: ApiImportAssemblyRequest) => void;
   onNewWarehouseNameChange: (value: string) => void;
   onPostGoodsReceipt: (payload: ApiImportGoodsReceiptPostRequest) => Promise<string>;
@@ -1225,7 +1249,9 @@ function ImportValidationView({
   const [verticalName, setVerticalName] = useState("");
   const [extraDocumentType, setExtraDocumentType] = useState("");
   const [learningMessage, setLearningMessage] = useState("");
+  const [approvalMessage, setApprovalMessage] = useState("");
   const [postingMessage, setPostingMessage] = useState("");
+  const [isApprovingImport, setIsApprovingImport] = useState(false);
   const [isPostingReceipt, setIsPostingReceipt] = useState(false);
   const [firstTimeAnswers, setFirstTimeAnswers] = useState<Record<string, string>>({});
   const invoiceDocuments = documents.filter((document) => document.document_type === "commercial_invoice");
@@ -1239,6 +1265,7 @@ function ImportValidationView({
   const knownProductCount =
     candidate?.lines.filter((line) => line.product_profile_status === "known").length ?? 0;
   const firstUnknownLine = candidate?.lines.find((line) => line.product_profile_status !== "known");
+  const isImportApproved = candidate?.status === "validated";
 
   useEffect(() => {
     if (!selectedInvoiceDocumentId && invoiceDocuments[0]) {
@@ -1345,6 +1372,10 @@ function ImportValidationView({
       setPostingMessage("Create the import validation file first.");
       return;
     }
+    if (!isImportApproved) {
+      setPostingMessage("Approve the import file before posting Goods Receipt.");
+      return;
+    }
     if (!actorName.trim()) {
       setPostingMessage("Enter validator name before posting Goods Receipt.");
       return;
@@ -1378,6 +1409,33 @@ function ImportValidationView({
       setPostingMessage(error instanceof Error ? error.message : "Could not post Goods Receipt.");
     } finally {
       setIsPostingReceipt(false);
+    }
+  }
+
+  async function handleApproveImport() {
+    if (!candidate) {
+      setApprovalMessage("Create the import validation file first.");
+      return;
+    }
+    if (!actorName.trim()) {
+      setApprovalMessage("Enter Country Incharge name before approval.");
+      return;
+    }
+
+    setIsApprovingImport(true);
+    setApprovalMessage("Approving import validation file...");
+    try {
+      const message = await onApproveImport({
+        candidate,
+        approved_by: actorName,
+        approval_note: "Approved from Import Validation screen",
+      });
+      setApprovalMessage(message);
+      setPostingMessage("Approval complete. Select warehouse and post Goods Receipt.");
+    } catch (error) {
+      setApprovalMessage(error instanceof Error ? error.message : "Could not approve import file.");
+    } finally {
+      setIsApprovingImport(false);
     }
   }
 
@@ -1457,9 +1515,13 @@ function ImportValidationView({
               <strong>Approver</strong>
               <span>Country Incharge</span>
             </div>
+            <div className={isImportApproved ? "validation-banner" : "validation-banner warning"}>
+              <strong>Approval status</strong>
+              <span>{candidate ? candidate.status.replace(/_/g, " ") : "Create import validation file"}</span>
+            </div>
             <div className="validation-banner warning">
               <strong>Stock increase rule</strong>
-              <span>Only after Goods Receipt in destination warehouse</span>
+              <span>Only after approval and Goods Receipt in destination warehouse</span>
             </div>
             <label className="field-control">
               <span>Supplier</span>
@@ -1495,7 +1557,11 @@ function ImportValidationView({
                 Save warehouse candidate
               </button>
             ) : null}
-            <button className="primary-action" onClick={handlePostGoodsReceipt} disabled={isPostingReceipt}>
+            <button className="secondary-action" onClick={handleApproveImport} disabled={isApprovingImport || isImportApproved}>
+              {isApprovingImport ? "Approving import file" : isImportApproved ? "Import approved" : "Approve import file"}
+            </button>
+            <p className="status-line">{approvalMessage}</p>
+            <button className="primary-action" onClick={handlePostGoodsReceipt} disabled={isPostingReceipt || !isImportApproved}>
               {isPostingReceipt ? "Posting Goods Receipt" : "Validate and post Goods Receipt"}
             </button>
             <p className="status-line">{postingMessage}</p>
@@ -1775,14 +1841,20 @@ function InventoryView({
   inventory,
   search,
   setSearch,
+  setVerticalFilter,
   setWarehouseFilter,
+  verticalFilter,
+  verticals,
   warehouseFilter,
   warehouses,
 }: {
   inventory: InventoryBatch[];
   search: string;
   setSearch: (value: string) => void;
+  setVerticalFilter: (value: string) => void;
   setWarehouseFilter: (value: string) => void;
+  verticalFilter: string;
+  verticals: string[];
   warehouseFilter: string;
   warehouses: string[];
 }) {
@@ -1804,6 +1876,17 @@ function InventoryView({
             {warehouses.map((warehouse) => (
               <option key={warehouse} value={warehouse}>
                 {warehouse}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="filter-control">
+          <span>Vertical</span>
+          <select value={verticalFilter} onChange={(event) => setVerticalFilter(event.target.value)}>
+            <option value="all">All verticals</option>
+            {verticals.map((vertical) => (
+              <option key={vertical} value={vertical}>
+                {vertical}
               </option>
             ))}
           </select>

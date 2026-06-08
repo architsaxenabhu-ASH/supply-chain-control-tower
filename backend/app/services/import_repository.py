@@ -4,6 +4,7 @@ from pathlib import Path
 
 from app.schemas.extraction import DocumentType
 from app.schemas.imports import (
+    ImportApprovalRequest,
     ImportAssemblyRequest,
     ImportFileCandidate,
     ImportGoodsReceiptPostRequest,
@@ -11,6 +12,7 @@ from app.schemas.imports import (
     ImportStatus,
 )
 from app.schemas.warehouse import CreateGoodsReceiptLineRequest, CreateGoodsReceiptRequest, CreateProductRequest, WorkflowResult
+from app.db.local_persistence import record_audit_event
 from app.services.learning_repository import get_product_learning_profile
 from app.services.local_document_store import get_saved_document
 from app.services.simple_extraction import extract_text
@@ -128,6 +130,8 @@ def assemble_import_candidate_from_documents(
 def post_import_goods_receipt(request: ImportGoodsReceiptPostRequest) -> WorkflowResult:
     if not request.posted_by.strip():
         raise ValueError("Validator / poster name is mandatory")
+    if request.candidate.status != ImportStatus.VALIDATED:
+        raise ValueError("Import file must be approved before Goods Receipt posting")
     if not request.warehouse_name.strip():
         raise ValueError("Destination warehouse is mandatory")
     if not request.candidate.lines:
@@ -174,7 +178,47 @@ def post_import_goods_receipt(request: ImportGoodsReceiptPostRequest) -> Workflo
             "posted_by": request.posted_by,
         }
     )
+    record_audit_event(
+        action="post_goods_receipt",
+        module_name="import",
+        entity_name="import_file",
+        entity_id=request.candidate.import_file_number,
+        actor=request.posted_by,
+        new_value=result.data,
+    )
     return result
+
+
+def approve_import_candidate(request: ImportApprovalRequest) -> ImportFileCandidate:
+    if not request.approved_by.strip():
+        raise ValueError("Approver name is mandatory")
+    if not request.candidate.lines:
+        raise ValueError("Import file has no product lines to approve")
+
+    for line in request.candidate.lines:
+        if not line.item_code.strip():
+            raise ValueError("Item code is missing on one or more import lines")
+        if not line.batch_number.strip():
+            raise ValueError(f"Batch number is missing for {line.item_code}")
+        if line.expiry_date is None:
+            raise ValueError(f"Expiry date is missing for {line.item_code} / {line.batch_number}")
+        if line.quantity <= 0:
+            raise ValueError(f"Quantity must be greater than zero for {line.item_code} / {line.batch_number}")
+
+    approved_candidate = request.candidate.model_copy(
+        update={"status": ImportStatus.VALIDATED},
+    )
+    record_audit_event(
+        action="approve",
+        module_name="import",
+        entity_name="import_file",
+        entity_id=request.candidate.import_file_number,
+        actor=request.approved_by,
+        reason=request.approval_note,
+        old_value={"status": request.candidate.status.value},
+        new_value={"status": approved_candidate.status.value},
+    )
+    return approved_candidate
 
 
 def ensure_pending_product_master(line: ImportLineCandidate) -> None:

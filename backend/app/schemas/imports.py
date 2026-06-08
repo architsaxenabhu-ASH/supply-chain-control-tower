@@ -58,6 +58,12 @@ class ImportAssemblyRequest(BaseModel):
     awb_document_id: str | None = None
 
 
+class ImportApprovalRequest(BaseModel):
+    candidate: ImportFileCandidate
+    approved_by: str
+    approval_note: str | None = None
+
+
 class ImportGoodsReceiptPostRequest(BaseModel):
     candidate: ImportFileCandidate
     warehouse_name: str

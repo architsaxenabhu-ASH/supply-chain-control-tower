@@ -44,6 +44,9 @@ Supply Chain Control Tower / Warehouse Inventory and Shipment Management Applica
 - Executive dashboard KPIs expanded with total quantity, 30/60/90-day expiry risk, expired inventory, receipts today, and persisted backend status
 - Mobile dashboard navigation improved so the dashboard appears in the first viewport on narrow screens
 - Current-state roadmap and dashboard architecture documents added
+- Inventory screen now includes a Vertical filter alongside warehouse and free-text search
+- Import Validation now has an approval gate: Country Incharge approval is required before Goods Receipt posting
+- Backend blocks import Goods Receipt posting unless the import candidate status is `validated`
 - Git installed on Windows using `winget install Git.Git`
 - Project initialized as a local Git repository on branch `main`
 - Safe project files committed to Git while runtime data, uploads, SQLite database files, logs, generated zip files, virtual environments, and node modules are ignored
@@ -132,6 +135,8 @@ Supply Chain Control Tower / Warehouse Inventory and Shipment Management Applica
 - Browser QA passed on desktop viewport: dashboard layout renders with ten KPI cards, no framework overlay, and no console warnings.
 - Fresh backend process restarted at `http://127.0.0.1:8000` using the SQLite-backed code.
 - Git commit created for the first prototype checkpoint: `75fa4d9 Initial supply chain control tower prototype`.
+- Browser QA passed for Inventory vertical filter: selecting `Cardio` reduced visible batches to 2.
+- Browser QA passed for Import Validation approval gate: pending import blocked Goods Receipt, approval changed status to `validated`, then Goods Receipt button became enabled.
 
 ## Pending
 
