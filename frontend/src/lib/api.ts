@@ -192,6 +192,7 @@ export type ApiSecurityUser = {
   country_scope: string[];
   warehouse_scope: string[];
   is_active: boolean;
+  has_password: boolean;
   created_at: string | null;
   updated_at: string | null;
 };
@@ -215,6 +216,16 @@ export type ApiSecurityOverview = {
   approval_rules: ApiApprovalRule[];
 };
 
+export type ApiAuthenticatedUser = {
+  email: string;
+  full_name: string;
+  role_name: string;
+  country_scope: string[];
+  warehouse_scope: string[];
+  permissions: string[];
+  session_token: string;
+};
+
 export type ApiSaveSecurityUserRequest = {
   email: string;
   full_name: string;
@@ -222,6 +233,7 @@ export type ApiSaveSecurityUserRequest = {
   country_scope: string[];
   warehouse_scope: string[];
   is_active: boolean;
+  password?: string | null;
   changed_by: string;
   change_reason: string;
 };
@@ -302,12 +314,14 @@ export type ApiImportGoodsReceiptPostRequest = {
   candidate: ApiImportFileCandidate;
   warehouse_name: string;
   posted_by: string;
+  auth_token: string;
   supplier_name?: string | null;
 };
 
 export type ApiImportApprovalRequest = {
   candidate: ApiImportFileCandidate;
   approved_by: string;
+  auth_token: string;
   approval_note?: string | null;
 };
 
@@ -465,6 +479,10 @@ export function fetchAuditEvents(limit = 100): Promise<ApiAuditEvent[]> {
 
 export function fetchSecurityOverview(): Promise<ApiSecurityOverview> {
   return getJson<ApiSecurityOverview>("/security");
+}
+
+export function loginUser(payload: { email: string; password: string }): Promise<ApiAuthenticatedUser> {
+  return postJson<ApiAuthenticatedUser, typeof payload>("/security/login", payload);
 }
 
 export function saveSecurityUser(payload: ApiSaveSecurityUserRequest): Promise<ApiSecurityUser> {

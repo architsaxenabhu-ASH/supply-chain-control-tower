@@ -16,7 +16,7 @@ from app.schemas.warehouse import CreateGoodsReceiptLineRequest, CreateGoodsRece
 from app.db.local_persistence import load_collection, record_audit_event, save_collection
 from app.services.learning_repository import get_product_learning_profile
 from app.services.local_document_store import get_saved_document
-from app.services.security_repository import normalize_email, resolve_approver
+from app.services.security_repository import normalize_email, require_user_permission, resolve_approver
 from app.services.simple_extraction import extract_text
 from app.services.warehouse_repository import create_product, get_product, post_goods_receipt
 
@@ -174,8 +174,7 @@ def assemble_import_candidate_from_documents(
 
 
 def post_import_goods_receipt(request: ImportGoodsReceiptPostRequest) -> WorkflowResult:
-    if not request.posted_by.strip():
-        raise ValueError("Validator / poster name is mandatory")
+    posted_user = require_user_permission(request.auth_token, "goods_receipt")
     if request.candidate.status != ImportStatus.VALIDATED:
         raise ValueError("Import file must be approved before Goods Receipt posting")
     if not request.warehouse_name.strip():
@@ -221,7 +220,7 @@ def post_import_goods_receipt(request: ImportGoodsReceiptPostRequest) -> Workflo
         {
             "import_file_number": request.candidate.import_file_number,
             "warehouse": request.warehouse_name.strip(),
-            "posted_by": request.posted_by,
+            "posted_by": posted_user.email,
         }
     )
     received_candidate = request.candidate.model_copy(
@@ -233,15 +232,14 @@ def post_import_goods_receipt(request: ImportGoodsReceiptPostRequest) -> Workflo
         module_name="import",
         entity_name="import_file",
         entity_id=request.candidate.import_file_number,
-        actor=request.posted_by,
+        actor=posted_user.email,
         new_value=result.data,
     )
     return result
 
 
 def approve_import_candidate(request: ImportApprovalRequest) -> ImportFileCandidate:
-    if not request.approved_by.strip():
-        raise ValueError("Approver email is mandatory")
+    approving_user = require_user_permission(request.auth_token, "import_approval")
     if not request.candidate.lines:
         raise ValueError("Import file has no product lines to approve")
 
@@ -257,7 +255,9 @@ def approve_import_candidate(request: ImportApprovalRequest) -> ImportFileCandid
         raise ValueError(
             "No import approval rule is configured. Add one in Security for this destination country."
         )
-    if normalize_email(request.approved_by) != resolution.approver_email:
+    if normalize_email(request.approved_by) != approving_user.email:
+        raise ValueError("Approval request does not match logged-in user.")
+    if approving_user.email != resolution.approver_email:
         raise ValueError(f"Only configured approver {resolution.approver_email} can approve this import file")
 
     for line in request.candidate.lines:
@@ -279,7 +279,7 @@ def approve_import_candidate(request: ImportApprovalRequest) -> ImportFileCandid
         module_name="import",
         entity_name="import_file",
         entity_id=request.candidate.import_file_number,
-        actor=request.approved_by,
+        actor=approving_user.email,
         reason=request.approval_note,
         old_value={"status": request.candidate.status.value},
         new_value={"status": approved_candidate.status.value},

@@ -30,6 +30,33 @@ button:disabled {
   display: grid;
   min-height: 100vh;
   grid-template-columns: 260px 1fr;
+  overflow-x: hidden;
+}
+
+.login-shell {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 24px;
+}
+
+.login-panel {
+  display: grid;
+  gap: 20px;
+  width: min(430px, 100%);
+  border: 1px solid #dce3e8;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 24px;
+}
+
+.login-brand {
+  padding: 0;
+}
+
+.login-form {
+  display: grid;
+  gap: 14px;
 }
 
 .sidebar {
@@ -339,6 +366,7 @@ h2 {
 
 .panel {
   min-width: 0;
+  overflow-x: auto;
   padding: 16px;
 }
 

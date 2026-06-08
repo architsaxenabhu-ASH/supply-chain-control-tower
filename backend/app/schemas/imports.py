@@ -61,6 +61,7 @@ class ImportAssemblyRequest(BaseModel):
 class ImportApprovalRequest(BaseModel):
     candidate: ImportFileCandidate
     approved_by: str
+    auth_token: str
     approval_note: str | None = None
 
 
@@ -68,4 +69,5 @@ class ImportGoodsReceiptPostRequest(BaseModel):
     candidate: ImportFileCandidate
     warehouse_name: str
     posted_by: str
+    auth_token: str
     supplier_name: str | None = None

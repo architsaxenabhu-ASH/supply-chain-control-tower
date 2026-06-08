@@ -44,6 +44,7 @@ import {
   fetchWarehouses,
   getExtractionMaster,
   listDocuments,
+  loginUser,
   postImportGoodsReceipt,
   saveApprovalRule,
   saveCountryDocumentRequirement,
@@ -57,6 +58,7 @@ import type {
   ApiDispatch,
   ApiGoodsReceipt,
   ApiAuditEvent,
+  ApiAuthenticatedUser,
   ApiImportApprovalRequest,
   ApiImportAssemblyRequest,
   ApiImportGoodsReceiptPostRequest,
@@ -152,6 +154,8 @@ type Customer = {
   type: string;
   contact: string;
 };
+
+const CURRENT_USER_STORAGE_KEY = "supply-chain-control-tower-current-user";
 
 const fallbackProducts: Product[] = [
   {
@@ -554,6 +558,7 @@ function getExportRows({
         role: user.role_name,
         countries: user.country_scope.join("; "),
         warehouses: user.warehouse_scope.join("; "),
+        password_status: user.has_password ? "set" : "missing",
         status: user.is_active ? "active" : "inactive",
       })),
       ...securityOverview.approval_rules.map((rule) => ({
@@ -663,7 +668,19 @@ function mapCustomer(customer: ApiCustomer): Customer {
   };
 }
 
+function loadStoredCurrentUser(): ApiAuthenticatedUser | null {
+  try {
+    const stored = window.localStorage.getItem(CURRENT_USER_STORAGE_KEY);
+    return stored ? JSON.parse(stored) as ApiAuthenticatedUser : null;
+  } catch {
+    return null;
+  }
+}
+
 export function App() {
+  const [currentUser, setCurrentUser] = useState<ApiAuthenticatedUser | null>(() => loadStoredCurrentUser());
+  const [loginMessage, setLoginMessage] = useState("Sign in with a configured Security User email.");
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [activeView, setActiveView] = useState("dashboard");
   const [search, setSearch] = useState("");
   const [inventorySearch, setInventorySearch] = useState("");
@@ -800,6 +817,29 @@ export function App() {
       isMounted = false;
     };
   }, []);
+
+  async function handleLogin(email: string, password: string) {
+    setIsLoggingIn(true);
+    setLoginMessage("Checking login...");
+    try {
+      const user = await loginUser({ email, password });
+      window.localStorage.setItem(CURRENT_USER_STORAGE_KEY, JSON.stringify(user));
+      setCurrentUser(user);
+      setLoginMessage("Login successful.");
+      setApiStatus(`Logged in as ${user.role_name}`);
+    } catch (error) {
+      setLoginMessage(error instanceof Error ? error.message : "Login failed.");
+    } finally {
+      setIsLoggingIn(false);
+    }
+  }
+
+  function handleLogout() {
+    window.localStorage.removeItem(CURRENT_USER_STORAGE_KEY);
+    setCurrentUser(null);
+    setActiveView("dashboard");
+    setLoginMessage("Signed out.");
+  }
 
   async function handleDocumentUpload() {
     if (!selectedFile) {
@@ -1011,8 +1051,24 @@ export function App() {
   );
 
   const activeNav = navItems.find((item) => item.id === activeView) ?? navItems[0];
+  const visibleNavItems = useMemo(
+    () => navItems.filter((item) => canAccessView(currentUser, item.id)),
+    [currentUser],
+  );
+  const canExportActiveView = hasPermission(currentUser, "reports_export");
+
+  useEffect(() => {
+    if (currentUser && !canAccessView(currentUser, activeView)) {
+      setActiveView("dashboard");
+    }
+  }, [activeView, currentUser]);
 
   function handleExportActiveView() {
+    if (!canExportActiveView) {
+      setApiStatus("Export is allowed for Admin or Finance User.");
+      return;
+    }
+
     const rows = getExportRows({
       activeView,
       auditEvents,
@@ -1041,6 +1097,16 @@ export function App() {
     window.location.reload();
   }
 
+  if (!currentUser) {
+    return (
+      <LoginView
+        isLoggingIn={isLoggingIn}
+        message={loginMessage}
+        onLogin={handleLogin}
+      />
+    );
+  }
+
   return (
     <main className="app-shell">
       <aside className="sidebar">
@@ -1052,7 +1118,7 @@ export function App() {
           </div>
         </div>
         <nav className="nav-list" aria-label="Primary navigation">
-          {navItems.map((item) => (
+          {visibleNavItems.map((item) => (
             <button
               className={activeView === item.id ? "nav-item active" : "nav-item"}
               key={item.id}
@@ -1073,11 +1139,15 @@ export function App() {
           </div>
           <div className="topbar-actions">
             <span className="connection-status">{apiStatus}</span>
+            <span className="connection-status">{currentUser.email} / {currentUser.role_name}</span>
+            <button className="secondary-action" onClick={handleLogout}>
+              Logout
+            </button>
             <button className="secondary-action" onClick={handleRefreshApp}>
               <RefreshCw size={17} aria-hidden="true" />
               Refresh
             </button>
-            <button className="secondary-action" onClick={handleExportActiveView}>
+            <button className="secondary-action" onClick={handleExportActiveView} disabled={!canExportActiveView}>
               <Download size={17} aria-hidden="true" />
               Export
             </button>
@@ -1120,6 +1190,7 @@ export function App() {
         {activeView === "import-validation" ? (
           <ImportValidationView
             candidate={importCandidate}
+            currentUser={currentUser}
             destinationWarehouses={destinationWarehouses}
             documents={documents}
             importMessage={importMessage}
@@ -1157,6 +1228,7 @@ export function App() {
         {activeView === "customers" ? <CustomersView customers={customers} /> : null}
         {activeView === "security" ? (
           <SecurityView
+            currentUser={currentUser}
             message={securityMessage}
             onSaveApprovalRule={handleSaveApprovalRule}
             onSaveUser={handleSaveSecurityUser}
@@ -1504,6 +1576,7 @@ function DocumentsView({
 
 function ImportValidationView({
   candidate,
+  currentUser,
   destinationWarehouses,
   documents,
   importMessage,
@@ -1517,6 +1590,7 @@ function ImportValidationView({
   selectedWarehouse,
 }: {
   candidate: ApiImportFileCandidate | null;
+  currentUser: ApiAuthenticatedUser;
   destinationWarehouses: ApiWarehouseLocation[];
   documents: DocumentRecord[];
   importMessage: string;
@@ -1529,7 +1603,7 @@ function ImportValidationView({
   securityOverview: ApiSecurityOverview;
   selectedWarehouse: string;
 }) {
-  const [actorName, setActorName] = useState("");
+  const actorName = currentUser.email;
   const [supplierName, setSupplierName] = useState("");
   const [verticalName, setVerticalName] = useState("");
   const [extraDocumentType, setExtraDocumentType] = useState("");
@@ -1551,6 +1625,8 @@ function ImportValidationView({
     candidate?.lines.filter((line) => line.product_profile_status === "known").length ?? 0;
   const firstUnknownLine = candidate?.lines.find((line) => line.product_profile_status !== "known");
   const isImportApproved = candidate?.status === "validated";
+  const canApproveImport = hasPermission(currentUser, "import_approval");
+  const canPostReceipt = hasPermission(currentUser, "goods_receipt");
   const importApprovalRule = candidate
     ? securityOverview.approval_rules.find((rule) =>
         rule.is_active &&
@@ -1696,6 +1772,7 @@ function ImportValidationView({
         candidate,
         warehouse_name: warehouseName,
         posted_by: actorName,
+        auth_token: currentUser.session_token,
         supplier_name: supplierName,
       });
       setPostingMessage(message);
@@ -1722,6 +1799,7 @@ function ImportValidationView({
       const message = await onApproveImport({
         candidate,
         approved_by: actorName,
+        auth_token: currentUser.session_token,
         approval_note: "Approved from Import Validation screen",
       });
       setApprovalMessage(message);
@@ -1798,11 +1876,10 @@ function ImportValidationView({
         <Panel title="Approval and receipt control" meta="RBAC">
           <div className="validation-stack">
             <label className="field-control">
-              <span>User / approver email</span>
+              <span>Logged-in user</span>
               <input
-                placeholder="name@company.com"
                 value={actorName}
-                onChange={(event) => setActorName(event.target.value)}
+                readOnly
               />
             </label>
             <div className="validation-banner">
@@ -1859,11 +1936,11 @@ function ImportValidationView({
                 Save warehouse candidate
               </button>
             ) : null}
-            <button className="secondary-action" onClick={handleApproveImport} disabled={isApprovingImport || isImportApproved}>
+            <button className="secondary-action" onClick={handleApproveImport} disabled={isApprovingImport || isImportApproved || !canApproveImport}>
               {isApprovingImport ? "Approving import file" : isImportApproved ? "Import approved" : "Approve import file"}
             </button>
             <p className="status-line">{approvalMessage}</p>
-            <button className="primary-action" onClick={handlePostGoodsReceipt} disabled={isPostingReceipt || !isImportApproved}>
+            <button className="primary-action" onClick={handlePostGoodsReceipt} disabled={isPostingReceipt || !isImportApproved || !canPostReceipt}>
               {isPostingReceipt ? "Posting Goods Receipt" : "Validate and post Goods Receipt"}
             </button>
             <p className="status-line">{postingMessage}</p>
@@ -2136,6 +2213,101 @@ function matchesScopeValue(ruleValue: string, requestedValue: string) {
   return ruleValue.toLowerCase() === "all" || ruleValue.toLowerCase() === requestedValue.toLowerCase();
 }
 
+function hasPermission(user: ApiAuthenticatedUser | null, permission: string) {
+  if (!user) {
+    return false;
+  }
+  return user.role_name === "Admin" || user.permissions.includes(permission);
+}
+
+function canAccessView(user: ApiAuthenticatedUser | null, viewId: string) {
+  if (!user) {
+    return false;
+  }
+  if (user.role_name === "Admin" || viewId === "dashboard" || viewId === "assistant") {
+    return true;
+  }
+
+  const permissionByView: Record<string, string[]> = {
+    documents: ["import_approval", "goods_receipt"],
+    "import-validation": ["import_approval", "goods_receipt"],
+    products: ["masters"],
+    inventory: ["goods_receipt", "inventory_approval", "inventory_value", "expiry_review"],
+    shipments: ["shipment_request", "shipment_approval"],
+    dispatches: ["dispatch", "dispatch_approval"],
+    receipts: ["goods_receipt"],
+    counts: ["inventory_count", "reconciliation"],
+    expiry: ["expiry_review", "batch_traceability"],
+    customers: ["customer_read", "shipment_request"],
+    security: ["security"],
+    audit: ["audit"],
+  };
+  return (permissionByView[viewId] ?? []).some((permission) => user.permissions.includes(permission));
+}
+
+function LoginView({
+  isLoggingIn,
+  message,
+  onLogin,
+}: {
+  isLoggingIn: boolean;
+  message: string;
+  onLogin: (email: string, password: string) => Promise<void>;
+}) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
+  async function handleSubmit() {
+    await onLogin(email, password);
+  }
+
+  return (
+    <main className="login-shell">
+      <section className="login-panel">
+        <div className="brand login-brand">
+          <div className="brand-mark">WH</div>
+          <div>
+            <strong>Warehouse Control</strong>
+            <span>Healthcare SCM</span>
+          </div>
+        </div>
+        <div>
+          <p className="eyebrow">Secure Access</p>
+          <h1>Sign in</h1>
+        </div>
+        <div className="login-form">
+          <label className="field-control">
+            <span>Email</span>
+            <input
+              autoComplete="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+            />
+          </label>
+          <label className="field-control">
+            <span>Password</span>
+            <input
+              autoComplete="current-password"
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  void handleSubmit();
+                }
+              }}
+            />
+          </label>
+          <button className="primary-action" onClick={handleSubmit} disabled={isLoggingIn}>
+            {isLoggingIn ? "Signing in" : "Sign in"}
+          </button>
+          <p className="status-line">{message}</p>
+        </div>
+      </section>
+    </main>
+  );
+}
+
 function ProductsView({
   products,
   search,
@@ -2406,11 +2578,13 @@ function CustomersView({ customers }: { customers: Customer[] }) {
 }
 
 function SecurityView({
+  currentUser,
   message,
   onSaveApprovalRule,
   onSaveUser,
   securityOverview,
 }: {
+  currentUser: ApiAuthenticatedUser;
   message: string;
   onSaveApprovalRule: (payload: ApiSaveApprovalRuleRequest) => Promise<void>;
   onSaveUser: (payload: ApiSaveSecurityUserRequest) => Promise<void>;
@@ -2420,6 +2594,7 @@ function SecurityView({
   const [userEmail, setUserEmail] = useState("");
   const [fullName, setFullName] = useState("");
   const [userRole, setUserRole] = useState(defaultRole);
+  const [userPassword, setUserPassword] = useState("");
   const [countryScope, setCountryScope] = useState("");
   const [warehouseScope, setWarehouseScope] = useState("");
   const [userIsActive, setUserIsActive] = useState(true);
@@ -2430,7 +2605,6 @@ function SecurityView({
   const [approverRole, setApproverRole] = useState("Country Incharge");
   const [approverEmail, setApproverEmail] = useState("");
   const [ruleIsActive, setRuleIsActive] = useState(true);
-  const [changedBy, setChangedBy] = useState("");
   const [changeReason, setChangeReason] = useState("");
 
   useEffect(() => {
@@ -2450,7 +2624,8 @@ function SecurityView({
       country_scope: parseCommaList(countryScope),
       warehouse_scope: parseCommaList(warehouseScope),
       is_active: userIsActive,
-      changed_by: changedBy,
+      password: userPassword || null,
+      changed_by: currentUser.email,
       change_reason: changeReason,
     });
   }
@@ -2464,7 +2639,7 @@ function SecurityView({
       approver_role: approverRole,
       approver_email: approverEmail,
       is_active: ruleIsActive,
-      changed_by: changedBy,
+      changed_by: currentUser.email,
       change_reason: changeReason,
     });
   }
@@ -2516,6 +2691,15 @@ function SecurityView({
               </select>
             </label>
             <label className="field-control">
+              <span>Password</span>
+              <input
+                autoComplete="new-password"
+                type="password"
+                value={userPassword}
+                onChange={(event) => setUserPassword(event.target.value)}
+              />
+            </label>
+            <label className="field-control">
               <span>Country scope</span>
               <input value={countryScope} onChange={(event) => setCountryScope(event.target.value)} />
             </label>
@@ -2533,9 +2717,8 @@ function SecurityView({
             </label>
           </div>
           <SecurityChangeFields
-            changedBy={changedBy}
+            changedBy={currentUser.email}
             changeReason={changeReason}
-            setChangedBy={setChangedBy}
             setChangeReason={setChangeReason}
           />
           <div className="form-action-row">
@@ -2594,9 +2777,8 @@ function SecurityView({
             </label>
           </div>
           <SecurityChangeFields
-            changedBy={changedBy}
+            changedBy={currentUser.email}
             changeReason={changeReason}
-            setChangedBy={setChangedBy}
             setChangeReason={setChangeReason}
           />
           <div className="form-action-row">
@@ -2635,13 +2817,14 @@ function SecurityView({
                 <th>Role</th>
                 <th>Countries</th>
                 <th>Warehouses</th>
+                <th>Password</th>
                 <th>Status</th>
               </tr>
             </thead>
             <tbody>
               {securityOverview.users.length === 0 ? (
                 <tr>
-                  <td colSpan={6}>No users configured yet.</td>
+                  <td colSpan={7}>No users configured yet.</td>
                 </tr>
               ) : (
                 securityOverview.users.map((user) => (
@@ -2651,6 +2834,7 @@ function SecurityView({
                     <td>{user.role_name}</td>
                     <td>{user.country_scope.join(", ") || "All"}</td>
                     <td>{user.warehouse_scope.join(", ") || "All"}</td>
+                    <td><StatusTag label={user.has_password ? "Set" : "Missing"} /></td>
                     <td><StatusTag label={user.is_active ? "Active" : "Inactive"} /></td>
                   </tr>
                 ))
@@ -2705,19 +2889,17 @@ function SecurityView({
 function SecurityChangeFields({
   changedBy,
   changeReason,
-  setChangedBy,
   setChangeReason,
 }: {
   changedBy: string;
   changeReason: string;
-  setChangedBy: (value: string) => void;
   setChangeReason: (value: string) => void;
 }) {
   return (
     <div className="security-change-grid">
       <label className="field-control">
         <span>Changed by</span>
-        <input value={changedBy} onChange={(event) => setChangedBy(event.target.value)} />
+        <input value={changedBy} readOnly />
       </label>
       <label className="field-control">
         <span>Change reason</span>

@@ -1,9 +1,11 @@
 from fastapi import APIRouter, HTTPException
 
 from app.schemas.security import (
+    AuthenticatedUser,
     ApprovalResolution,
     ApprovalResolutionRequest,
     ApprovalRule,
+    LoginRequest,
     SaveApprovalRuleRequest,
     SaveSecurityUserRequest,
     SecurityOverview,
@@ -11,6 +13,7 @@ from app.schemas.security import (
 )
 from app.services.security_repository import (
     get_security_overview,
+    login,
     resolve_approver,
     save_approval_rule,
     save_security_user,
@@ -23,6 +26,14 @@ router = APIRouter()
 @router.get("", response_model=SecurityOverview)
 def security_overview() -> SecurityOverview:
     return get_security_overview()
+
+
+@router.post("/login", response_model=AuthenticatedUser)
+def login_user(request: LoginRequest) -> AuthenticatedUser:
+    try:
+        return login(request)
+    except ValueError as error:
+        raise HTTPException(status_code=401, detail=str(error)) from error
 
 
 @router.post("/users", response_model=SecurityUser)

@@ -14,6 +14,7 @@ class SecurityUser(BaseModel):
     country_scope: list[str] = []
     warehouse_scope: list[str] = []
     is_active: bool = True
+    has_password: bool = False
     created_at: str | None = None
     updated_at: str | None = None
 
@@ -25,8 +26,24 @@ class SaveSecurityUserRequest(BaseModel):
     country_scope: list[str] = []
     warehouse_scope: list[str] = []
     is_active: bool = True
+    password: str | None = None
     changed_by: str
     change_reason: str
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class AuthenticatedUser(BaseModel):
+    email: str
+    full_name: str
+    role_name: str
+    country_scope: list[str] = []
+    warehouse_scope: list[str] = []
+    permissions: list[str] = []
+    session_token: str
 
 
 class ApprovalRule(BaseModel):

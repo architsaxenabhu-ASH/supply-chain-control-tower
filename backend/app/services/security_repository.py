@@ -1,19 +1,30 @@
 from __future__ import annotations
 
 import re
+import base64
+import hashlib
+import os
+import secrets
 from datetime import UTC, datetime
+from typing import Any
 
 from app.db.local_persistence import load_collection, record_audit_event, save_collection
 from app.schemas.security import (
+    AuthenticatedUser,
     ApprovalResolution,
     ApprovalResolutionRequest,
     ApprovalRule,
+    LoginRequest,
     RoleDefinition,
     SaveApprovalRuleRequest,
     SaveSecurityUserRequest,
     SecurityOverview,
     SecurityUser,
 )
+
+
+PASSWORD_ITERATIONS = 260_000
+SESSION_TOKEN_BYTES = 32
 
 
 ROLE_DEFINITIONS = [
@@ -64,7 +75,11 @@ def get_security_overview() -> SecurityOverview:
 
 
 def list_security_users() -> list[SecurityUser]:
-    return load_collection("security_users", lambda payload: SecurityUser(**payload))
+    credential_emails = {credential["email"] for credential in list_password_credentials()}
+    return [
+        user.model_copy(update={"has_password": user.email in credential_emails})
+        for user in load_collection("security_users", lambda payload: SecurityUser(**payload))
+    ]
 
 
 def list_approval_rules() -> list[ApprovalRule]:
@@ -88,6 +103,7 @@ def save_security_user(request: SaveSecurityUserRequest) -> SecurityUser:
         country_scope=normalize_scope(request.country_scope),
         warehouse_scope=normalize_scope(request.warehouse_scope),
         is_active=request.is_active,
+        has_password=bool(request.password) or bool(existing and existing.has_password),
         created_at=existing.created_at if existing else now,
         updated_at=now,
     )
@@ -99,6 +115,13 @@ def save_security_user(request: SaveSecurityUserRequest) -> SecurityUser:
         [user, *[saved_user for saved_user in users if saved_user.email != email]],
         lambda saved_user: saved_user.email,
     )
+    if request.password:
+        save_password_credential(
+            email=email,
+            password=request.password,
+            changed_by=request.changed_by,
+            change_reason=request.change_reason,
+        )
     record_audit_event(
         action="upsert_user",
         module_name="security",
@@ -109,6 +132,65 @@ def save_security_user(request: SaveSecurityUserRequest) -> SecurityUser:
         old_value=existing,
         new_value=user,
     )
+    return user
+
+
+def login(request: LoginRequest) -> AuthenticatedUser:
+    email = normalize_email(request.email)
+    user = next((saved_user for saved_user in list_security_users() if saved_user.email == email), None)
+    if not user or not user.is_active:
+        raise ValueError("Email is not active in Security User Master.")
+
+    credential = next(
+        (saved_credential for saved_credential in list_password_credentials() if saved_credential["email"] == email),
+        None,
+    )
+    if not credential or not verify_password(request.password, credential["password_hash"]):
+        raise ValueError("Invalid email or password.")
+
+    session_token = create_session(user)
+    record_audit_event(
+        action="login",
+        module_name="security",
+        entity_name="user",
+        entity_id=user.email,
+        actor=user.email,
+        new_value={"role_name": user.role_name},
+    )
+    return AuthenticatedUser(
+        email=user.email,
+        full_name=user.full_name,
+        role_name=user.role_name,
+        country_scope=user.country_scope,
+        warehouse_scope=user.warehouse_scope,
+        permissions=permissions_for_role(user.role_name),
+        session_token=session_token,
+    )
+
+
+def require_user_permission(auth_token: str, permission: str) -> SecurityUser:
+    user = authenticate_token(auth_token)
+    permissions = permissions_for_role(user.role_name)
+    if permission not in permissions:
+        raise ValueError(f"{user.role_name} is not allowed to perform this action.")
+    return user
+
+
+def authenticate_token(auth_token: str) -> SecurityUser:
+    if not auth_token.strip():
+        raise ValueError("Login session is required.")
+
+    token_hash = hash_session_token(auth_token)
+    session = next(
+        (saved_session for saved_session in list_sessions() if saved_session["token_hash"] == token_hash),
+        None,
+    )
+    if not session:
+        raise ValueError("Login session is invalid. Please log in again.")
+
+    user = next((saved_user for saved_user in list_security_users() if saved_user.email == session["email"]), None)
+    if not user or not user.is_active:
+        raise ValueError("Logged-in user is no longer active.")
     return user
 
 
@@ -205,6 +287,13 @@ def require_role(role_name: str) -> None:
         raise ValueError("Select a valid role.")
 
 
+def permissions_for_role(role_name: str) -> list[str]:
+    if role_name == "Admin":
+        return sorted({permission for role in ROLE_DEFINITIONS for permission in role.permissions})
+    role = next((saved_role for saved_role in ROLE_DEFINITIONS if saved_role.role_name == role_name), None)
+    return role.permissions if role else []
+
+
 def require_change_context(changed_by: str, change_reason: str) -> None:
     if not changed_by.strip():
         raise ValueError("Changed by is mandatory.")
@@ -243,3 +332,98 @@ def rule_specificity(rule: ApprovalRule) -> int:
         for value in [rule.country, rule.vertical, rule.material_code]
         if value.lower() != "all"
     )
+
+
+def list_password_credentials() -> list[dict[str, str]]:
+    return load_collection("security_password_credentials", lambda payload: payload)
+
+
+def save_password_credential(
+    *,
+    email: str,
+    password: str,
+    changed_by: str,
+    change_reason: str,
+) -> None:
+    if len(password) < 8:
+        raise ValueError("Password must be at least 8 characters.")
+
+    credentials = list_password_credentials()
+    existing = next((credential for credential in credentials if credential["email"] == email), None)
+    credential = {
+        "email": email,
+        "password_hash": hash_password(password),
+        "updated_at": datetime.now(UTC).isoformat(),
+    }
+    save_collection(
+        "security_password_credentials",
+        [credential, *[saved_credential for saved_credential in credentials if saved_credential["email"] != email]],
+        lambda saved_credential: saved_credential["email"],
+    )
+    record_audit_event(
+        action="set_password",
+        module_name="security",
+        entity_name="user",
+        entity_id=email,
+        actor=changed_by,
+        reason=change_reason,
+        old_value={"had_password": existing is not None},
+        new_value={"has_password": True},
+    )
+
+
+def hash_password(password: str) -> str:
+    salt = os.urandom(16)
+    digest = hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        salt,
+        PASSWORD_ITERATIONS,
+    )
+    return "pbkdf2_sha256${}${}${}".format(
+        PASSWORD_ITERATIONS,
+        base64.b64encode(salt).decode("ascii"),
+        base64.b64encode(digest).decode("ascii"),
+    )
+
+
+def verify_password(password: str, stored_hash: str) -> bool:
+    try:
+        algorithm, iterations_text, salt_text, digest_text = stored_hash.split("$")
+    except ValueError:
+        return False
+    if algorithm != "pbkdf2_sha256":
+        return False
+    salt = base64.b64decode(salt_text)
+    expected_digest = base64.b64decode(digest_text)
+    actual_digest = hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        salt,
+        int(iterations_text),
+    )
+    return secrets.compare_digest(actual_digest, expected_digest)
+
+
+def create_session(user: SecurityUser) -> str:
+    token = secrets.token_urlsafe(SESSION_TOKEN_BYTES)
+    sessions = list_sessions()
+    session = {
+        "token_hash": hash_session_token(token),
+        "email": user.email,
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+    save_collection(
+        "security_sessions",
+        [session, *sessions[:99]],
+        lambda saved_session: saved_session["token_hash"],
+    )
+    return token
+
+
+def list_sessions() -> list[dict[str, Any]]:
+    return load_collection("security_sessions", lambda payload: payload)
+
+
+def hash_session_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
