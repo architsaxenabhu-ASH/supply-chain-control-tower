@@ -45,6 +45,8 @@ if (-not $DatabaseUrl -or -not $DatabaseUrl.Trim()) {
     exit 1
 }
 
+$DatabaseUrl = $DatabaseUrl.Trim().Trim('"').Trim("'")
+
 if (
     -not $DatabaseUrl.StartsWith("postgresql://") -and
     -not $DatabaseUrl.StartsWith("postgres://") -and
