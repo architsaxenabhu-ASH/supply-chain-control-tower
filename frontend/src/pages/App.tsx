@@ -59,6 +59,7 @@ import {
   listDocuments,
   loginUser,
   postImportGoodsReceipt,
+  rescanDocument,
   saveApprovalRule,
   saveCountryDocumentRequirement,
   saveProductFreeTextProfile,
@@ -89,6 +90,7 @@ import type {
   DocumentExtractionMaster,
   DocumentRecord,
   DocumentType,
+  ExtractedField,
 } from "../types/domain";
 
 type Product = {
@@ -434,9 +436,9 @@ const platformCapabilities: PlatformCapability[] = [
     module: "OCR and extraction",
     area: "Documents",
     status: "partial",
-    progress: 45,
-    whatDone: "Text extraction, field catalog, extraction master, required-field checks.",
-    stillLeft: "Production OCR engines, table extraction confidence, layout learning.",
+    progress: 56,
+    whatDone: "Text/OCR fallback, field catalog, structured import patterns, line detection, calculated expiry.",
+    stillLeft: "Production OCR engine install, table confidence scoring, layout learning.",
     icon: ScanText,
   },
   {
@@ -1200,6 +1202,32 @@ export function App() {
     }
   }
 
+  async function handleRescanSelectedDocument() {
+    if (!selectedMaster) {
+      setDocumentMessage("Open a saved document first, then rescan it.");
+      return;
+    }
+
+    setIsUploadingDocument(true);
+    setDocumentMessage("Rescanning selected document with latest extraction rules...");
+    try {
+      const rescanned = await rescanDocument(selectedMaster.document.document_id);
+      const master = await getExtractionMaster(rescanned.document_id);
+      setDocuments((current) => [
+        rescanned,
+        ...current.filter((document) => document.document_id !== rescanned.document_id),
+      ]);
+      setSelectedMaster(master);
+      setDocumentMessage("Document rescanned and extraction master refreshed.");
+      setApiStatus("Connected to backend / document rescanned");
+    } catch (error) {
+      setDocumentMessage(error instanceof Error ? error.message : "Document rescan failed.");
+      setApiStatus("Backend not connected / document rescan unavailable");
+    } finally {
+      setIsUploadingDocument(false);
+    }
+  }
+
   async function handleAssembleImportFromDocuments(payload: ApiImportAssemblyRequest) {
     setImportMessage("Creating import validation file from selected documents...");
     try {
@@ -1590,6 +1618,7 @@ export function App() {
             onDocumentTypeChange={setDocumentType}
             onFileChange={setSelectedFile}
             onOpenDocument={handleOpenDocument}
+            onRescan={handleRescanSelectedDocument}
             onUpload={handleDocumentUpload}
             selectedFile={selectedFile}
             selectedMaster={selectedMaster}
@@ -2405,6 +2434,7 @@ function DocumentsView({
   onDocumentTypeChange,
   onFileChange,
   onOpenDocument,
+  onRescan,
   onUpload,
   selectedFile,
   selectedMaster,
@@ -2416,6 +2446,7 @@ function DocumentsView({
   onDocumentTypeChange: (value: DocumentType) => void;
   onFileChange: (value: File | null) => void;
   onOpenDocument: (documentId: string) => void;
+  onRescan: () => void;
   onUpload: () => void;
   selectedFile: File | null;
   selectedMaster: DocumentExtractionMaster | null;
@@ -2454,6 +2485,10 @@ function DocumentsView({
             <button className="primary-action" onClick={onUpload} disabled={isUploading}>
               <Upload size={17} aria-hidden="true" />
               {isUploading ? "Scanning" : "Upload and scan"}
+            </button>
+            <button className="secondary-action" onClick={onRescan} disabled={isUploading || !selectedMaster}>
+              <RefreshCw size={17} aria-hidden="true" />
+              Rescan selected
             </button>
             <p className="status-line">{selectedFile ? selectedFile.name : documentMessage}</p>
           </div>
@@ -2558,7 +2593,7 @@ function DocumentsView({
               fields.slice(0, 40).map((field) => (
                 <tr key={field.field_name}>
                   <td>{field.field_name}</td>
-                  <td>{field.extracted_value ?? "Needs validation"}</td>
+                  <td>{formatExtractedValue(field)}</td>
                   <td>{field.confidence_score ? `${Math.round(field.confidence_score * 100)}%` : "-"}</td>
                   <td><StatusTag label={field.validation_status} /></td>
                 </tr>
@@ -2569,6 +2604,24 @@ function DocumentsView({
       </Panel>
     </>
   );
+}
+
+function formatExtractedValue(field: ExtractedField): string {
+  const value = field.extracted_value;
+  if (!value) {
+    return "Needs validation";
+  }
+
+  if (field.field_name === "Line Items JSON") {
+    try {
+      const lineItems = JSON.parse(value) as unknown[];
+      return `${lineItems.length} line item(s) extracted`;
+    } catch {
+      return "Line items extracted";
+    }
+  }
+
+  return value.length > 140 ? `${value.slice(0, 137)}...` : value;
 }
 
 function ImportValidationView({

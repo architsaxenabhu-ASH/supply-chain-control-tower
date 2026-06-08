@@ -6,6 +6,7 @@ from app.services.local_document_store import (
     get_extraction_master,
     get_master_candidates,
     list_saved_documents,
+    rescan_saved_document,
     save_uploaded_document,
 )
 from app.services.required_field_rules import check_required_fields
@@ -31,6 +32,14 @@ async def upload_document(
 @router.get("", response_model=list[DocumentRecord])
 def documents() -> list[DocumentRecord]:
     return list_saved_documents()
+
+
+@router.post("/{document_id}/rescan", response_model=DocumentRecord)
+def rescan_document(document_id: str) -> DocumentRecord:
+    try:
+        return rescan_saved_document(document_id)
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
 
 
 @router.get("/{document_id}/extraction-master", response_model=DocumentExtractionMaster)

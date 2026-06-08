@@ -154,8 +154,8 @@ def assemble_import_candidate_from_documents(
         carrier_name=awb_header.get("carrier_name"),
         flight_number=awb_header.get("flight_number"),
         flight_date=awb_header.get("flight_date"),
-        package_count=invoice_header.get("package_count") or packing_header.get("package_count"),
-        gross_weight_kg=invoice_header.get("gross_weight_kg") or packing_header.get("gross_weight_kg"),
+        package_count=invoice_header.get("package_count") or packing_header.get("package_count") or awb_header.get("package_count"),
+        gross_weight_kg=invoice_header.get("gross_weight_kg") or packing_header.get("gross_weight_kg") or awb_header.get("gross_weight_kg"),
         chargeable_weight_kg=awb_header.get("chargeable_weight_kg"),
         lines=lines,
         source_document_ids=source_document_ids,
@@ -356,9 +356,15 @@ def parse_awb_header(text: str) -> dict[str, object]:
     )
     return {
         "awb_number": awb_number,
+        "shipper_name": parse_awb_party_name(text, "Shipper"),
+        "consignee_name": parse_awb_party_name(text, "Consignee"),
         "carrier_name": carrier_name,
         "flight_number": flight_number,
         "flight_date": parse_awb_flight_date(text, flight_number),
+        "origin_airport": parse_awb_origin_airport(text),
+        "destination_airport": parse_awb_destination_airport(text),
+        "package_count": parse_awb_package_count(text),
+        "gross_weight_kg": parse_awb_gross_weight(text),
         "chargeable_weight_kg": parse_awb_chargeable_weight(text),
     }
 
@@ -528,6 +534,89 @@ def parse_awb_chargeable_weight(text: str) -> float | None:
     if parsed is not None and parsed >= 10:
         return parsed / 10
     return parsed
+
+
+def parse_awb_origin_airport(text: str) -> str | None:
+    match = re.search(
+        r"Airport of Departure.*?\n\s*(?P<origin>[A-Z][A-Z -]+?)(?:\s+CONTACT|\n)",
+        text,
+        re.IGNORECASE | re.DOTALL,
+    )
+    return clean_value(match.group("origin")) if match else None
+
+
+def parse_awb_destination_airport(text: str) -> str | None:
+    match = re.search(
+        r"Airport of Destination[^\n]*\n\s*(?P<destination>[A-Z][A-Z -]+)",
+        text,
+        re.IGNORECASE,
+    )
+    if not match:
+        return None
+    destination = re.split(
+        r"\s+(?:L[HhUu]\d+|conditions|Incicate|amount)\b",
+        match.group("destination"),
+        maxsplit=1,
+    )[0]
+    destination = re.sub(r"\s+L[HhUu]?$", "", destination)
+    return clean_value(destination)
+
+
+def parse_awb_party_name(text: str, marker: str) -> str | None:
+    lines = clean_lines(text)
+    marker_lower = marker.lower()
+    for index, line in enumerate(lines):
+        normalized_line = line.lower()
+        if marker_lower not in normalized_line or "name" not in normalized_line:
+            continue
+        for candidate in lines[index + 1 : index + 12]:
+            clean_candidate = clean_value(candidate.strip("[]()|"))
+            if not clean_candidate:
+                continue
+            candidate_lower = clean_candidate.lower()
+            if any(
+                blocked in candidate_lower
+                for blocked in (
+                    "account number",
+                    "not negotiable",
+                    "airway bill",
+                    "issued by",
+                    "copies",
+                )
+            ):
+                continue
+            if clean_candidate.isdigit() or len(clean_candidate) < 4:
+                continue
+            if marker_lower == "shipper" and "meril" not in candidate_lower:
+                continue
+            return clean_candidate
+    return None
+
+
+def parse_awb_piece_weight_line(text: str) -> tuple[int | None, float | None]:
+    match = re.search(
+        r"\n\s*(?P<pieces>\d+)\s+(?P<weight>\d+(?:[.,]\d+)?)\s*[kK]",
+        text,
+        re.IGNORECASE,
+    )
+    if not match:
+        return None, None
+
+    pieces = parse_int(match.group("pieces"))
+    weight = to_float(match.group("weight"))
+    if weight is not None and weight >= 10:
+        weight = weight / 10
+    return pieces, weight
+
+
+def parse_awb_package_count(text: str) -> int | None:
+    pieces, _weight = parse_awb_piece_weight_line(text)
+    return pieces
+
+
+def parse_awb_gross_weight(text: str) -> float | None:
+    _pieces, weight = parse_awb_piece_weight_line(text)
+    return weight
 
 
 def normalize_flight_number(value: str | None, carrier_name: str | None) -> str | None:

@@ -43,6 +43,13 @@ export async function getExtractionMaster(documentId: string): Promise<DocumentE
   return response.json();
 }
 
+export function rescanDocument(documentId: string): Promise<DocumentRecord> {
+  return postJson<DocumentRecord, Record<string, never>>(
+    `/documents/${encodeURIComponent(documentId)}/rescan`,
+    {},
+  );
+}
+
 async function getJson<T>(path: string): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`);
   if (!response.ok) {

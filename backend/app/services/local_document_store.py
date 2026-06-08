@@ -50,6 +50,58 @@ def save_document_index(records: list[dict[str, object]]) -> None:
     DOCUMENT_INDEX_PATH.write_text(json.dumps(records, indent=2), encoding="utf-8")
 
 
+def write_extraction_artifacts(
+    document_id: str,
+    document_type: DocumentType,
+    filename: str,
+    saved_path: Path,
+    extraction_master_path: Path,
+    master_candidates_path: Path,
+) -> tuple[list[ExtractedField], list[object], list[object]]:
+    expected_fields = get_fields_for_document_type(document_type)
+    extracted_fields = extract_fields_from_file(
+        document_id=document_id,
+        file_path=saved_path,
+        document_type=document_type,
+        expected_fields=expected_fields,
+    )
+
+    extraction_master_path.write_text(
+        json.dumps(
+            {
+                "document_id": document_id,
+                "document_type": document_type.value,
+                "filename": filename,
+                "fields": [field.model_dump(mode="json") for field in extracted_fields],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    master_candidates = generate_master_candidates(
+        document_id=document_id,
+        extracted_fields=extracted_fields,
+    )
+    master_candidates_path.write_text(
+        json.dumps(
+            {
+                "document_id": document_id,
+                "document_type": document_type.value,
+                "candidates": [candidate.model_dump(mode="json") for candidate in master_candidates],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    required_field_checks = check_required_fields(
+        document_type=document_type,
+        extracted_fields=extracted_fields,
+    )
+    return extracted_fields, master_candidates, required_field_checks
+
+
 async def save_uploaded_document(file: UploadFile, document_type: DocumentType) -> DocumentRecord:
     ensure_storage_dirs()
 
@@ -66,48 +118,15 @@ async def save_uploaded_document(file: UploadFile, document_type: DocumentType) 
     content = await file.read()
     saved_path.write_bytes(content)
 
-    expected_fields = get_fields_for_document_type(document_type)
-    extracted_fields = extract_fields_from_file(
-        document_id=document_id,
-        file_path=saved_path,
-        document_type=document_type,
-        expected_fields=expected_fields,
-    )
-
     extraction_master_path = EXTRACTION_ROOT / f"{document_id}_master.json"
-    extraction_master_path.write_text(
-        json.dumps(
-            {
-                "document_id": document_id,
-                "document_type": document_type.value,
-                "filename": original_filename,
-                "fields": [field.model_dump(mode="json") for field in extracted_fields],
-            },
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
-
-    master_candidates = generate_master_candidates(
-        document_id=document_id,
-        extracted_fields=extracted_fields,
-    )
     master_candidates_path = MASTER_CANDIDATE_ROOT / f"{document_id}_candidates.json"
-    master_candidates_path.write_text(
-        json.dumps(
-            {
-                "document_id": document_id,
-                "document_type": document_type.value,
-                "candidates": [candidate.model_dump(mode="json") for candidate in master_candidates],
-            },
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
-
-    required_field_checks = check_required_fields(
+    extracted_fields, master_candidates, required_field_checks = write_extraction_artifacts(
+        document_id=document_id,
         document_type=document_type,
-        extracted_fields=extracted_fields,
+        filename=original_filename,
+        saved_path=saved_path,
+        extraction_master_path=extraction_master_path,
+        master_candidates_path=master_candidates_path,
     )
     missing_required_count = sum(
         1 for check in required_field_checks if not check.is_satisfied
@@ -133,6 +152,45 @@ async def save_uploaded_document(file: UploadFile, document_type: DocumentType) 
     save_document_index(records)
 
     return record
+
+
+def rescan_saved_document(document_id: str) -> DocumentRecord:
+    record = get_saved_document(document_id)
+    if record is None:
+        raise ValueError(f"Document not found: {document_id}")
+
+    saved_path = Path(record.saved_path)
+    if not saved_path.exists():
+        raise ValueError(f"Saved file is missing for {document_id}")
+
+    extracted_fields, master_candidates, required_field_checks = write_extraction_artifacts(
+        document_id=record.document_id,
+        document_type=record.document_type,
+        filename=record.filename,
+        saved_path=saved_path,
+        extraction_master_path=Path(record.extraction_master_path),
+        master_candidates_path=Path(record.master_candidates_path),
+    )
+    missing_required_count = sum(
+        1 for check in required_field_checks if not check.is_satisfied
+    )
+    updated_record = record.model_copy(
+        update={
+            "status": "extraction_master_generated",
+            "extracted_field_count": len(extracted_fields),
+            "master_candidate_count": len(master_candidates),
+            "required_field_count": len(required_field_checks),
+            "missing_required_count": missing_required_count,
+        }
+    )
+    records = [
+        updated_record.model_dump(mode="json")
+        if saved_record.get("document_id") == document_id
+        else saved_record
+        for saved_record in load_document_index()
+    ]
+    save_document_index(records)
+    return updated_record
 
 
 def list_saved_documents() -> list[DocumentRecord]:

@@ -1,3 +1,5 @@
+import json
+
 from app.schemas.extraction import ExtractedField
 from app.schemas.master_candidates import MasterCandidate, MasterCandidateType
 
@@ -71,6 +73,7 @@ def generate_master_candidates(
             "Device Classification",
         ],
     )
+    add_line_item_product_candidates(candidates, document_id, values)
 
     add_simple_candidates(candidates, document_id, values, MasterCandidateType.UOM, ["UOM"])
     add_simple_candidates(candidates, document_id, values, MasterCandidateType.CURRENCY, ["Currency"])
@@ -130,6 +133,52 @@ def add_party_candidate(
     )
 
 
+def add_line_item_product_candidates(
+    candidates: list[MasterCandidate],
+    document_id: str,
+    values: dict[str, str],
+) -> None:
+    raw_line_items = values.get("Line Items JSON")
+    if not raw_line_items:
+        return
+
+    try:
+        line_items = json.loads(raw_line_items)
+    except json.JSONDecodeError:
+        return
+
+    seen_codes = {
+        candidate.candidate_code
+        for candidate in candidates
+        if candidate.candidate_type == MasterCandidateType.PRODUCT
+    }
+    for line in line_items:
+        if not isinstance(line, dict):
+            continue
+        item_code = clean_string(line.get("item_code"))
+        description = clean_string(line.get("product_description"))
+        if not item_code or item_code in seen_codes:
+            continue
+        seen_codes.add(item_code)
+        source_fields = {
+            "Product Code": item_code,
+            "Product Name": description or item_code,
+        }
+        for optional_field in ("batch_number", "expiry_date", "uom", "unit_value"):
+            value = clean_string(line.get(optional_field))
+            if value:
+                source_fields[optional_field] = value
+        candidates.append(
+            MasterCandidate(
+                document_id=document_id,
+                candidate_type=MasterCandidateType.PRODUCT,
+                candidate_name=description or item_code,
+                candidate_code=item_code,
+                source_fields=source_fields,
+            )
+        )
+
+
 def add_simple_candidates(
     candidates: list[MasterCandidate],
     document_id: str,
@@ -152,3 +201,9 @@ def add_simple_candidates(
             )
         )
 
+
+def clean_string(value: object) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
