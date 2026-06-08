@@ -11,10 +11,12 @@ from app.schemas.imports import (
     ImportLineCandidate,
     ImportStatus,
 )
+from app.schemas.security import ApprovalResolutionRequest
 from app.schemas.warehouse import CreateGoodsReceiptLineRequest, CreateGoodsReceiptRequest, CreateProductRequest, WorkflowResult
 from app.db.local_persistence import load_collection, record_audit_event, save_collection
 from app.services.learning_repository import get_product_learning_profile
 from app.services.local_document_store import get_saved_document
+from app.services.security_repository import normalize_email, resolve_approver
 from app.services.simple_extraction import extract_text
 from app.services.warehouse_repository import create_product, get_product, post_goods_receipt
 
@@ -239,9 +241,24 @@ def post_import_goods_receipt(request: ImportGoodsReceiptPostRequest) -> Workflo
 
 def approve_import_candidate(request: ImportApprovalRequest) -> ImportFileCandidate:
     if not request.approved_by.strip():
-        raise ValueError("Approver name is mandatory")
+        raise ValueError("Approver email is mandatory")
     if not request.candidate.lines:
         raise ValueError("Import file has no product lines to approve")
+
+    resolution = resolve_approver(
+        ApprovalResolutionRequest(
+            process_name="import_validation",
+            country=request.candidate.destination_country,
+            vertical="All",
+            material_code="All",
+        )
+    )
+    if not resolution.approver_email:
+        raise ValueError(
+            "No import approval rule is configured. Add one in Security for this destination country."
+        )
+    if normalize_email(request.approved_by) != resolution.approver_email:
+        raise ValueError(f"Only configured approver {resolution.approver_email} can approve this import file")
 
     for line in request.candidate.lines:
         if not line.item_code.strip():

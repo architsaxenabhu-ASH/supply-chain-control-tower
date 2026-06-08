@@ -14,7 +14,9 @@ import {
   FileUp,
   FileSpreadsheet,
   History,
+  KeyRound,
   Package,
+  Plus,
   RefreshCw,
   Search,
   ShieldCheck,
@@ -37,13 +39,16 @@ import {
   fetchInventoryBatches,
   fetchInventoryCounts,
   fetchProducts,
+  fetchSecurityOverview,
   fetchShipments,
   fetchWarehouses,
   getExtractionMaster,
   listDocuments,
   postImportGoodsReceipt,
+  saveApprovalRule,
   saveCountryDocumentRequirement,
   saveProductFreeTextProfile,
+  saveSecurityUser,
   saveWarehouseCandidate,
   uploadDocument,
 } from "../lib/api";
@@ -58,7 +63,10 @@ import type {
   ApiInventoryBatch,
   ApiInventoryCount,
   ApiImportFileCandidate,
+  ApiSaveApprovalRuleRequest,
+  ApiSaveSecurityUserRequest,
   ApiProduct,
+  ApiSecurityOverview,
   ApiShipment,
   ApiWarehouseLocation,
 } from "../lib/api";
@@ -295,15 +303,47 @@ const fallbackCustomers: Customer[] = [
   },
 ];
 
-const roles = [
-  ["Admin", "Full access"],
-  ["Warehouse Executive", "Receipt, dispatch, counts"],
-  ["Warehouse Manager", "Approval and reconciliation"],
-  ["Country Incharge", "Import validation approval"],
-  ["Sales User", "Shipment requests"],
-  ["Finance User", "Inventory value and exports"],
-  ["QA User", "Expiry and batch review"],
-];
+const fallbackSecurityOverview: ApiSecurityOverview = {
+  role_definitions: [
+    {
+      role_name: "Admin",
+      description: "System setup and full control",
+      permissions: ["masters", "security", "imports", "inventory", "shipments", "audit"],
+    },
+    {
+      role_name: "Country Incharge",
+      description: "Country-level import and shipment approval",
+      permissions: ["import_approval", "shipment_approval", "country_dashboard"],
+    },
+    {
+      role_name: "Warehouse Executive",
+      description: "Goods receipt, dispatch, and cycle count entry",
+      permissions: ["goods_receipt", "dispatch", "inventory_count"],
+    },
+    {
+      role_name: "Warehouse Manager",
+      description: "Warehouse approval and reconciliation",
+      permissions: ["inventory_approval", "dispatch_approval", "reconciliation"],
+    },
+    {
+      role_name: "Sales User",
+      description: "Shipment request and customer visibility",
+      permissions: ["shipment_request", "customer_read"],
+    },
+    {
+      role_name: "Finance User",
+      description: "Inventory value and export visibility",
+      permissions: ["inventory_value", "reports_export"],
+    },
+    {
+      role_name: "QA User",
+      description: "Expiry, batch, and compliance review",
+      permissions: ["expiry_review", "batch_traceability", "quality_hold"],
+    },
+  ],
+  users: [],
+  approval_rules: [],
+};
 
 const navItems = [
   { id: "dashboard", label: "Dashboard", icon: BarChart3 },
@@ -397,6 +437,7 @@ function getExportRows({
   filteredProducts,
   importCandidate,
   receipts,
+  securityOverview,
   shipments,
 }: {
   activeView: string;
@@ -409,6 +450,7 @@ function getExportRows({
   filteredProducts: Product[];
   importCandidate: ApiImportFileCandidate | null;
   receipts: Receipt[];
+  securityOverview: ApiSecurityOverview;
   shipments: Shipment[];
 }) {
   if (activeView === "products") {
@@ -501,6 +543,31 @@ function getExportRows({
       new_value: formatAuditValue(event.new_value),
       created_at: event.created_at,
     }));
+  }
+
+  if (activeView === "security") {
+    return [
+      ...securityOverview.users.map((user) => ({
+        record_type: "user",
+        email: user.email,
+        full_name: user.full_name,
+        role: user.role_name,
+        countries: user.country_scope.join("; "),
+        warehouses: user.warehouse_scope.join("; "),
+        status: user.is_active ? "active" : "inactive",
+      })),
+      ...securityOverview.approval_rules.map((rule) => ({
+        record_type: "approval_rule",
+        rule_id: rule.rule_id,
+        process: rule.process_name,
+        country: rule.country,
+        vertical: rule.vertical,
+        material_code: rule.material_code,
+        approver_role: rule.approver_role,
+        approver_email: rule.approver_email,
+        status: rule.is_active ? "active" : "inactive",
+      })),
+    ];
   }
 
   return [];
@@ -612,6 +679,8 @@ export function App() {
   const [customers, setCustomers] = useState<Customer[]>(fallbackCustomers);
   const [auditEvents, setAuditEvents] = useState<ApiAuditEvent[]>([]);
   const [importQueue, setImportQueue] = useState<ApiImportFileCandidate[]>([]);
+  const [securityOverview, setSecurityOverview] = useState<ApiSecurityOverview>(fallbackSecurityOverview);
+  const [securityMessage, setSecurityMessage] = useState("Enter users and approval rules for email-based access.");
   const [apiStatus, setApiStatus] = useState("Using sample data");
   const [assistantAnswer, setAssistantAnswer] = useState("Found 2 batches expiring within 180 days.");
   const [isAskingAssistant, setIsAskingAssistant] = useState(false);
@@ -685,6 +754,27 @@ export function App() {
     }
 
     loadWarehouseData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    fetchSecurityOverview()
+      .then((overview) => {
+        if (isMounted) {
+          setSecurityOverview(overview);
+          setSecurityMessage("Security setup loaded.");
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setSecurityMessage("Backend not connected. Security setup will load after backend starts.");
+        }
+      });
 
     return () => {
       isMounted = false;
@@ -809,6 +899,38 @@ export function App() {
     return `Import file approved by ${payload.approved_by}. Goods Receipt is now allowed.`;
   }
 
+  async function handleSaveSecurityUser(payload: ApiSaveSecurityUserRequest) {
+    setSecurityMessage("Saving user access...");
+    try {
+      await saveSecurityUser(payload);
+      const [overview, apiAuditEvents] = await Promise.all([
+        fetchSecurityOverview(),
+        fetchAuditEvents(20),
+      ]);
+      setSecurityOverview(overview);
+      setAuditEvents(apiAuditEvents);
+      setSecurityMessage(`Saved access for ${payload.email}.`);
+    } catch (error) {
+      setSecurityMessage(error instanceof Error ? error.message : "Could not save user access.");
+    }
+  }
+
+  async function handleSaveApprovalRule(payload: ApiSaveApprovalRuleRequest) {
+    setSecurityMessage("Saving approval rule...");
+    try {
+      await saveApprovalRule(payload);
+      const [overview, apiAuditEvents] = await Promise.all([
+        fetchSecurityOverview(),
+        fetchAuditEvents(20),
+      ]);
+      setSecurityOverview(overview);
+      setAuditEvents(apiAuditEvents);
+      setSecurityMessage(`Saved approval rule for ${payload.country}.`);
+    } catch (error) {
+      setSecurityMessage(error instanceof Error ? error.message : "Could not save approval rule.");
+    }
+  }
+
   async function handleAskAssistant() {
     setIsAskingAssistant(true);
     try {
@@ -902,6 +1024,7 @@ export function App() {
       filteredProducts,
       importCandidate,
       receipts,
+      securityOverview,
       shipments,
     });
 
@@ -1006,6 +1129,7 @@ export function App() {
             onNewWarehouseNameChange={setNewWarehouseName}
             onPostGoodsReceipt={handlePostImportGoodsReceipt}
             onSelectedWarehouseChange={setSelectedWarehouse}
+            securityOverview={securityOverview}
             selectedWarehouse={selectedWarehouse}
           />
         ) : null}
@@ -1031,7 +1155,14 @@ export function App() {
         {activeView === "counts" ? <CountsView counts={counts} /> : null}
         {activeView === "expiry" ? <ExpiryView inventory={inventory} /> : null}
         {activeView === "customers" ? <CustomersView customers={customers} /> : null}
-        {activeView === "security" ? <SecurityView /> : null}
+        {activeView === "security" ? (
+          <SecurityView
+            message={securityMessage}
+            onSaveApprovalRule={handleSaveApprovalRule}
+            onSaveUser={handleSaveSecurityUser}
+            securityOverview={securityOverview}
+          />
+        ) : null}
         {activeView === "audit" ? <AuditView auditEvents={auditEvents} /> : null}
         {activeView === "assistant" ? (
           <AssistantView
@@ -1382,6 +1513,7 @@ function ImportValidationView({
   onNewWarehouseNameChange,
   onPostGoodsReceipt,
   onSelectedWarehouseChange,
+  securityOverview,
   selectedWarehouse,
 }: {
   candidate: ApiImportFileCandidate | null;
@@ -1394,6 +1526,7 @@ function ImportValidationView({
   onNewWarehouseNameChange: (value: string) => void;
   onPostGoodsReceipt: (payload: ApiImportGoodsReceiptPostRequest) => Promise<string>;
   onSelectedWarehouseChange: (value: string) => void;
+  securityOverview: ApiSecurityOverview;
   selectedWarehouse: string;
 }) {
   const [actorName, setActorName] = useState("");
@@ -1418,6 +1551,15 @@ function ImportValidationView({
     candidate?.lines.filter((line) => line.product_profile_status === "known").length ?? 0;
   const firstUnknownLine = candidate?.lines.find((line) => line.product_profile_status !== "known");
   const isImportApproved = candidate?.status === "validated";
+  const importApprovalRule = candidate
+    ? securityOverview.approval_rules.find((rule) =>
+        rule.is_active &&
+        rule.process_name === "import_validation" &&
+        matchesScopeValue(rule.country, candidate.destination_country) &&
+        matchesScopeValue(rule.vertical, "All") &&
+        matchesScopeValue(rule.material_code, "All"),
+      )
+    : null;
 
   useEffect(() => {
     if (!selectedInvoiceDocumentId && invoiceDocuments[0]) {
@@ -1460,7 +1602,7 @@ function ImportValidationView({
 
   async function handleSaveWarehouseCandidate() {
     if (!candidate || !newWarehouseName.trim() || !actorName.trim()) {
-      setLearningMessage("Enter your name and warehouse name before saving.");
+      setLearningMessage("Enter your email and warehouse name before saving.");
       return;
     }
 
@@ -1479,7 +1621,7 @@ function ImportValidationView({
 
   async function handleSaveCountryDocumentRule() {
     if (!candidate || !firstUnknownLine || !verticalName.trim() || !extraDocumentType.trim() || !actorName.trim()) {
-      setLearningMessage("Enter your name, vertical, material, and required document type.");
+      setLearningMessage("Enter your email, vertical, material, and required document type.");
       return;
     }
 
@@ -1499,7 +1641,7 @@ function ImportValidationView({
 
   async function handleSaveFirstTimeProductAnswers() {
     if (!firstUnknownLine || !actorName.trim()) {
-      setLearningMessage("Enter your name and load an import line that needs first-time questions.");
+      setLearningMessage("Enter your email and load an import line that needs first-time questions.");
       return;
     }
 
@@ -1529,7 +1671,7 @@ function ImportValidationView({
       return;
     }
     if (!actorName.trim()) {
-      setPostingMessage("Enter validator name before posting Goods Receipt.");
+      setPostingMessage("Enter validator email before posting Goods Receipt.");
       return;
     }
 
@@ -1570,7 +1712,7 @@ function ImportValidationView({
       return;
     }
     if (!actorName.trim()) {
-      setApprovalMessage("Enter Country Incharge name before approval.");
+      setApprovalMessage("Enter Country Incharge email before approval.");
       return;
     }
 
@@ -1656,9 +1798,9 @@ function ImportValidationView({
         <Panel title="Approval and receipt control" meta="RBAC">
           <div className="validation-stack">
             <label className="field-control">
-              <span>User / approver name</span>
+              <span>User / approver email</span>
               <input
-                placeholder="Enter user name for audit trail"
+                placeholder="name@company.com"
                 value={actorName}
                 onChange={(event) => setActorName(event.target.value)}
               />
@@ -1666,6 +1808,14 @@ function ImportValidationView({
             <div className="validation-banner">
               <strong>Approver</strong>
               <span>Country Incharge</span>
+            </div>
+            <div className={importApprovalRule ? "validation-banner" : "validation-banner warning"}>
+              <strong>Configured approver</strong>
+              <span>
+                {importApprovalRule
+                  ? `${importApprovalRule.approver_email} / ${importApprovalRule.approver_role}`
+                  : "No rule configured for this destination country"}
+              </span>
             </div>
             <div className={isImportApproved ? "validation-banner" : "validation-banner warning"}>
               <strong>Approval status</strong>
@@ -1971,6 +2121,21 @@ function formatAuditValue(value: unknown) {
   return String(value);
 }
 
+function parseCommaList(value: string) {
+  return value
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function formatProcessName(value: string) {
+  return toTitleCase(value.replace(/_/g, " "));
+}
+
+function matchesScopeValue(ruleValue: string, requestedValue: string) {
+  return ruleValue.toLowerCase() === "all" || ruleValue.toLowerCase() === requestedValue.toLowerCase();
+}
+
 function ProductsView({
   products,
   search,
@@ -2240,17 +2405,325 @@ function CustomersView({ customers }: { customers: Customer[] }) {
   );
 }
 
-function SecurityView() {
+function SecurityView({
+  message,
+  onSaveApprovalRule,
+  onSaveUser,
+  securityOverview,
+}: {
+  message: string;
+  onSaveApprovalRule: (payload: ApiSaveApprovalRuleRequest) => Promise<void>;
+  onSaveUser: (payload: ApiSaveSecurityUserRequest) => Promise<void>;
+  securityOverview: ApiSecurityOverview;
+}) {
+  const defaultRole = securityOverview.role_definitions[0]?.role_name ?? "Admin";
+  const [userEmail, setUserEmail] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [userRole, setUserRole] = useState(defaultRole);
+  const [countryScope, setCountryScope] = useState("");
+  const [warehouseScope, setWarehouseScope] = useState("");
+  const [userIsActive, setUserIsActive] = useState(true);
+  const [ruleProcess, setRuleProcess] = useState("import_validation");
+  const [ruleCountry, setRuleCountry] = useState("");
+  const [ruleVertical, setRuleVertical] = useState("All");
+  const [ruleMaterialCode, setRuleMaterialCode] = useState("All");
+  const [approverRole, setApproverRole] = useState("Country Incharge");
+  const [approverEmail, setApproverEmail] = useState("");
+  const [ruleIsActive, setRuleIsActive] = useState(true);
+  const [changedBy, setChangedBy] = useState("");
+  const [changeReason, setChangeReason] = useState("");
+
+  useEffect(() => {
+    if (!securityOverview.role_definitions.some((role) => role.role_name === userRole)) {
+      setUserRole(defaultRole);
+    }
+    if (!securityOverview.role_definitions.some((role) => role.role_name === approverRole)) {
+      setApproverRole(defaultRole);
+    }
+  }, [approverRole, defaultRole, securityOverview.role_definitions, userRole]);
+
+  async function handleSubmitUser() {
+    await onSaveUser({
+      email: userEmail,
+      full_name: fullName,
+      role_name: userRole,
+      country_scope: parseCommaList(countryScope),
+      warehouse_scope: parseCommaList(warehouseScope),
+      is_active: userIsActive,
+      changed_by: changedBy,
+      change_reason: changeReason,
+    });
+  }
+
+  async function handleSubmitApprovalRule() {
+    await onSaveApprovalRule({
+      process_name: ruleProcess,
+      country: ruleCountry,
+      vertical: ruleVertical || "All",
+      material_code: ruleMaterialCode || "All",
+      approver_role: approverRole,
+      approver_email: approverEmail,
+      is_active: ruleIsActive,
+      changed_by: changedBy,
+      change_reason: changeReason,
+    });
+  }
+
   return (
-    <section className="role-grid">
-      {roles.map(([role, access]) => (
-        <article className="role-card" key={role}>
-          <ShieldCheck size={22} aria-hidden="true" />
-          <strong>{role}</strong>
-          <span>{access}</span>
-        </article>
-      ))}
-    </section>
+    <>
+      <section className="kpi-grid">
+        <MetricCard
+          label="Configured Users"
+          value={String(securityOverview.users.length)}
+          detail="Email based"
+        />
+        <MetricCard
+          label="Approval Rules"
+          value={String(securityOverview.approval_rules.length)}
+          detail="Process by scope"
+        />
+        <MetricCard
+          label="Active Users"
+          value={String(securityOverview.users.filter((user) => user.is_active).length)}
+          detail="Allowed access"
+        />
+        <MetricCard
+          label="Active Rules"
+          value={String(securityOverview.approval_rules.filter((rule) => rule.is_active).length)}
+          detail="Approval matrix"
+        />
+      </section>
+
+      <section className="content-grid">
+        <Panel title="User access" meta="Email + role">
+          <div className="security-form-grid">
+            <label className="field-control">
+              <span>Email</span>
+              <input value={userEmail} onChange={(event) => setUserEmail(event.target.value)} />
+            </label>
+            <label className="field-control">
+              <span>Full name</span>
+              <input value={fullName} onChange={(event) => setFullName(event.target.value)} />
+            </label>
+            <label className="field-control">
+              <span>Role</span>
+              <select value={userRole} onChange={(event) => setUserRole(event.target.value)}>
+                {securityOverview.role_definitions.map((role) => (
+                  <option key={role.role_name} value={role.role_name}>
+                    {role.role_name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field-control">
+              <span>Country scope</span>
+              <input value={countryScope} onChange={(event) => setCountryScope(event.target.value)} />
+            </label>
+            <label className="field-control">
+              <span>Warehouse scope</span>
+              <input value={warehouseScope} onChange={(event) => setWarehouseScope(event.target.value)} />
+            </label>
+            <label className="toggle-control">
+              <input
+                checked={userIsActive}
+                type="checkbox"
+                onChange={(event) => setUserIsActive(event.target.checked)}
+              />
+              <span>Active</span>
+            </label>
+          </div>
+          <SecurityChangeFields
+            changedBy={changedBy}
+            changeReason={changeReason}
+            setChangedBy={setChangedBy}
+            setChangeReason={setChangeReason}
+          />
+          <div className="form-action-row">
+            <button className="primary-action" onClick={handleSubmitUser}>
+              <Plus size={17} aria-hidden="true" />
+              Save user access
+            </button>
+            <p className="status-line">{message}</p>
+          </div>
+        </Panel>
+
+        <Panel title="Approval rule" meta="Process + approver">
+          <div className="security-form-grid">
+            <label className="field-control">
+              <span>Process</span>
+              <select value={ruleProcess} onChange={(event) => setRuleProcess(event.target.value)}>
+                <option value="import_validation">Import validation</option>
+                <option value="shipment_approval">Shipment approval</option>
+                <option value="goods_receipt">Goods receipt</option>
+                <option value="inventory_adjustment">Inventory adjustment</option>
+              </select>
+            </label>
+            <label className="field-control">
+              <span>Country</span>
+              <input value={ruleCountry} onChange={(event) => setRuleCountry(event.target.value)} />
+            </label>
+            <label className="field-control">
+              <span>Vertical</span>
+              <input value={ruleVertical} onChange={(event) => setRuleVertical(event.target.value)} />
+            </label>
+            <label className="field-control">
+              <span>Material code</span>
+              <input value={ruleMaterialCode} onChange={(event) => setRuleMaterialCode(event.target.value)} />
+            </label>
+            <label className="field-control">
+              <span>Approver role</span>
+              <select value={approverRole} onChange={(event) => setApproverRole(event.target.value)}>
+                {securityOverview.role_definitions.map((role) => (
+                  <option key={role.role_name} value={role.role_name}>
+                    {role.role_name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field-control">
+              <span>Approver email</span>
+              <input value={approverEmail} onChange={(event) => setApproverEmail(event.target.value)} />
+            </label>
+            <label className="toggle-control">
+              <input
+                checked={ruleIsActive}
+                type="checkbox"
+                onChange={(event) => setRuleIsActive(event.target.checked)}
+              />
+              <span>Active</span>
+            </label>
+          </div>
+          <SecurityChangeFields
+            changedBy={changedBy}
+            changeReason={changeReason}
+            setChangedBy={setChangedBy}
+            setChangeReason={setChangeReason}
+          />
+          <div className="form-action-row">
+            <button className="primary-action" onClick={handleSubmitApprovalRule}>
+              <KeyRound size={17} aria-hidden="true" />
+              Save approval rule
+            </button>
+          </div>
+        </Panel>
+      </section>
+
+      <Panel title="Role definitions" meta={`${securityOverview.role_definitions.length} roles`}>
+        <section className="role-grid">
+          {securityOverview.role_definitions.map((role) => (
+            <article className="role-card" key={role.role_name}>
+              <ShieldCheck size={22} aria-hidden="true" />
+              <strong>{role.role_name}</strong>
+              <span>{role.description}</span>
+              <div className="permission-list">
+                {role.permissions.map((permission) => (
+                  <StatusTag key={permission} label={permission.replace(/_/g, " ")} />
+                ))}
+              </div>
+            </article>
+          ))}
+        </section>
+      </Panel>
+
+      <section className="content-grid wide-left">
+        <Panel title="User master" meta={`${securityOverview.users.length} records`}>
+          <table>
+            <thead>
+              <tr>
+                <th>Email</th>
+                <th>Name</th>
+                <th>Role</th>
+                <th>Countries</th>
+                <th>Warehouses</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {securityOverview.users.length === 0 ? (
+                <tr>
+                  <td colSpan={6}>No users configured yet.</td>
+                </tr>
+              ) : (
+                securityOverview.users.map((user) => (
+                  <tr key={user.email}>
+                    <td>{user.email}</td>
+                    <td>{user.full_name}</td>
+                    <td>{user.role_name}</td>
+                    <td>{user.country_scope.join(", ") || "All"}</td>
+                    <td>{user.warehouse_scope.join(", ") || "All"}</td>
+                    <td><StatusTag label={user.is_active ? "Active" : "Inactive"} /></td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </Panel>
+
+        <Panel title="Approval matrix" meta={`${securityOverview.approval_rules.length} rules`}>
+          <table>
+            <thead>
+              <tr>
+                <th>Process</th>
+                <th>Scope</th>
+                <th>Approver</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {securityOverview.approval_rules.length === 0 ? (
+                <tr>
+                  <td colSpan={4}>No approval rules configured yet.</td>
+                </tr>
+              ) : (
+                securityOverview.approval_rules.map((rule) => (
+                  <tr key={rule.rule_id}>
+                    <td>{formatProcessName(rule.process_name)}</td>
+                    <td>
+                      {rule.country}
+                      <br />
+                      <span className="muted-cell">
+                        {rule.vertical} / {rule.material_code}
+                      </span>
+                    </td>
+                    <td>
+                      {rule.approver_role}
+                      <br />
+                      <span className="muted-cell">{rule.approver_email}</span>
+                    </td>
+                    <td><StatusTag label={rule.is_active ? "Active" : "Inactive"} /></td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </Panel>
+      </section>
+    </>
+  );
+}
+
+function SecurityChangeFields({
+  changedBy,
+  changeReason,
+  setChangedBy,
+  setChangeReason,
+}: {
+  changedBy: string;
+  changeReason: string;
+  setChangedBy: (value: string) => void;
+  setChangeReason: (value: string) => void;
+}) {
+  return (
+    <div className="security-change-grid">
+      <label className="field-control">
+        <span>Changed by</span>
+        <input value={changedBy} onChange={(event) => setChangedBy(event.target.value)} />
+      </label>
+      <label className="field-control">
+        <span>Change reason</span>
+        <input value={changeReason} onChange={(event) => setChangeReason(event.target.value)} />
+      </label>
+    </div>
   );
 }
 

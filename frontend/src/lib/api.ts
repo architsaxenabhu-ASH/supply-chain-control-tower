@@ -179,6 +179,65 @@ export type ApiAuditEvent = {
   created_at: string;
 };
 
+export type ApiRoleDefinition = {
+  role_name: string;
+  description: string;
+  permissions: string[];
+};
+
+export type ApiSecurityUser = {
+  email: string;
+  full_name: string;
+  role_name: string;
+  country_scope: string[];
+  warehouse_scope: string[];
+  is_active: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+export type ApiApprovalRule = {
+  rule_id: string;
+  process_name: string;
+  country: string;
+  vertical: string;
+  material_code: string;
+  approver_role: string;
+  approver_email: string;
+  is_active: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+export type ApiSecurityOverview = {
+  role_definitions: ApiRoleDefinition[];
+  users: ApiSecurityUser[];
+  approval_rules: ApiApprovalRule[];
+};
+
+export type ApiSaveSecurityUserRequest = {
+  email: string;
+  full_name: string;
+  role_name: string;
+  country_scope: string[];
+  warehouse_scope: string[];
+  is_active: boolean;
+  changed_by: string;
+  change_reason: string;
+};
+
+export type ApiSaveApprovalRuleRequest = {
+  process_name: string;
+  country: string;
+  vertical: string;
+  material_code: string;
+  approver_role: string;
+  approver_email: string;
+  is_active: boolean;
+  changed_by: string;
+  change_reason: string;
+};
+
 export type ApiAssistantAnswer = {
   question: string;
   answer: string;
@@ -402,6 +461,18 @@ export function fetchWarehouses(country?: string): Promise<ApiWarehouseLocation[
 
 export function fetchAuditEvents(limit = 100): Promise<ApiAuditEvent[]> {
   return getJson<ApiAuditEvent[]>(`/audit?limit=${limit}`);
+}
+
+export function fetchSecurityOverview(): Promise<ApiSecurityOverview> {
+  return getJson<ApiSecurityOverview>("/security");
+}
+
+export function saveSecurityUser(payload: ApiSaveSecurityUserRequest): Promise<ApiSecurityUser> {
+  return postJson<ApiSecurityUser, typeof payload>("/security/users", payload);
+}
+
+export function saveApprovalRule(payload: ApiSaveApprovalRuleRequest): Promise<ApiApprovalRule> {
+  return postJson<ApiApprovalRule, typeof payload>("/security/approval-rules", payload);
 }
 
 export function saveProductFreeTextProfile(payload: {

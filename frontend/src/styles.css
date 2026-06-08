@@ -538,6 +538,43 @@ h2 {
   gap: 12px;
 }
 
+.security-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.security-change-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.form-action-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: space-between;
+  margin-top: 14px;
+}
+
+.toggle-control {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 40px;
+  color: #3a4652;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.toggle-control input {
+  width: 18px;
+  height: 18px;
+  accent-color: #116466;
+}
+
 .learning-form-actions {
   display: grid;
   align-content: end;
@@ -825,6 +862,12 @@ td {
   color: #116466;
 }
 
+.permission-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .assistant-box {
   display: grid;
   gap: 12px;
@@ -875,6 +918,8 @@ td {
   .document-picker-grid,
   .import-summary-grid,
   .learning-form-grid,
+  .security-form-grid,
+  .security-change-grid,
   .candidate-grid,
   .required-grid,
   .role-grid {
@@ -882,7 +927,8 @@ td {
   }
 
   .topbar,
-  .toolbar {
+  .toolbar,
+  .form-action-row {
     align-items: stretch;
     flex-direction: column;
   }

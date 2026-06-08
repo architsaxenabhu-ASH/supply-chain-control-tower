@@ -15,6 +15,7 @@ from app.api.routes import (
     learning,
     masters,
     products,
+    security,
     shipments,
     validation,
     warehouses,
@@ -36,6 +37,7 @@ api_router.include_router(goods_receipts.router, prefix="/goods-receipts", tags=
 api_router.include_router(inventory_counts.router, prefix="/inventory-counts", tags=["inventory-counts"])
 api_router.include_router(imports.router, prefix="/imports", tags=["imports"])
 api_router.include_router(learning.router, prefix="/learning", tags=["learning"])
+api_router.include_router(security.router, prefix="/security", tags=["security"])
 api_router.include_router(expiry.router, prefix="/expiry", tags=["expiry"])
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
 api_router.include_router(assistant.router, prefix="/assistant", tags=["assistant"])
