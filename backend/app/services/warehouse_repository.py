@@ -7,6 +7,7 @@ from app.schemas.warehouse import (
     CreateGoodsReceiptRequest,
     CreateInventoryCountRequest,
     CreateProductRequest,
+    CreateShipmentRequest,
     Customer,
     DashboardSummary,
     Dispatch,
@@ -24,6 +25,7 @@ from app.schemas.warehouse import (
     WarehouseLocation,
     WorkflowResult,
 )
+from app.services.security_repository import normalize_email, require_user_permission
 
 
 TODAY = date.today()
@@ -134,6 +136,7 @@ SHIPMENTS = [
                 shipment_id="SHP-2026-0001",
                 item_code="MYVAL-THV-26",
                 batch_number="B240501",
+                warehouse_location="Mumbai WH",
                 quantity_requested=5,
                 quantity_approved=5,
             )
@@ -153,6 +156,7 @@ SHIPMENTS = [
                 shipment_id="SHP-2026-0002",
                 item_code="AOAC-10/35",
                 batch_number="AOAC-B2401",
+                warehouse_location="Mumbai WH",
                 quantity_requested=30,
                 quantity_approved=0,
             )
@@ -392,6 +396,24 @@ def get_raw_batch(
     return None
 
 
+def _backfill_shipment_line_warehouses() -> None:
+    changed = False
+    for shipment in SHIPMENTS:
+        for line in shipment.lines:
+            if line.warehouse_location:
+                continue
+            raw_batch = get_raw_batch(line.item_code, line.batch_number)
+            if not raw_batch:
+                continue
+            line.warehouse_location = str(raw_batch["warehouse_location"])
+            changed = True
+    if changed:
+        _save_shipments()
+
+
+_backfill_shipment_line_warehouses()
+
+
 def get_available_quantity(
     item_code: str,
     batch_number: str,
@@ -539,6 +561,87 @@ def list_fefo_batches(item_code: str) -> list[InventoryBatch]:
     )
 
 
+def create_shipment_request(request: CreateShipmentRequest) -> ShipmentRequest:
+    requesting_user = require_user_permission(request.auth_token, "shipment_request")
+    if normalize_email(request.requestor_name) != requesting_user.email:
+        raise ValueError("Shipment requestor must match the logged-in user.")
+    if not request.customer_name.strip():
+        raise ValueError("Customer name is mandatory.")
+    if not request.destination_country.strip():
+        raise ValueError("Destination country is mandatory.")
+    if request.priority.lower() not in {"normal", "urgent"}:
+        raise ValueError("Priority must be Normal or Urgent.")
+    if not request.lines:
+        raise ValueError("Shipment must contain at least one line.")
+
+    shipment_id = generate_shipment_id()
+    shipment_lines: list[ShipmentLine] = []
+    for line in request.lines:
+        if line.quantity_requested <= 0:
+            raise ValueError(f"Requested quantity must be greater than zero for {line.item_code}.")
+        raw_batch = get_raw_batch(
+            item_code=line.item_code,
+            batch_number=line.batch_number,
+            warehouse_location=line.warehouse_location,
+        )
+        if not raw_batch:
+            raise ValueError(
+                f"Inventory batch not found in {line.warehouse_location}: {line.item_code} / {line.batch_number}"
+            )
+        available = float(raw_batch["quantity_available"])
+        if line.quantity_requested > available:
+            raise ValueError(
+                f"Cannot request {line.quantity_requested}. Available stock is {available} for {line.item_code} / {line.batch_number} in {line.warehouse_location}."
+            )
+        shipment_lines.append(
+            ShipmentLine(
+                shipment_id=shipment_id,
+                item_code=line.item_code,
+                batch_number=line.batch_number,
+                warehouse_location=line.warehouse_location,
+                quantity_requested=line.quantity_requested,
+                quantity_approved=0,
+            )
+        )
+
+    shipment = ShipmentRequest(
+        shipment_id=shipment_id,
+        request_date=request.request_date,
+        requestor_name=requesting_user.email,
+        customer_name=request.customer_name.strip(),
+        destination_country=request.destination_country.strip(),
+        priority=request.priority.lower(),
+        required_delivery_date=request.required_delivery_date,
+        status=ShipmentStatus.SUBMITTED if request.submit_for_approval else ShipmentStatus.DRAFT,
+        lines=shipment_lines,
+    )
+    SHIPMENTS.insert(0, shipment)
+    _save_shipments()
+    record_audit_event(
+        action="create",
+        module_name="shipment",
+        entity_name="shipment_request",
+        entity_id=shipment.shipment_id,
+        actor=requesting_user.email,
+        new_value=shipment,
+    )
+    return shipment
+
+
+def generate_shipment_id() -> str:
+    year = date.today().year
+    prefix = f"SHP-{year}-"
+    next_number = 1
+    for shipment in SHIPMENTS:
+        if not shipment.shipment_id.startswith(prefix):
+            continue
+        try:
+            next_number = max(next_number, int(shipment.shipment_id.removeprefix(prefix)) + 1)
+        except ValueError:
+            continue
+    return f"{prefix}{next_number:04d}"
+
+
 def list_shipments() -> list[ShipmentRequest]:
     return SHIPMENTS
 
@@ -608,6 +711,7 @@ def get_shipment(shipment_id: str) -> ShipmentRequest | None:
 
 
 def approve_shipment(shipment_id: str, request: ShipmentApprovalRequest) -> WorkflowResult:
+    approving_user = require_user_permission(request.auth_token, "shipment_approval")
     shipment = get_shipment(shipment_id)
     if not shipment:
         raise ValueError(f"Shipment not found: {shipment_id}")
@@ -615,36 +719,57 @@ def approve_shipment(shipment_id: str, request: ShipmentApprovalRequest) -> Work
         raise ValueError(f"Shipment cannot be approved from status: {shipment.status.value}")
     if not request.lines:
         raise ValueError("Approval must contain at least one line")
+    if normalize_email(request.approved_by) != approving_user.email:
+        raise ValueError("Shipment approval must match the logged-in user.")
+    if approving_user.role_name != "Admin" and approving_user.country_scope:
+        normalized_scopes = {scope.lower() for scope in approving_user.country_scope}
+        if "all" not in normalized_scopes and shipment.destination_country.lower() not in normalized_scopes:
+            raise ValueError(f"{approving_user.email} is not scoped to approve shipments for {shipment.destination_country}.")
 
     approval_by_key = {
-        (line.item_code.lower(), line.batch_number.lower()): line
+        (
+            line.item_code.lower(),
+            line.batch_number.lower(),
+            (line.warehouse_location or "").lower(),
+        ): line
         for line in request.lines
     }
 
     for shipment_line in shipment.lines:
         approval_line = approval_by_key.get(
-            (shipment_line.item_code.lower(), shipment_line.batch_number.lower())
+            (
+                shipment_line.item_code.lower(),
+                shipment_line.batch_number.lower(),
+                (shipment_line.warehouse_location or "").lower(),
+            )
         )
         if not approval_line:
             raise ValueError(
-                f"Approval missing for {shipment_line.item_code} / {shipment_line.batch_number}"
+                f"Approval missing for {shipment_line.item_code} / {shipment_line.batch_number} / {shipment_line.warehouse_location or 'warehouse not set'}"
             )
         if approval_line.quantity_approved > shipment_line.quantity_requested:
             raise ValueError(
                 f"Approved quantity cannot exceed requested quantity for {shipment_line.item_code}"
             )
+        if approval_line.quantity_approved <= 0:
+            raise ValueError(f"Approved quantity must be greater than zero for {shipment_line.item_code}")
         available = get_available_quantity(
             item_code=shipment_line.item_code,
             batch_number=shipment_line.batch_number,
+            warehouse_location=shipment_line.warehouse_location,
         )
         if approval_line.quantity_approved > available:
             raise ValueError(
-                f"Cannot approve {approval_line.quantity_approved}. Available stock is {available} for {shipment_line.item_code} / {shipment_line.batch_number}"
+                f"Cannot approve {approval_line.quantity_approved}. Available stock is {available} for {shipment_line.item_code} / {shipment_line.batch_number} in {shipment_line.warehouse_location or 'selected warehouse'}"
             )
 
     for shipment_line in shipment.lines:
         approval_line = approval_by_key[
-            (shipment_line.item_code.lower(), shipment_line.batch_number.lower())
+            (
+                shipment_line.item_code.lower(),
+                shipment_line.batch_number.lower(),
+                (shipment_line.warehouse_location or "").lower(),
+            )
         ]
         shipment_line.quantity_approved = approval_line.quantity_approved
 
@@ -655,17 +780,18 @@ def approve_shipment(shipment_id: str, request: ShipmentApprovalRequest) -> Work
         module_name="shipment",
         entity_name="shipment_request",
         entity_id=shipment_id,
-        actor=request.approved_by,
+        actor=approving_user.email,
         new_value=shipment,
     )
     return WorkflowResult(
         status="approved",
         message="Shipment approved. Stock is available for dispatch.",
-        data={"shipment_id": shipment_id, "approved_by": request.approved_by},
+        data={"shipment_id": shipment_id, "approved_by": approving_user.email},
     )
 
 
 def confirm_dispatch(shipment_id: str, request: CreateDispatchRequest) -> WorkflowResult:
+    dispatching_user = require_user_permission(request.auth_token, "dispatch")
     shipment = get_shipment(shipment_id)
     if not shipment:
         raise ValueError(f"Shipment not found: {shipment_id}")
@@ -673,12 +799,19 @@ def confirm_dispatch(shipment_id: str, request: CreateDispatchRequest) -> Workfl
         raise ValueError(f"Shipment must be approved before dispatch. Current status: {shipment.status.value}")
     if any(dispatch.dispatch_number == request.dispatch_number for dispatch in DISPATCHES):
         raise ValueError(f"Dispatch Number already exists: {request.dispatch_number}")
+    if normalize_email(request.dispatched_by) != dispatching_user.email:
+        raise ValueError("Dispatch user must match the logged-in user.")
 
     for shipment_line in shipment.lines:
+        if shipment_line.quantity_approved <= 0:
+            raise ValueError(f"Approved quantity is missing for {shipment_line.item_code} / {shipment_line.batch_number}")
+        if not shipment_line.warehouse_location:
+            raise ValueError(f"Warehouse location is missing for {shipment_line.item_code} / {shipment_line.batch_number}")
         decrease_inventory(
             item_code=shipment_line.item_code,
             batch_number=shipment_line.batch_number,
             quantity=shipment_line.quantity_approved,
+            warehouse_location=shipment_line.warehouse_location,
         )
 
     dispatch = Dispatch(
@@ -687,7 +820,7 @@ def confirm_dispatch(shipment_id: str, request: CreateDispatchRequest) -> Workfl
         dispatch_date=request.dispatch_date,
         transporter_courier=request.transporter_courier,
         tracking_number=request.tracking_number,
-        dispatched_by=request.dispatched_by,
+        dispatched_by=dispatching_user.email,
         status="dispatched",
     )
     DISPATCHES.append(dispatch)
@@ -699,7 +832,7 @@ def confirm_dispatch(shipment_id: str, request: CreateDispatchRequest) -> Workfl
         module_name="shipment",
         entity_name="shipment_request",
         entity_id=shipment_id,
-        actor=request.dispatched_by,
+        actor=dispatching_user.email,
         new_value={"shipment": shipment, "dispatch": dispatch},
     )
 

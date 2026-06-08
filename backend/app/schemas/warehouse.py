@@ -61,6 +61,7 @@ class ShipmentLine(BaseModel):
     shipment_id: str
     item_code: str
     batch_number: str
+    warehouse_location: str | None = None
     quantity_requested: float
     quantity_approved: float
 
@@ -180,15 +181,36 @@ class CreateGoodsReceiptRequest(BaseModel):
     lines: list[CreateGoodsReceiptLineRequest]
 
 
+class CreateShipmentLineRequest(BaseModel):
+    item_code: str
+    batch_number: str
+    warehouse_location: str
+    quantity_requested: float
+
+
+class CreateShipmentRequest(BaseModel):
+    request_date: date
+    requestor_name: str
+    customer_name: str
+    destination_country: str
+    priority: str
+    required_delivery_date: date
+    lines: list[CreateShipmentLineRequest]
+    auth_token: str
+    submit_for_approval: bool = True
+
+
 class ShipmentApprovalLineRequest(BaseModel):
     item_code: str
     batch_number: str
+    warehouse_location: str | None = None
     quantity_approved: float
 
 
 class ShipmentApprovalRequest(BaseModel):
     approved_by: str
     lines: list[ShipmentApprovalLineRequest]
+    auth_token: str
 
 
 class CreateDispatchRequest(BaseModel):
@@ -197,6 +219,7 @@ class CreateDispatchRequest(BaseModel):
     transporter_courier: str
     tracking_number: str
     dispatched_by: str
+    auth_token: str
 
 
 class CreateInventoryCountLineRequest(BaseModel):

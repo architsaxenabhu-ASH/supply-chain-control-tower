@@ -99,6 +99,14 @@ export type ApiShipment = {
   priority: "normal" | "urgent";
   required_delivery_date: string;
   status: "draft" | "submitted" | "approved" | "dispatched" | "delivered" | "cancelled";
+  lines: Array<{
+    shipment_id: string;
+    item_code: string;
+    batch_number: string;
+    warehouse_location: string | null;
+    quantity_requested: number;
+    quantity_approved: number;
+  }>;
 };
 
 export type ApiDispatch = {
@@ -396,13 +404,34 @@ export function postGoodsReceipt(payload: {
   return postJson<ApiWorkflowResult, typeof payload>("/goods-receipts/post", payload);
 }
 
+export function createShipment(payload: {
+  request_date: string;
+  requestor_name: string;
+  customer_name: string;
+  destination_country: string;
+  priority: "normal" | "urgent";
+  required_delivery_date: string;
+  auth_token: string;
+  submit_for_approval: boolean;
+  lines: Array<{
+    item_code: string;
+    batch_number: string;
+    warehouse_location: string;
+    quantity_requested: number;
+  }>;
+}): Promise<ApiShipment> {
+  return postJson<ApiShipment, typeof payload>("/shipments", payload);
+}
+
 export function approveShipment(
   shipmentId: string,
   payload: {
     approved_by: string;
+    auth_token: string;
     lines: Array<{
       item_code: string;
       batch_number: string;
+      warehouse_location?: string | null;
       quantity_approved: number;
     }>;
   },
@@ -418,6 +447,7 @@ export function confirmDispatch(
     transporter_courier: string;
     tracking_number: string;
     dispatched_by: string;
+    auth_token: string;
   },
 ): Promise<ApiWorkflowResult> {
   return postJson<ApiWorkflowResult, typeof payload>(`/dispatches/${shipmentId}/confirm`, payload);

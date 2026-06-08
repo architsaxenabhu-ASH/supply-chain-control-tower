@@ -29,7 +29,10 @@ import {
 import {
   assembleImportFromDocuments,
   approveImportCandidate,
+  approveShipment,
   askAssistant,
+  confirmDispatch,
+  createShipment,
   fetchCustomers,
   fetchAuditEvents,
   fetchDashboardSummary,
@@ -106,6 +109,14 @@ type InventoryBatch = {
   expiryBucket: string;
 };
 
+type ShipmentLine = {
+  itemCode: string;
+  batch: string;
+  warehouse: string;
+  quantityRequested: number;
+  quantityApproved: number;
+};
+
 type Shipment = {
   shipmentId: string;
   requestDate: string;
@@ -115,6 +126,7 @@ type Shipment = {
   priority: "Normal" | "Urgent";
   requiredDate: string;
   status: "Draft" | "Submitted" | "Approved" | "Dispatched" | "Delivered" | "Cancelled";
+  lines: ShipmentLine[];
 };
 
 type Dispatch = {
@@ -233,6 +245,15 @@ const fallbackShipments: Shipment[] = [
     priority: "Urgent",
     requiredDate: "2026-06-10",
     status: "Approved",
+    lines: [
+      {
+        itemCode: "MYVAL-THV-26",
+        batch: "B240501",
+        warehouse: "Mumbai WH",
+        quantityRequested: 5,
+        quantityApproved: 5,
+      },
+    ],
   },
   {
     shipmentId: "SHP-2026-0002",
@@ -243,6 +264,15 @@ const fallbackShipments: Shipment[] = [
     priority: "Normal",
     requiredDate: "2026-06-18",
     status: "Submitted",
+    lines: [
+      {
+        itemCode: "AOAC-10/35",
+        batch: "AOAC-B2401",
+        warehouse: "Mumbai WH",
+        quantityRequested: 30,
+        quantityApproved: 0,
+      },
+    ],
   },
 ];
 
@@ -400,6 +430,16 @@ const formatDaysToExpiry = (expiryDate: string | null) => {
   return days < 0 ? `Expired ${Math.abs(days)} days` : `${days} days`;
 };
 
+function daysUntil(dateText: string) {
+  const targetDate = new Date(`${dateText}T00:00:00`);
+  if (Number.isNaN(targetDate.getTime())) {
+    return 0;
+  }
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.ceil((targetDate.getTime() - today.getTime()) / 86_400_000);
+}
+
 const toTitleCase = (value: string) =>
   value
     .split("_")
@@ -408,6 +448,23 @@ const toTitleCase = (value: string) =>
 
 function getDateStamp() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function inventoryBatchKey(batch: InventoryBatch) {
+  return `${batch.itemCode}|${batch.batch}|${batch.warehouse}`;
+}
+
+function generateDispatchNumber(dispatches: Dispatch[]) {
+  const year = new Date().getFullYear();
+  const prefix = `DSP-${year}-`;
+  const nextNumber = dispatches.reduce((max, dispatch) => {
+    if (!dispatch.dispatchNo.startsWith(prefix)) {
+      return max;
+    }
+    const currentNumber = Number(dispatch.dispatchNo.replace(prefix, ""));
+    return Number.isFinite(currentNumber) ? Math.max(max, currentNumber + 1) : max;
+  }, 1);
+  return `${prefix}${String(nextNumber).padStart(4, "0")}`;
 }
 
 function downloadCsv(filename: string, rows: Array<Record<string, unknown>>) {
@@ -515,7 +572,23 @@ function getExportRows({
   }
 
   if (activeView === "shipments") {
-    return shipments.map((shipment) => ({ ...shipment }));
+    return shipments.flatMap((shipment) =>
+      shipment.lines.map((line) => ({
+        shipment_id: shipment.shipmentId,
+        request_date: shipment.requestDate,
+        requestor: shipment.requestor,
+        customer: shipment.customer,
+        destination: shipment.destination,
+        priority: shipment.priority,
+        required_date: shipment.requiredDate,
+        status: shipment.status,
+        item_code: line.itemCode,
+        batch: line.batch,
+        warehouse: line.warehouse,
+        quantity_requested: line.quantityRequested,
+        quantity_approved: line.quantityApproved,
+      })),
+    );
   }
 
   if (activeView === "dispatches") {
@@ -615,6 +688,13 @@ function mapShipment(shipment: ApiShipment): Shipment {
     priority: shipment.priority === "urgent" ? "Urgent" : "Normal",
     requiredDate: shipment.required_delivery_date,
     status: toTitleCase(shipment.status) as Shipment["status"],
+    lines: shipment.lines.map((line) => ({
+      itemCode: line.item_code,
+      batch: line.batch_number,
+      warehouse: line.warehouse_location ?? "Unassigned warehouse",
+      quantityRequested: line.quantity_requested,
+      quantityApproved: line.quantity_approved,
+    })),
   };
 }
 
@@ -939,6 +1019,67 @@ export function App() {
     return `Import file approved by ${payload.approved_by}. Goods Receipt is now allowed.`;
   }
 
+  async function refreshWarehouseSnapshot(statusMessage?: string) {
+    const [apiInventory, apiShipments, apiDispatches, apiSummary, apiAuditEvents] = await Promise.all([
+      fetchInventoryBatches(),
+      fetchShipments(),
+      fetchDispatches(),
+      fetchDashboardSummary(),
+      fetchAuditEvents(20),
+    ]);
+    setInventory(apiInventory.map(mapInventoryBatch));
+    setShipments(apiShipments.map(mapShipment));
+    setDispatches(apiDispatches.map(mapDispatch));
+    setAuditEvents(apiAuditEvents);
+    setApiStatus(statusMessage ?? `Connected to backend / ${formatCurrency(apiSummary.total_inventory_value)}`);
+  }
+
+  async function handleCreateShipment(payload: Parameters<typeof createShipment>[0]) {
+    const shipment = await createShipment(payload);
+    await refreshWarehouseSnapshot(`Connected to backend / ${shipment.shipment_id} created`);
+    return `${shipment.shipment_id} created and submitted for approval.`;
+  }
+
+  async function handleApproveShipment(shipment: Shipment) {
+    if (!currentUser) {
+      throw new Error("Login session is required.");
+    }
+    const result = await approveShipment(shipment.shipmentId, {
+      approved_by: currentUser.email,
+      auth_token: currentUser.session_token,
+      lines: shipment.lines.map((line) => ({
+        item_code: line.itemCode,
+        batch_number: line.batch,
+        warehouse_location: line.warehouse,
+        quantity_approved: line.quantityRequested,
+      })),
+    });
+    await refreshWarehouseSnapshot(`Connected to backend / ${shipment.shipmentId} approved`);
+    return result.message;
+  }
+
+  async function handleConfirmDispatch(payload: {
+    shipmentId: string;
+    dispatchNumber: string;
+    dispatchDate: string;
+    courier: string;
+    trackingNumber: string;
+  }) {
+    if (!currentUser) {
+      throw new Error("Login session is required.");
+    }
+    const result = await confirmDispatch(payload.shipmentId, {
+      dispatch_number: payload.dispatchNumber,
+      dispatch_date: payload.dispatchDate,
+      transporter_courier: payload.courier,
+      tracking_number: payload.trackingNumber,
+      dispatched_by: currentUser.email,
+      auth_token: currentUser.session_token,
+    });
+    await refreshWarehouseSnapshot(`Connected to backend / ${payload.dispatchNumber} dispatched`);
+    return result.message;
+  }
+
   async function handleSaveSecurityUser(payload: ApiSaveSecurityUserRequest) {
     setSecurityMessage("Saving user access...");
     try {
@@ -1111,10 +1252,10 @@ export function App() {
     <main className="app-shell">
       <aside className="sidebar">
         <div className="brand">
-          <div className="brand-mark">WH</div>
+          <div className="brand-mark">CT</div>
           <div>
-            <strong>Warehouse Control</strong>
-            <span>Healthcare SCM</span>
+            <strong>Supply Chain Tower</strong>
+            <span>Healthcare logistics</span>
           </div>
         </div>
         <nav className="nav-list" aria-label="Primary navigation">
@@ -1220,8 +1361,24 @@ export function App() {
             warehouses={inventoryWarehouses}
           />
         ) : null}
-        {activeView === "shipments" ? <ShipmentsView shipments={shipments} /> : null}
-        {activeView === "dispatches" ? <DispatchesView dispatches={dispatches} /> : null}
+        {activeView === "shipments" ? (
+          <ShipmentsView
+            currentUser={currentUser}
+            customers={customers}
+            inventory={inventory}
+            onApproveShipment={handleApproveShipment}
+            onCreateShipment={handleCreateShipment}
+            shipments={shipments}
+          />
+        ) : null}
+        {activeView === "dispatches" ? (
+          <DispatchesView
+            currentUser={currentUser}
+            dispatches={dispatches}
+            onConfirmDispatch={handleConfirmDispatch}
+            shipments={shipments}
+          />
+        ) : null}
         {activeView === "receipts" ? <ReceiptsView receipts={receipts} /> : null}
         {activeView === "counts" ? <CountsView counts={counts} /> : null}
         {activeView === "expiry" ? <ExpiryView inventory={inventory} /> : null}
@@ -1368,6 +1525,23 @@ function DashboardView({
         />
       </section>
 
+      <section className="control-grid" aria-label="Control tower intelligence">
+        <Warehouse3DMap inventory={inventory} />
+        <WhatIfSimulator inventory={inventory} shipments={shipments} />
+      </section>
+
+      <section className="content-grid wide-left">
+        <ShipmentRoutePanel shipments={shipments} />
+        <Panel title="Operations pulse" meta="Live queue">
+          <div className="pulse-stack">
+            <PulseItem label="Imports pending approval" value={String(pendingApproval)} state={pendingApproval > 0 ? "warn" : "ok"} />
+            <PulseItem label="Imports ready for receipt" value={String(pendingReceipt)} state={pendingReceipt > 0 ? "active" : "ok"} />
+            <PulseItem label="Shipment requests open" value={String(openShipments)} state={openShipments > 0 ? "active" : "ok"} />
+            <PulseItem label="Expiry alerts under 90 days" value={String(expiringIn90Days)} state={expiringIn90Days > 0 ? "danger" : "ok"} />
+          </div>
+        </Panel>
+      </section>
+
       <section className="content-grid">
         <Panel title="Inventory by warehouse" meta="Value">
           {Object.entries(warehouseValues).map(([warehouse, value]) => (
@@ -1397,6 +1571,191 @@ function DashboardView({
         </Panel>
       </section>
     </>
+  );
+}
+
+function Warehouse3DMap({ inventory }: { inventory: InventoryBatch[] }) {
+  const warehouseStats = Object.values(
+    inventory.reduce<Record<string, { warehouse: string; quantity: number; value: number; risky: number }>>(
+      (totals, batch) => {
+        const current = totals[batch.warehouse] ?? {
+          warehouse: batch.warehouse,
+          quantity: 0,
+          value: 0,
+          risky: 0,
+        };
+        current.quantity += batch.quantity;
+        current.value += batch.quantity * batch.unitValue;
+        current.risky += batch.daysToExpiry <= 180 ? 1 : 0;
+        totals[batch.warehouse] = current;
+        return totals;
+      },
+      {},
+    ),
+  ).sort((a, b) => b.value - a.value);
+  const maxQuantity = Math.max(...warehouseStats.map((warehouse) => warehouse.quantity), 1);
+
+  return (
+    <Panel title="3D warehouse inventory map" meta={`${warehouseStats.length} warehouse(s)`}>
+      <div className="warehouse-scene" aria-label="Warehouse inventory capacity map">
+        {warehouseStats.length === 0 ? (
+          <p className="empty-state">No inventory available for mapping.</p>
+        ) : (
+          warehouseStats.map((warehouse, index) => {
+            const height = Math.max(18, Math.round((warehouse.quantity / maxQuantity) * 100));
+            return (
+              <article className="warehouse-column" key={warehouse.warehouse}>
+                <div className="warehouse-column-stage">
+                  <div
+                    className={warehouse.risky > 0 ? "warehouse-bar warning" : "warehouse-bar"}
+                    style={{ height: `${height}%` }}
+                  />
+                  <span className="warehouse-floor">{String(index + 1).padStart(2, "0")}</span>
+                </div>
+                <div>
+                  <strong>{warehouse.warehouse}</strong>
+                  <span>{formatNumber(warehouse.quantity)} units</span>
+                  <small>{formatCurrency(warehouse.value)}</small>
+                </div>
+              </article>
+            );
+          })
+        )}
+      </div>
+    </Panel>
+  );
+}
+
+function WhatIfSimulator({
+  inventory,
+  shipments,
+}: {
+  inventory: InventoryBatch[];
+  shipments: Shipment[];
+}) {
+  const [portDelay, setPortDelay] = useState(2);
+  const [customsDelay, setCustomsDelay] = useState(3);
+  const totalDelay = portDelay + customsDelay;
+  const openShipments = shipments.filter((shipment) =>
+    ["Draft", "Submitted", "Approved"].includes(shipment.status),
+  );
+  const impactedShipments = openShipments.filter((shipment) => daysUntil(shipment.requiredDate) <= totalDelay + 5);
+  const stockRisk = inventory.filter((batch) => batch.daysToExpiry >= 0 && batch.daysToExpiry <= totalDelay * 20).length;
+  const riskScore = Math.min(100, impactedShipments.length * 22 + stockRisk * 8 + totalDelay * 3);
+
+  return (
+    <Panel title="What-if delay simulator" meta={`${totalDelay} day impact`}>
+      <div className="simulator-stack">
+        <SliderControl
+          label="Port congestion delay"
+          max={14}
+          min={0}
+          onChange={setPortDelay}
+          value={portDelay}
+        />
+        <SliderControl
+          label="Customs clearance delay"
+          max={14}
+          min={0}
+          onChange={setCustomsDelay}
+          value={customsDelay}
+        />
+        <div className="risk-meter">
+          <div>
+            <span>Risk score</span>
+            <strong>{riskScore}</strong>
+          </div>
+          <div className="risk-track">
+            <span style={{ width: `${riskScore}%` }} />
+          </div>
+        </div>
+        <div className="simulator-results">
+          <SummaryItem label="Impacted shipments" value={String(impactedShipments.length)} />
+          <SummaryItem label="Expiry-sensitive batches" value={String(stockRisk)} />
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+function SliderControl({
+  label,
+  max,
+  min,
+  onChange,
+  value,
+}: {
+  label: string;
+  max: number;
+  min: number;
+  onChange: (value: number) => void;
+  value: number;
+}) {
+  return (
+    <label className="slider-control">
+      <span>{label}</span>
+      <div>
+        <input
+          max={max}
+          min={min}
+          type="range"
+          value={value}
+          onChange={(event) => onChange(Number(event.target.value))}
+        />
+        <strong>{value}d</strong>
+      </div>
+    </label>
+  );
+}
+
+function ShipmentRoutePanel({ shipments }: { shipments: Shipment[] }) {
+  const openShipments = shipments
+    .filter((shipment) => ["Draft", "Submitted", "Approved"].includes(shipment.status))
+    .slice(0, 6);
+
+  return (
+    <Panel title="Shipment route monitor" meta={`${openShipments.length} active`}>
+      <div className="route-list">
+        {openShipments.length === 0 ? (
+          <p className="empty-state">No active shipments to monitor.</p>
+        ) : (
+          openShipments.map((shipment) => (
+            <article className="route-row" key={shipment.shipmentId}>
+              <div className="route-line">
+                <span />
+                <i />
+                <span />
+              </div>
+              <div>
+                <strong>{shipment.shipmentId}</strong>
+                <span>{shipment.customer} to {shipment.destination}</span>
+              </div>
+              <div>
+                <StatusTag label={shipment.status} />
+                <small>{daysUntil(shipment.requiredDate)}d due</small>
+              </div>
+            </article>
+          ))
+        )}
+      </div>
+    </Panel>
+  );
+}
+
+function PulseItem({
+  label,
+  state,
+  value,
+}: {
+  label: string;
+  state: "active" | "danger" | "ok" | "warn";
+  value: string;
+}) {
+  return (
+    <article className={`pulse-item ${state}`}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </article>
   );
 }
 
@@ -2265,10 +2624,10 @@ function LoginView({
     <main className="login-shell">
       <section className="login-panel">
         <div className="brand login-brand">
-          <div className="brand-mark">WH</div>
+          <div className="brand-mark">CT</div>
           <div>
-            <strong>Warehouse Control</strong>
-            <span>Healthcare SCM</span>
+            <strong>Supply Chain Tower</strong>
+            <span>Healthcare logistics</span>
           </div>
         </div>
         <div>
@@ -2416,44 +2775,389 @@ function InventoryView({
   );
 }
 
-function ShipmentsView({ shipments }: { shipments: Shipment[] }) {
+function ShipmentsView({
+  currentUser,
+  customers,
+  inventory,
+  onApproveShipment,
+  onCreateShipment,
+  shipments,
+}: {
+  currentUser: ApiAuthenticatedUser;
+  customers: Customer[];
+  inventory: InventoryBatch[];
+  onApproveShipment: (shipment: Shipment) => Promise<string>;
+  onCreateShipment: (payload: Parameters<typeof createShipment>[0]) => Promise<string>;
+  shipments: Shipment[];
+}) {
+  const availableBatches = useMemo(
+    () => inventory.filter((batch) => batch.quantity > 0).sort((a, b) => a.daysToExpiry - b.daysToExpiry),
+    [inventory],
+  );
+  const firstCustomer = customers[0]?.name ?? "";
+  const firstBatchKey = availableBatches[0] ? inventoryBatchKey(availableBatches[0]) : "";
+  const [customerName, setCustomerName] = useState(firstCustomer);
+  const [destinationCountry, setDestinationCountry] = useState(customers[0]?.country ?? "");
+  const [priority, setPriority] = useState<"normal" | "urgent">("normal");
+  const [requiredDate, setRequiredDate] = useState(getDateStamp());
+  const [selectedBatchKey, setSelectedBatchKey] = useState(firstBatchKey);
+  const [quantityRequested, setQuantityRequested] = useState("1");
+  const [shipmentMessage, setShipmentMessage] = useState("Create shipment requests from available inventory.");
+  const [isCreating, setIsCreating] = useState(false);
+  const [approvingShipmentId, setApprovingShipmentId] = useState("");
+  const canCreateShipment = hasPermission(currentUser, "shipment_request");
+  const canApproveShipment = hasPermission(currentUser, "shipment_approval");
+  const selectedCustomer = customers.find((customer) => customer.name === customerName);
+  const selectedBatch = availableBatches.find((batch) => inventoryBatchKey(batch) === selectedBatchKey);
+  const pendingApprovalShipments = shipments.filter((shipment) =>
+    ["Draft", "Submitted"].includes(shipment.status),
+  );
+
+  useEffect(() => {
+    if (!customerName && firstCustomer) {
+      setCustomerName(firstCustomer);
+    }
+  }, [customerName, firstCustomer]);
+
+  useEffect(() => {
+    if (selectedCustomer) {
+      setDestinationCountry(selectedCustomer.country);
+    }
+  }, [selectedCustomer]);
+
+  useEffect(() => {
+    if (!selectedBatchKey && firstBatchKey) {
+      setSelectedBatchKey(firstBatchKey);
+    }
+  }, [firstBatchKey, selectedBatchKey]);
+
+  async function handleCreateShipment() {
+    if (!canCreateShipment) {
+      setShipmentMessage("Your role cannot create shipment requests.");
+      return;
+    }
+    if (!selectedBatch) {
+      setShipmentMessage("Select an available inventory batch.");
+      return;
+    }
+    const requestedQuantity = Number(quantityRequested);
+    if (!Number.isFinite(requestedQuantity) || requestedQuantity <= 0) {
+      setShipmentMessage("Enter a valid requested quantity.");
+      return;
+    }
+    if (requestedQuantity > selectedBatch.quantity) {
+      setShipmentMessage(`Requested quantity cannot exceed available stock ${selectedBatch.quantity}.`);
+      return;
+    }
+    if (!customerName.trim() || !destinationCountry.trim() || !requiredDate) {
+      setShipmentMessage("Customer, destination country, and required date are mandatory.");
+      return;
+    }
+
+    setIsCreating(true);
+    setShipmentMessage("Creating shipment request...");
+    try {
+      const message = await onCreateShipment({
+        request_date: getDateStamp(),
+        requestor_name: currentUser.email,
+        customer_name: customerName,
+        destination_country: destinationCountry,
+        priority,
+        required_delivery_date: requiredDate,
+        auth_token: currentUser.session_token,
+        submit_for_approval: true,
+        lines: [
+          {
+            item_code: selectedBatch.itemCode,
+            batch_number: selectedBatch.batch,
+            warehouse_location: selectedBatch.warehouse,
+            quantity_requested: requestedQuantity,
+          },
+        ],
+      });
+      setShipmentMessage(message);
+      setQuantityRequested("1");
+    } catch (error) {
+      setShipmentMessage(error instanceof Error ? error.message : "Could not create shipment request.");
+    } finally {
+      setIsCreating(false);
+    }
+  }
+
+  async function handleApproveShipment(shipment: Shipment) {
+    if (!canApproveShipment) {
+      setShipmentMessage("Your role cannot approve shipment requests.");
+      return;
+    }
+
+    setApprovingShipmentId(shipment.shipmentId);
+    setShipmentMessage(`Approving ${shipment.shipmentId}...`);
+    try {
+      const message = await onApproveShipment(shipment);
+      setShipmentMessage(message);
+    } catch (error) {
+      setShipmentMessage(error instanceof Error ? error.message : "Could not approve shipment.");
+    } finally {
+      setApprovingShipmentId("");
+    }
+  }
+
   return (
-    <Panel title="Shipment requests" meta="Approval workflow">
-      <ShipmentTable rows={shipments} />
-    </Panel>
+    <>
+      <section className="content-grid">
+        <Panel title="Create shipment request" meta="Stock checked before approval">
+          <div className="shipment-form-grid">
+            <label className="field-control">
+              <span>Customer</span>
+              <select value={customerName} onChange={(event) => setCustomerName(event.target.value)}>
+                <option value="">Select customer</option>
+                {customers.map((customer) => (
+                  <option key={customer.code} value={customer.name}>
+                    {customer.name} / {customer.country}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field-control">
+              <span>Destination country</span>
+              <input
+                value={destinationCountry}
+                onChange={(event) => setDestinationCountry(event.target.value)}
+              />
+            </label>
+            <label className="field-control">
+              <span>Priority</span>
+              <select value={priority} onChange={(event) => setPriority(event.target.value as "normal" | "urgent")}>
+                <option value="normal">Normal</option>
+                <option value="urgent">Urgent</option>
+              </select>
+            </label>
+            <label className="field-control">
+              <span>Required delivery date</span>
+              <input
+                type="date"
+                value={requiredDate}
+                onChange={(event) => setRequiredDate(event.target.value)}
+              />
+            </label>
+            <label className="field-control wide-field">
+              <span>FEFO batch</span>
+              <select value={selectedBatchKey} onChange={(event) => setSelectedBatchKey(event.target.value)}>
+                <option value="">Select inventory batch</option>
+                {availableBatches.map((batch) => (
+                  <option key={inventoryBatchKey(batch)} value={inventoryBatchKey(batch)}>
+                    {batch.itemCode} / {batch.batch} / {batch.warehouse} / Qty {batch.quantity} / Exp {batch.expiryDate}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field-control">
+              <span>Quantity requested</span>
+              <input
+                min="1"
+                step="1"
+                type="number"
+                value={quantityRequested}
+                onChange={(event) => setQuantityRequested(event.target.value)}
+              />
+            </label>
+            <div className="learning-form-actions">
+              <button className="primary-action" onClick={handleCreateShipment} disabled={isCreating || !canCreateShipment}>
+                <Plus size={17} aria-hidden="true" />
+                {isCreating ? "Creating" : "Create shipment"}
+              </button>
+              <p className="status-line">{shipmentMessage}</p>
+            </div>
+          </div>
+        </Panel>
+
+        <Panel title="Approval queue" meta={`${pendingApprovalShipments.length} waiting`}>
+          <div className="validation-stack">
+            {pendingApprovalShipments.length === 0 ? (
+              <p className="empty-state">No shipments are waiting for approval.</p>
+            ) : (
+              pendingApprovalShipments.map((shipment) => (
+                <article className="queue-row" key={shipment.shipmentId}>
+                  <div className="queue-row-main">
+                    <div>
+                      <strong>{shipment.shipmentId}</strong>
+                      <span>{shipment.customer} / {shipment.destination}</span>
+                    </div>
+                    <StatusTag label={shipment.status} />
+                  </div>
+                  <div className="queue-row-meta">
+                    <span>{shipment.lines.length} line(s)</span>
+                    <span>{shipment.priority}</span>
+                  </div>
+                  <button
+                    className="secondary-action"
+                    onClick={() => void handleApproveShipment(shipment)}
+                    disabled={!canApproveShipment || approvingShipmentId === shipment.shipmentId}
+                  >
+                    {approvingShipmentId === shipment.shipmentId ? "Approving" : "Approve"}
+                  </button>
+                </article>
+              ))
+            )}
+          </div>
+        </Panel>
+      </section>
+
+      <Panel title="Shipment requests" meta="Create, approve, dispatch">
+        <ShipmentTable rows={shipments} showLines />
+      </Panel>
+    </>
   );
 }
 
-function DispatchesView({ dispatches }: { dispatches: Dispatch[] }) {
+function DispatchesView({
+  currentUser,
+  dispatches,
+  onConfirmDispatch,
+  shipments,
+}: {
+  currentUser: ApiAuthenticatedUser;
+  dispatches: Dispatch[];
+  onConfirmDispatch: (payload: {
+    shipmentId: string;
+    dispatchNumber: string;
+    dispatchDate: string;
+    courier: string;
+    trackingNumber: string;
+  }) => Promise<string>;
+  shipments: Shipment[];
+}) {
+  const approvedShipments = shipments.filter((shipment) => shipment.status === "Approved");
+  const firstApprovedShipment = approvedShipments[0]?.shipmentId ?? "";
+  const [selectedShipmentId, setSelectedShipmentId] = useState(firstApprovedShipment);
+  const [dispatchNumber, setDispatchNumber] = useState(generateDispatchNumber(dispatches));
+  const [dispatchDate, setDispatchDate] = useState(getDateStamp());
+  const [courier, setCourier] = useState("");
+  const [trackingNumber, setTrackingNumber] = useState("");
+  const [dispatchMessage, setDispatchMessage] = useState("Confirm dispatch only after shipment approval.");
+  const [isDispatching, setIsDispatching] = useState(false);
+  const canDispatch = hasPermission(currentUser, "dispatch");
+
+  useEffect(() => {
+    if (!selectedShipmentId && firstApprovedShipment) {
+      setSelectedShipmentId(firstApprovedShipment);
+    }
+  }, [firstApprovedShipment, selectedShipmentId]);
+
+  useEffect(() => {
+    setDispatchNumber(generateDispatchNumber(dispatches));
+  }, [dispatches]);
+
+  async function handleConfirmDispatch() {
+    if (!canDispatch) {
+      setDispatchMessage("Your role cannot confirm dispatch.");
+      return;
+    }
+    if (!selectedShipmentId) {
+      setDispatchMessage("Select an approved shipment.");
+      return;
+    }
+    if (!dispatchNumber.trim() || !dispatchDate || !courier.trim() || !trackingNumber.trim()) {
+      setDispatchMessage("Dispatch number, date, courier, and tracking number are mandatory.");
+      return;
+    }
+
+    setIsDispatching(true);
+    setDispatchMessage("Confirming dispatch and reducing inventory...");
+    try {
+      const message = await onConfirmDispatch({
+        shipmentId: selectedShipmentId,
+        dispatchNumber,
+        dispatchDate,
+        courier,
+        trackingNumber,
+      });
+      setDispatchMessage(message);
+      setCourier("");
+      setTrackingNumber("");
+    } catch (error) {
+      setDispatchMessage(error instanceof Error ? error.message : "Could not confirm dispatch.");
+    } finally {
+      setIsDispatching(false);
+    }
+  }
+
   return (
-    <Panel title="Dispatch history" meta="Inventory reducing transaction">
-      <table>
-        <thead>
-          <tr>
-            <th>Dispatch No</th>
-            <th>Shipment ID</th>
-            <th>Dispatch Date</th>
-            <th>Courier</th>
-            <th>Tracking No</th>
-            <th>Dispatched By</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {dispatches.map((dispatch) => (
-            <tr key={dispatch.dispatchNo}>
-              <td>{dispatch.dispatchNo}</td>
-              <td>{dispatch.shipmentId}</td>
-              <td>{dispatch.dispatchDate}</td>
-              <td>{dispatch.courier}</td>
-              <td>{dispatch.trackingNo}</td>
-              <td>{dispatch.dispatchedBy}</td>
-              <td><StatusTag label={dispatch.status} /></td>
+    <>
+      <section className="content-grid">
+        <Panel title="Confirm dispatch" meta="Inventory reducing transaction">
+          <div className="shipment-form-grid">
+            <label className="field-control wide-field">
+              <span>Approved shipment</span>
+              <select value={selectedShipmentId} onChange={(event) => setSelectedShipmentId(event.target.value)}>
+                <option value="">Select approved shipment</option>
+                {approvedShipments.map((shipment) => (
+                  <option key={shipment.shipmentId} value={shipment.shipmentId}>
+                    {shipment.shipmentId} / {shipment.customer} / {shipment.destination}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field-control">
+              <span>Dispatch number</span>
+              <input value={dispatchNumber} onChange={(event) => setDispatchNumber(event.target.value)} />
+            </label>
+            <label className="field-control">
+              <span>Dispatch date</span>
+              <input type="date" value={dispatchDate} onChange={(event) => setDispatchDate(event.target.value)} />
+            </label>
+            <label className="field-control">
+              <span>Transporter / courier</span>
+              <input value={courier} onChange={(event) => setCourier(event.target.value)} />
+            </label>
+            <label className="field-control">
+              <span>Tracking number</span>
+              <input value={trackingNumber} onChange={(event) => setTrackingNumber(event.target.value)} />
+            </label>
+            <div className="learning-form-actions">
+              <button className="primary-action" onClick={handleConfirmDispatch} disabled={isDispatching || !canDispatch}>
+                <Truck size={17} aria-hidden="true" />
+                {isDispatching ? "Dispatching" : "Confirm dispatch"}
+              </button>
+              <p className="status-line">{dispatchMessage}</p>
+            </div>
+          </div>
+        </Panel>
+
+        <Panel title="Approved shipment lines" meta={`${approvedShipments.length} ready`}>
+          <ShipmentTable rows={approvedShipments} compact showLines />
+        </Panel>
+      </section>
+
+      <Panel title="Dispatch history" meta={`${dispatches.length} records`}>
+        <table>
+          <thead>
+            <tr>
+              <th>Dispatch No</th>
+              <th>Shipment ID</th>
+              <th>Dispatch Date</th>
+              <th>Courier</th>
+              <th>Tracking No</th>
+              <th>Dispatched By</th>
+              <th>Status</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </Panel>
+          </thead>
+          <tbody>
+            {dispatches.map((dispatch) => (
+              <tr key={dispatch.dispatchNo}>
+                <td>{dispatch.dispatchNo}</td>
+                <td>{dispatch.shipmentId}</td>
+                <td>{dispatch.dispatchDate}</td>
+                <td>{dispatch.courier}</td>
+                <td>{dispatch.trackingNo}</td>
+                <td>{dispatch.dispatchedBy}</td>
+                <td><StatusTag label={dispatch.status} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Panel>
+    </>
   );
 }
 
@@ -2976,7 +3680,15 @@ function InventoryTable({ rows, compact = false }: { rows: InventoryBatch[]; com
   );
 }
 
-function ShipmentTable({ rows, compact = false }: { rows: Shipment[]; compact?: boolean }) {
+function ShipmentTable({
+  rows,
+  compact = false,
+  showLines = false,
+}: {
+  rows: Shipment[];
+  compact?: boolean;
+  showLines?: boolean;
+}) {
   return (
     <table>
       <thead>
@@ -2984,6 +3696,7 @@ function ShipmentTable({ rows, compact = false }: { rows: Shipment[]; compact?: 
           <th>Shipment ID</th>
           <th>Customer</th>
           {!compact ? <th>Destination</th> : null}
+          {showLines ? <th>Line / Batch / Warehouse</th> : null}
           <th>Priority</th>
           <th>Required Date</th>
           <th>Status</th>
@@ -2995,6 +3708,17 @@ function ShipmentTable({ rows, compact = false }: { rows: Shipment[]; compact?: 
             <td>{shipment.shipmentId}</td>
             <td>{shipment.customer}</td>
             {!compact ? <td>{shipment.destination}</td> : null}
+            {showLines ? (
+              <td>
+                <div className="line-stack">
+                  {shipment.lines.map((line) => (
+                    <span key={`${shipment.shipmentId}-${line.itemCode}-${line.batch}-${line.warehouse}`}>
+                      {line.itemCode} / {line.batch} / {line.warehouse} / {formatNumber(line.quantityApproved || line.quantityRequested)}
+                    </span>
+                  ))}
+                </div>
+              </td>
+            ) : null}
             <td>{shipment.priority}</td>
             <td>{shipment.requiredDate}</td>
             <td><StatusTag label={shipment.status} /></td>
