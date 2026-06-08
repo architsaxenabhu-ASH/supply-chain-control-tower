@@ -54,6 +54,8 @@ The first implementation milestone should focus on the document-to-validation pa
 - `docs/import-validation-rules.md`: warehouse, approver, country-document, and product-learning validation rules
 - `docs/self-learning-engine.md`: correction-driven learning design
 - `docs/no-hardcoded-master-data.md`: rule that new business information must be captured and learned inside the app
+- `docs/git-and-data-backup.md`: rule that code goes to GitHub and operational data goes to database/document storage
+- `docs/cloud-database-next-step.md`: next step for moving runtime data from SQLite to PostgreSQL
 - `docs/ocr-setup.md`: Tesseract OCR installation and current AWB extraction result
 - `docs/portal-roadmap.md`: import, sales, inventory, and unified control tower phases
 - `docs/roadmap.md`: phased delivery roadmap

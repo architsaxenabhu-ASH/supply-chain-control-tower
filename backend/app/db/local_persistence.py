@@ -4,69 +4,105 @@ import json
 import os
 import sqlite3
 from datetime import UTC, date, datetime
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable, Iterable, TypeVar
+
+from sqlalchemy import Column, Integer, MetaData, String, Table, Text, create_engine, delete, select
+from sqlalchemy.engine import Engine
+
+from app.core.config import settings
 
 
 T = TypeVar("T")
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DATA_ROOT = PROJECT_ROOT / "data"
-DATABASE_PATH = Path(os.environ.get("CONTROL_TOWER_DB_PATH", DATA_ROOT / "control_tower.db"))
+
+metadata = MetaData()
+
+local_state_records = Table(
+    "local_state_records",
+    metadata,
+    Column("collection", String(120), primary_key=True),
+    Column("record_key", String(500), primary_key=True),
+    Column("sort_index", Integer, nullable=False, default=0),
+    Column("payload_json", Text, nullable=False),
+    Column("updated_at", String(60), nullable=False),
+)
+
+audit_events = Table(
+    "audit_events",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("action", String(120), nullable=False),
+    Column("module_name", String(120), nullable=False),
+    Column("entity_name", String(120), nullable=False),
+    Column("entity_id", String(500), nullable=False),
+    Column("actor", String(250), nullable=True),
+    Column("reason", Text, nullable=True),
+    Column("old_value_json", Text, nullable=True),
+    Column("new_value_json", Text, nullable=True),
+    Column("created_at", String(60), nullable=False),
+)
+
+
+def configured_database_url() -> str:
+    legacy_sqlite_path = os.environ.get("CONTROL_TOWER_DB_PATH")
+    if legacy_sqlite_path:
+        return sqlite_url_from_path(Path(legacy_sqlite_path))
+
+    database_url = os.environ.get("DATABASE_URL") or settings.database_url
+    if database_url.startswith("postgres://"):
+        return "postgresql+psycopg://" + database_url.removeprefix("postgres://")
+    if database_url.startswith("postgresql://"):
+        return "postgresql+psycopg://" + database_url.removeprefix("postgresql://")
+    if database_url.startswith("sqlite:///") and not database_url.startswith("sqlite:////"):
+        sqlite_path = Path(database_url.removeprefix("sqlite:///"))
+        if not sqlite_path.is_absolute():
+            sqlite_path = PROJECT_ROOT / sqlite_path
+        return sqlite_url_from_path(sqlite_path)
+    return database_url
+
+
+def sqlite_url_from_path(path: Path) -> str:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return f"sqlite:///{path.as_posix()}"
+
+
+@lru_cache(maxsize=1)
+def get_engine() -> Engine:
+    database_url = configured_database_url()
+    if database_url.startswith("sqlite:///"):
+        sqlite_path = Path(database_url.removeprefix("sqlite:///"))
+        sqlite_path.parent.mkdir(parents=True, exist_ok=True)
+        return create_engine(database_url, future=True)
+    return create_engine(database_url, future=True, pool_pre_ping=True)
 
 
 def init_database() -> None:
     DATA_ROOT.mkdir(parents=True, exist_ok=True)
-    with connect() as connection:
-        connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS local_state_records (
-                collection TEXT NOT NULL,
-                record_key TEXT NOT NULL,
-                sort_index INTEGER NOT NULL DEFAULT 0,
-                payload_json TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
-                PRIMARY KEY (collection, record_key)
-            )
-            """
-        )
-        connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS audit_events (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                action TEXT NOT NULL,
-                module_name TEXT NOT NULL,
-                entity_name TEXT NOT NULL,
-                entity_id TEXT NOT NULL,
-                actor TEXT,
-                reason TEXT,
-                old_value_json TEXT,
-                new_value_json TEXT,
-                created_at TEXT NOT NULL
-            )
-            """
-        )
+    metadata.create_all(get_engine())
 
 
 def connect() -> sqlite3.Connection:
-    DATA_ROOT.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(DATABASE_PATH)
+    database_url = configured_database_url()
+    if not database_url.startswith("sqlite:///"):
+        raise RuntimeError("Raw sqlite connection is available only when DATABASE_URL uses SQLite.")
+    sqlite_path = Path(database_url.removeprefix("sqlite:///"))
+    connection = sqlite3.connect(sqlite_path)
     connection.row_factory = sqlite3.Row
     return connection
 
 
 def load_collection(collection: str, factory: Callable[[dict[str, Any]], T]) -> list[T]:
     init_database()
-    with connect() as connection:
+    with get_engine().begin() as connection:
         rows = connection.execute(
-            """
-            SELECT payload_json
-            FROM local_state_records
-            WHERE collection = ?
-            ORDER BY sort_index, record_key
-            """,
-            (collection,),
-        ).fetchall()
+            select(local_state_records.c.payload_json)
+            .where(local_state_records.c.collection == collection)
+            .order_by(local_state_records.c.sort_index, local_state_records.c.record_key)
+        ).mappings().all()
 
     return [factory(json.loads(row["payload_json"])) for row in rows]
 
@@ -78,33 +114,23 @@ def save_collection(
 ) -> None:
     init_database()
     now = datetime.now(UTC).isoformat()
-    with connect() as connection:
+    rows = [
+        {
+            "collection": collection,
+            "record_key": key_fn(record),
+            "sort_index": index,
+            "payload_json": json.dumps(to_json_payload(record), default=json_default),
+            "updated_at": now,
+        }
+        for index, record in enumerate(records)
+    ]
+
+    with get_engine().begin() as connection:
         connection.execute(
-            "DELETE FROM local_state_records WHERE collection = ?",
-            (collection,),
+            delete(local_state_records).where(local_state_records.c.collection == collection)
         )
-        connection.executemany(
-            """
-            INSERT INTO local_state_records (
-                collection,
-                record_key,
-                sort_index,
-                payload_json,
-                updated_at
-            )
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            [
-                (
-                    collection,
-                    key_fn(record),
-                    index,
-                    json.dumps(to_json_payload(record), default=json_default),
-                    now,
-                )
-                for index, record in enumerate(records)
-            ],
-        )
+        if rows:
+            connection.execute(local_state_records.insert(), rows)
 
 
 def record_audit_event(
@@ -119,39 +145,33 @@ def record_audit_event(
     new_value: Any | None = None,
 ) -> None:
     init_database()
-    with connect() as connection:
+    with get_engine().begin() as connection:
         connection.execute(
-            """
-            INSERT INTO audit_events (
-                action,
-                module_name,
-                entity_name,
-                entity_id,
-                actor,
-                reason,
-                old_value_json,
-                new_value_json,
-                created_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                action,
-                module_name,
-                entity_name,
-                entity_id,
-                actor,
-                reason,
-                json.dumps(to_json_payload(old_value), default=json_default) if old_value is not None else None,
-                json.dumps(to_json_payload(new_value), default=json_default) if new_value is not None else None,
-                datetime.now(UTC).isoformat(),
-            ),
+            audit_events.insert(),
+            {
+                "action": action,
+                "module_name": module_name,
+                "entity_name": entity_name,
+                "entity_id": entity_id,
+                "actor": actor,
+                "reason": reason,
+                "old_value_json": json.dumps(to_json_payload(old_value), default=json_default)
+                if old_value is not None
+                else None,
+                "new_value_json": json.dumps(to_json_payload(new_value), default=json_default)
+                if new_value is not None
+                else None,
+                "created_at": datetime.now(UTC).isoformat(),
+            },
         )
 
 
-def database_path() -> Path:
+def database_path() -> Path | str:
     init_database()
-    return DATABASE_PATH
+    database_url = configured_database_url()
+    if database_url.startswith("sqlite:///"):
+        return Path(database_url.removeprefix("sqlite:///"))
+    return database_url
 
 
 def to_json_payload(value: Any) -> Any:
