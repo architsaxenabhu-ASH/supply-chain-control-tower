@@ -29,8 +29,10 @@ import {
   ScanText,
   Search,
   ShieldCheck,
+  Moon,
   Ship,
   Sparkles,
+  Sun,
   Truck,
   Upload,
   Users,
@@ -1101,6 +1103,12 @@ export function App() {
   const [loginMessage, setLoginMessage] = useState("Sign in with a configured Security User email.");
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [activeView, setActiveView] = useState(() => getInitialViewId());
+  const [theme, setTheme] = useState<"dark" | "light">(() => {
+    if (typeof window === "undefined") {
+      return "dark";
+    }
+    return window.localStorage.getItem("ct-theme") === "light" ? "light" : "dark";
+  });
   const [isWalkthroughOpen, setIsWalkthroughOpen] = useState(false);
   const [walkthroughStep, setWalkthroughStep] = useState(0);
   const [search, setSearch] = useState("");
@@ -1146,6 +1154,11 @@ export function App() {
   const [selectedErpTemplate, setSelectedErpTemplate] = useState("inventory_balance");
   const [erpPreview, setErpPreview] = useState<ApiErpUploadPreview | null>(null);
   const [erpMessage, setErpMessage] = useState("Select a template and generate an ERP upload preview.");
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    window.localStorage.setItem("ct-theme", theme);
+  }, [theme]);
 
   useEffect(() => {
     let isMounted = true;
@@ -1817,6 +1830,14 @@ export function App() {
             <span className="connection-status">{currentUser.email} / {currentUser.role_name}</span>
             <button className="secondary-action" onClick={handleLogout}>
               Logout
+            </button>
+            <button
+              className="secondary-action"
+              onClick={() => setTheme((current) => (current === "dark" ? "light" : "dark"))}
+              aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+            >
+              {theme === "dark" ? <Sun size={17} aria-hidden="true" /> : <Moon size={17} aria-hidden="true" />}
+              {theme === "dark" ? "Light" : "Dark"}
             </button>
             <button className="secondary-action" onClick={handleRefreshApp}>
               <RefreshCw size={17} aria-hidden="true" />

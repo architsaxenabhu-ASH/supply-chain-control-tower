@@ -2933,3 +2933,170 @@ td {
     align-items: flex-start;
   }
 }
+
+/* ----------------------------------------------------------------------
+   Light theme
+   Activated by data-theme="light" on <html>. Overrides the dark "tower"
+   tokens plus the surfaces and text colours that were hardcoded for dark.
+---------------------------------------------------------------------- */
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  color: #16313f;
+  background: #eef2f7;
+  --tower-bg: #eef2f7;
+  --tower-bg-2: #e4eaf1;
+  --tower-panel: #ffffff;
+  --tower-panel-strong: #ffffff;
+  --tower-border: rgba(15, 60, 90, 0.16);
+  --tower-border-strong: rgba(15, 60, 90, 0.32);
+  --tower-text: #16313f;
+  --tower-muted: #586b78;
+  --tower-cyan: #0a93c2;
+  --tower-emerald: #0e9e6e;
+  --tower-amber: #c47b00;
+  --tower-crimson: #d23b48;
+  --tower-shadow: 0 14px 32px rgba(20, 50, 80, 0.12);
+}
+
+[data-theme="light"] body {
+  background: linear-gradient(145deg, #eef2f7 0%, #e7edf4 54%, #eaf3ef 100%);
+  color: var(--tower-text);
+}
+
+[data-theme="light"] .app-shell,
+[data-theme="light"] .login-shell {
+  background:
+    linear-gradient(180deg, rgba(10, 147, 194, 0.05), rgba(14, 158, 110, 0.04)),
+    var(--tower-bg);
+}
+
+[data-theme="light"] .sidebar {
+  background:
+    linear-gradient(180deg, rgba(10, 147, 194, 0.08), rgba(14, 158, 110, 0.04)),
+    #ffffff;
+}
+
+[data-theme="light"] .metric-card {
+  background:
+    linear-gradient(180deg, rgba(10, 147, 194, 0.06), rgba(255, 255, 255, 0.96)),
+    #ffffff;
+}
+
+/* Inset / control surfaces that were dark translucent. */
+[data-theme="light"] .secondary-action,
+[data-theme="light"] .field-control input,
+[data-theme="light"] .field-control select,
+[data-theme="light"] .field-control textarea,
+[data-theme="light"] .filter-control select,
+[data-theme="light"] .upload-form select,
+[data-theme="light"] .upload-form input,
+[data-theme="light"] .assistant-box textarea,
+[data-theme="light"] .search-box,
+[data-theme="light"] .confidence-badge,
+[data-theme="light"] .checklist-row,
+[data-theme="light"] .review-row,
+[data-theme="light"] .walkthrough-step-dot,
+[data-theme="light"] .workflow-step.waiting {
+  background: #f3f6fa;
+  color: var(--tower-text);
+}
+
+[data-theme="light"] .bar-track,
+[data-theme="light"] .confidence-meter-track,
+[data-theme="light"] .mini-track,
+[data-theme="light"] .status-tag {
+  background: #e6edf4;
+}
+
+/* Text that was light-coloured for the dark theme. */
+[data-theme="light"] .nav-item {
+  color: #4a5d6a;
+}
+
+[data-theme="light"] .nav-item.active,
+[data-theme="light"] .nav-item:hover {
+  color: var(--tower-cyan);
+}
+
+[data-theme="light"] th {
+  color: #5a6b78;
+}
+
+[data-theme="light"] td,
+[data-theme="light"] .status-tag {
+  color: var(--tower-text);
+}
+
+[data-theme="light"] .field-control span,
+[data-theme="light"] .filter-control span,
+[data-theme="light"] .upload-form label span,
+[data-theme="light"] .toggle-control {
+  color: #586b78;
+}
+
+/* Status pills: keep the translucent colour fills, darken the text for contrast. */
+[data-theme="light"] .status-above-365-days,
+[data-theme="light"] .status-matched,
+[data-theme="light"] .status-ready,
+[data-theme="light"] .status-autofill,
+[data-theme="light"] .status-complete,
+[data-theme="light"] .status-present {
+  color: #0c7a52;
+}
+
+[data-theme="light"] .status-urgent,
+[data-theme="light"] .status-0-90-days,
+[data-theme="light"] .status-deficit,
+[data-theme="light"] .status-expired,
+[data-theme="light"] .status-blocked,
+[data-theme="light"] .status-ask-first-time,
+[data-theme="light"] .status-missing {
+  color: #c5303d;
+}
+
+[data-theme="light"] .status-submitted,
+[data-theme="light"] .status-91-180-days,
+[data-theme="light"] .status-excess,
+[data-theme="light"] .status-validation-pending,
+[data-theme="light"] .status-partial {
+  color: #9a6500;
+}
+
+[data-theme="light"] .status-planned {
+  color: #586b78;
+}
+
+/* Validation banners were dark-tinted; lighten them for the light theme. */
+[data-theme="light"] .validation-banner,
+[data-theme="light"] .erp-template-card.active,
+[data-theme="light"] .erp-template-card:hover,
+[data-theme="light"] .required-card.satisfied {
+  background: rgba(14, 158, 110, 0.1);
+}
+
+[data-theme="light"] .validation-banner.warning {
+  background: rgba(255, 189, 74, 0.16);
+}
+
+[data-theme="light"] .validation-banner.danger,
+[data-theme="light"] .required-card.missing {
+  background: rgba(255, 93, 108, 0.12);
+}
+
+/* Smooth fade when switching between themes. */
+body,
+.app-shell,
+.sidebar,
+.panel,
+.metric-card,
+.nav-item,
+.secondary-action,
+table,
+th,
+td {
+  transition:
+    background-color 280ms ease,
+    color 280ms ease,
+    border-color 280ms ease;
+}
