@@ -83,6 +83,8 @@ ERP_TEMPLATES = [
         source_module="Imports",
         columns=[
             "TEMPLATE",
+            "SHIPMENT_NAME",
+            "VERTICAL",
             "IMPORT_FILE",
             "STATUS",
             "DESTINATION_ENTITY",
@@ -260,6 +262,8 @@ def import_receipt_rows() -> list[tuple[str, dict[str, Any]]]:
                     f"{candidate.import_file_number}/{line.item_code}/{line.batch_number or 'missing-batch'}",
                     {
                         "TEMPLATE": "IMPORT_RECEIPT",
+                        "SHIPMENT_NAME": candidate.shipment_name or candidate.import_file_number,
+                        "VERTICAL": candidate.shipment_vertical,
                         "IMPORT_FILE": candidate.import_file_number,
                         "STATUS": candidate.status.value,
                         "DESTINATION_ENTITY": candidate.destination_entity,

@@ -843,8 +843,15 @@ function getExportRows({
 
   if (activeView === "import-validation") {
     return (importCandidate?.lines ?? []).map((line) => ({
+      shipment_name: importCandidate?.shipment_name ?? importCandidate?.import_file_number,
+      shipment_vertical: importCandidate?.shipment_vertical,
+      shipment_number: importCandidate?.shipment_number,
       import_file: importCandidate?.import_file_number,
       destination_country: importCandidate?.destination_country,
+      invoice_numbers: importCandidate?.invoice_numbers.join("; ") || importCandidate?.invoice_number,
+      commercial_invoice_document_count: importCandidate?.commercial_invoice_document_ids.length ?? 0,
+      packing_list_document_count: importCandidate?.packing_list_document_ids.length ?? 0,
+      awb_document_linked: importCandidate?.awb_document_id ? "yes" : "no",
       invoice_number: importCandidate?.invoice_number,
       awb_number: importCandidate?.awb_number,
       item_code: line.item_code,
@@ -1109,7 +1116,7 @@ export function App() {
   const [assistantAnswer, setAssistantAnswer] = useState("Found 2 batches expiring within 180 days.");
   const [isAskingAssistant, setIsAskingAssistant] = useState(false);
   const [documentType, setDocumentType] = useState<DocumentType>("commercial_invoice");
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
   const [selectedMaster, setSelectedMaster] = useState<DocumentExtractionMaster | null>(null);
   const [documentMessage, setDocumentMessage] = useState("Upload a document to trigger scanning.");
@@ -1268,24 +1275,38 @@ export function App() {
   }
 
   async function handleDocumentUpload() {
-    if (!selectedFile) {
-      setDocumentMessage("Select a file first.");
+    if (selectedFiles.length === 0) {
+      setDocumentMessage("Select one or more files first.");
       return;
     }
 
     setIsUploadingDocument(true);
-    setDocumentMessage("Uploading and scanning document...");
+    setDocumentMessage(`Uploading and scanning ${selectedFiles.length} document(s)...`);
 
     try {
-      const uploaded = await uploadDocument(documentType, selectedFile);
-      const master = await getExtractionMaster(uploaded.document_id);
+      const uploadedDocuments: DocumentRecord[] = [];
+      let latestMaster: DocumentExtractionMaster | null = null;
+
+      for (const file of selectedFiles) {
+        setDocumentMessage(`Uploading and scanning ${file.name}...`);
+        const uploaded = await uploadDocument(documentType, file);
+        latestMaster = await getExtractionMaster(uploaded.document_id);
+        uploadedDocuments.push(uploaded);
+      }
+
       setDocuments((current) => [
-        uploaded,
-        ...current.filter((document) => document.document_id !== uploaded.document_id),
+        ...uploadedDocuments,
+        ...current.filter(
+          (document) => !uploadedDocuments.some((uploaded) => uploaded.document_id === document.document_id),
+        ),
       ]);
-      setSelectedMaster(master);
-      setSelectedFile(null);
-      setDocumentMessage("Document uploaded, scanned, and extraction master generated.");
+      setSelectedMaster(latestMaster);
+      setSelectedFiles([]);
+      setDocumentMessage(
+        uploadedDocuments.length === 1
+          ? "Document uploaded, scanned, and extraction master generated."
+          : `${uploadedDocuments.length} documents uploaded, scanned, and saved.`,
+      );
       setApiStatus("Connected to backend / document scanned");
       await refreshValidationQueue("Validation queue refreshed after document scan.");
     } catch (error) {
@@ -1800,11 +1821,11 @@ export function App() {
             documents={documents}
             isUploading={isUploadingDocument}
             onDocumentTypeChange={setDocumentType}
-            onFileChange={setSelectedFile}
+            onFileChange={setSelectedFiles}
             onOpenDocument={handleOpenDocument}
             onRescan={handleRescanSelectedDocument}
             onUpload={handleDocumentUpload}
-            selectedFile={selectedFile}
+            selectedFiles={selectedFiles}
             selectedMaster={selectedMaster}
           />
         ) : null}
@@ -2635,7 +2656,7 @@ function DocumentsView({
   onOpenDocument,
   onRescan,
   onUpload,
-  selectedFile,
+  selectedFiles,
   selectedMaster,
 }: {
   documentMessage: string;
@@ -2643,11 +2664,11 @@ function DocumentsView({
   documents: DocumentRecord[];
   isUploading: boolean;
   onDocumentTypeChange: (value: DocumentType) => void;
-  onFileChange: (value: File | null) => void;
+  onFileChange: (value: File[]) => void;
   onOpenDocument: (documentId: string) => void;
   onRescan: () => void;
   onUpload: () => void;
-  selectedFile: File | null;
+  selectedFiles: File[];
   selectedMaster: DocumentExtractionMaster | null;
 }) {
   const fields = selectedMaster?.fields ?? [];
@@ -2674,11 +2695,12 @@ function DocumentsView({
               </select>
             </label>
             <label>
-              <span>Source file</span>
+              <span>Source files</span>
               <input
                 accept=".pdf,.xlsx,.xls,.csv,.jpg,.jpeg,.png"
+                multiple
                 type="file"
-                onChange={(event) => onFileChange(event.target.files?.[0] ?? null)}
+                onChange={(event) => onFileChange(Array.from(event.target.files ?? []))}
               />
             </label>
             <button className="primary-action" onClick={onUpload} disabled={isUploading}>
@@ -2689,7 +2711,9 @@ function DocumentsView({
               <RefreshCw size={17} aria-hidden="true" />
               Rescan selected
             </button>
-            <p className="status-line">{selectedFile ? selectedFile.name : documentMessage}</p>
+            <p className="status-line">
+              {selectedFiles.length > 0 ? formatSelectedFiles(selectedFiles) : documentMessage}
+            </p>
           </div>
         </Panel>
 
@@ -2823,6 +2847,17 @@ function formatExtractedValue(field: ExtractedField): string {
   return value.length > 140 ? `${value.slice(0, 137)}...` : value;
 }
 
+function formatSelectedFiles(files: File[]): string {
+  if (files.length === 1) {
+    return files[0].name;
+  }
+  const visibleNames = files.slice(0, 2).map((file) => file.name).join(", ");
+  const remainingCount = files.length - 2;
+  return remainingCount > 0
+    ? `${visibleNames} + ${remainingCount} more file(s)`
+    : visibleNames;
+}
+
 function ImportValidationView({
   candidate,
   currentUser,
@@ -2873,12 +2908,24 @@ function ImportValidationView({
   const [selectedQueueId, setSelectedQueueId] = useState("");
   const [correctionValue, setCorrectionValue] = useState("");
   const [correctionReason, setCorrectionReason] = useState("");
-  const invoiceDocuments = documents.filter((document) => document.document_type === "commercial_invoice");
-  const packingDocuments = documents.filter((document) => document.document_type === "packing_list");
-  const awbDocuments = documents.filter((document) => document.document_type === "air_waybill");
-  const [selectedInvoiceDocumentId, setSelectedInvoiceDocumentId] = useState("");
-  const [selectedPackingDocumentId, setSelectedPackingDocumentId] = useState("");
+  const invoiceDocuments = useMemo(
+    () => documents.filter((document) => document.document_type === "commercial_invoice"),
+    [documents],
+  );
+  const packingDocuments = useMemo(
+    () => documents.filter((document) => document.document_type === "packing_list"),
+    [documents],
+  );
+  const awbDocuments = useMemo(
+    () => documents.filter((document) => document.document_type === "air_waybill"),
+    [documents],
+  );
+  const [selectedInvoiceDocumentIds, setSelectedInvoiceDocumentIds] = useState<string[]>([]);
+  const [selectedPackingDocumentIds, setSelectedPackingDocumentIds] = useState<string[]>([]);
   const [selectedAwbDocumentId, setSelectedAwbDocumentId] = useState("");
+  const [shipmentCountry, setShipmentCountry] = useState(candidate?.destination_country ?? "");
+  const [shipmentVerticalInput, setShipmentVerticalInput] = useState(candidate?.shipment_vertical ?? "");
+  const [shipmentNumberInput, setShipmentNumberInput] = useState(candidate?.shipment_number ?? "");
   const unknownProductCount =
     candidate?.lines.filter((line) => line.product_profile_status !== "known").length ?? 0;
   const knownProductCount =
@@ -2902,29 +2949,53 @@ function ImportValidationView({
     ?? null;
 
   useEffect(() => {
-    if (!selectedInvoiceDocumentId && invoiceDocuments[0]) {
-      setSelectedInvoiceDocumentId(invoiceDocuments[0].document_id);
+    const invoiceIdSet = new Set(invoiceDocuments.map((document) => document.document_id));
+    const nextInvoiceIds = selectedInvoiceDocumentIds.filter((documentId) => invoiceIdSet.has(documentId));
+    if (nextInvoiceIds.length !== selectedInvoiceDocumentIds.length) {
+      setSelectedInvoiceDocumentIds(nextInvoiceIds);
+    } else if (selectedInvoiceDocumentIds.length === 0 && invoiceDocuments[0]) {
+      setSelectedInvoiceDocumentIds([invoiceDocuments[0].document_id]);
     }
-    if (!selectedPackingDocumentId && packingDocuments[0]) {
-      setSelectedPackingDocumentId(packingDocuments[0].document_id);
+
+    const packingIdSet = new Set(packingDocuments.map((document) => document.document_id));
+    const nextPackingIds = selectedPackingDocumentIds.filter((documentId) => packingIdSet.has(documentId));
+    if (nextPackingIds.length !== selectedPackingDocumentIds.length) {
+      setSelectedPackingDocumentIds(nextPackingIds);
+    } else if (selectedPackingDocumentIds.length === 0 && packingDocuments[0]) {
+      setSelectedPackingDocumentIds([packingDocuments[0].document_id]);
     }
+
     if (!selectedAwbDocumentId && awbDocuments[0]) {
       setSelectedAwbDocumentId(awbDocuments[0].document_id);
+    } else if (
+      selectedAwbDocumentId &&
+      !awbDocuments.some((document) => document.document_id === selectedAwbDocumentId)
+    ) {
+      setSelectedAwbDocumentId("");
     }
   }, [
     awbDocuments,
     invoiceDocuments,
     packingDocuments,
     selectedAwbDocumentId,
-    selectedInvoiceDocumentId,
-    selectedPackingDocumentId,
+    selectedInvoiceDocumentIds,
+    selectedPackingDocumentIds,
   ]);
 
   useEffect(() => {
     if (candidate?.supplier_name && !supplierName) {
       setSupplierName(candidate.supplier_name);
     }
-  }, [candidate, supplierName]);
+    if (candidate?.destination_country && !shipmentCountry) {
+      setShipmentCountry(candidate.destination_country);
+    }
+    if (candidate?.shipment_vertical && !shipmentVerticalInput) {
+      setShipmentVerticalInput(candidate.shipment_vertical);
+    }
+    if (candidate?.shipment_number && !shipmentNumberInput) {
+      setShipmentNumberInput(candidate.shipment_number);
+    }
+  }, [candidate, shipmentCountry, shipmentNumberInput, shipmentVerticalInput, supplierName]);
 
   useEffect(() => {
     if (!selectedQueueItem) {
@@ -2940,16 +3011,23 @@ function ImportValidationView({
   }, [selectedQueueItem, selectedQueueId]);
 
   function handleAssembleImport() {
-    if (!selectedInvoiceDocumentId || !selectedPackingDocumentId) {
+    if (selectedInvoiceDocumentIds.length === 0 || selectedPackingDocumentIds.length === 0) {
       setLearningMessage("Upload and select at least Commercial Invoice and Packing List.");
+      return;
+    }
+    if (!shipmentCountry.trim() || !shipmentVerticalInput.trim() || !shipmentNumberInput.trim()) {
+      setLearningMessage("Enter shipment country, vertical, and shipment number. This creates the shipment relationship key.");
       return;
     }
 
     setLearningMessage("");
     onAssembleImport({
-      commercial_invoice_document_id: selectedInvoiceDocumentId,
-      packing_list_document_id: selectedPackingDocumentId,
+      commercial_invoice_document_ids: selectedInvoiceDocumentIds,
+      packing_list_document_ids: selectedPackingDocumentIds,
       awb_document_id: selectedAwbDocumentId || null,
+      shipment_country: shipmentCountry.trim(),
+      shipment_vertical: shipmentVerticalInput.trim(),
+      shipment_number: shipmentNumberInput.trim(),
     });
   }
 
@@ -3130,20 +3208,46 @@ function ImportValidationView({
       <section className="content-grid">
         <Panel title="Import document assembly" meta="Invoice + Packing List + AWB">
           <div className="import-actions">
+            <div className="shipment-key-grid">
+              <label className="field-control">
+                <span>Shipment country</span>
+                <input
+                  placeholder="Example: Italy"
+                  value={shipmentCountry}
+                  onChange={(event) => setShipmentCountry(event.target.value)}
+                />
+              </label>
+              <label className="field-control">
+                <span>Vertical</span>
+                <input
+                  placeholder="Example: Cardio"
+                  value={shipmentVerticalInput}
+                  onChange={(event) => setShipmentVerticalInput(event.target.value)}
+                />
+              </label>
+              <label className="field-control">
+                <span>Shipment number</span>
+                <input
+                  placeholder="Example: 0361"
+                  value={shipmentNumberInput}
+                  onChange={(event) => setShipmentNumberInput(event.target.value)}
+                />
+              </label>
+            </div>
             <div className="document-picker-grid">
-              <DocumentSelect
+              <DocumentMultiSelect
                 documents={invoiceDocuments}
                 emptyLabel="Upload commercial invoice first"
-                label="Commercial invoice"
-                onChange={setSelectedInvoiceDocumentId}
-                value={selectedInvoiceDocumentId}
+                label="Commercial invoices"
+                onChange={setSelectedInvoiceDocumentIds}
+                selectedIds={selectedInvoiceDocumentIds}
               />
-              <DocumentSelect
+              <DocumentMultiSelect
                 documents={packingDocuments}
                 emptyLabel="Upload packing list first"
-                label="Packing list"
-                onChange={setSelectedPackingDocumentId}
-                value={selectedPackingDocumentId}
+                label="Packing lists"
+                onChange={setSelectedPackingDocumentIds}
+                selectedIds={selectedPackingDocumentIds}
               />
               <DocumentSelect
                 documents={awbDocuments}
@@ -3161,10 +3265,15 @@ function ImportValidationView({
           </div>
           {candidate ? (
             <div className="import-summary-grid">
+              <SummaryItem label="Shipment Name" value={candidate.shipment_name ?? candidate.import_file_number} />
+              <SummaryItem label="Vertical" value={candidate.shipment_vertical ?? "-"} />
+              <SummaryItem label="Shipment No" value={candidate.shipment_number ?? "-"} />
               <SummaryItem label="Import File" value={candidate.import_file_number} />
               <SummaryItem label="Destination Entity" value={candidate.destination_entity} />
               <SummaryItem label="Country" value={candidate.destination_country} />
-              <SummaryItem label="Invoice" value={candidate.invoice_number ?? "-"} />
+              <SummaryItem label="Invoices" value={candidate.invoice_numbers.length ? candidate.invoice_numbers.join(", ") : candidate.invoice_number ?? "-"} />
+              <SummaryItem label="Invoice Docs" value={String(candidate.commercial_invoice_document_ids.length || "-")} />
+              <SummaryItem label="Packing Docs" value={String(candidate.packing_list_document_ids.length || "-")} />
               <SummaryItem label="AWB" value={candidate.awb_number ?? "-"} />
               <SummaryItem label="Carrier" value={candidate.carrier_name ?? "-"} />
               <SummaryItem label="Flight" value={`${candidate.flight_number ?? "-"} / ${candidate.flight_date ?? "-"}`} />
@@ -3532,6 +3641,58 @@ function ImportValidationView({
   );
 }
 
+function DocumentMultiSelect({
+  documents,
+  emptyLabel,
+  label,
+  onChange,
+  selectedIds,
+}: {
+  documents: DocumentRecord[];
+  emptyLabel: string;
+  label: string;
+  onChange: (value: string[]) => void;
+  selectedIds: string[];
+}) {
+  function toggleDocument(documentId: string) {
+    if (selectedIds.includes(documentId)) {
+      onChange(selectedIds.filter((savedId) => savedId !== documentId));
+      return;
+    }
+    onChange([...selectedIds, documentId]);
+  }
+
+  return (
+    <div className="field-control document-multi-select">
+      <span>{label}</span>
+      {documents.length === 0 ? (
+        <p className="empty-state">{emptyLabel}</p>
+      ) : (
+        <>
+          <small className="selection-count">{selectedIds.length} selected</small>
+          <div className="document-checklist">
+            {documents.map((document) => (
+              <label className="document-check-row" key={document.document_id}>
+                <input
+                  checked={selectedIds.includes(document.document_id)}
+                  onChange={() => toggleDocument(document.document_id)}
+                  type="checkbox"
+                />
+                <span>
+                  <strong>{document.filename}</strong>
+                  <small>
+                    {formatDocumentStatus(document.status)} / {document.extracted_field_count} fields / {document.missing_required_count} missing
+                  </small>
+                </span>
+              </label>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function DocumentSelect({
   documents,
   emptyLabel,
@@ -3579,6 +3740,10 @@ function formatDocumentOption(document: DocumentRecord): string {
     ? ""
     : ` / ${createdAt.toLocaleDateString()}`;
   return `${document.filename}${createdLabel}`;
+}
+
+function formatDocumentStatus(value: string) {
+  return toTitleCase(value.replace(/_/g, " "));
 }
 
 function formatValidationIssue(value: string) {
@@ -5103,15 +5268,18 @@ function ImportQueueList({ rows }: { rows: ApiImportFileCandidate[] }) {
         <article className="queue-row" key={candidate.import_file_number}>
           <div className="queue-row-main">
             <div>
-              <strong>{candidate.import_file_number}</strong>
+              <strong>{candidate.shipment_name ?? candidate.import_file_number}</strong>
               <span>
-                {candidate.destination_country} / invoice {candidate.invoice_number ?? "-"}
+                {candidate.destination_country} / {candidate.shipment_vertical ?? "General"} / invoice{" "}
+                {candidate.invoice_numbers.length ? candidate.invoice_numbers.join(", ") : candidate.invoice_number ?? "-"}
               </span>
             </div>
             <StatusTag label={candidate.status.replace(/_/g, " ")} />
           </div>
           <div className="queue-row-meta">
             <span>{candidate.lines.length} line(s)</span>
+            <span>{candidate.commercial_invoice_document_ids.length || 0} invoice doc(s)</span>
+            <span>{candidate.packing_list_document_ids.length || 0} packing doc(s)</span>
             <span>AWB {candidate.awb_number ?? "-"}</span>
           </div>
         </article>

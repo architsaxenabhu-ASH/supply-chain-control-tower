@@ -484,6 +484,70 @@ h2 {
   gap: 12px;
 }
 
+.shipment-key-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.document-multi-select {
+  align-content: start;
+}
+
+.selection-count {
+  color: #6a7682;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.document-checklist {
+  display: grid;
+  gap: 8px;
+  max-height: 245px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.document-check-row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 9px;
+  align-items: start;
+  min-height: 56px;
+  border: 1px solid #e3e8ec;
+  border-radius: 6px;
+  background: #ffffff;
+  padding: 10px;
+  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+.document-check-row input {
+  margin-top: 3px;
+}
+
+.document-check-row:hover,
+.document-check-row:has(input:checked) {
+  border-color: rgba(17, 100, 102, 0.34);
+  box-shadow: 0 8px 24px rgba(17, 100, 102, 0.12);
+  transform: translateY(-1px);
+}
+
+.document-check-row strong,
+.document-check-row small {
+  display: block;
+}
+
+.document-check-row strong {
+  overflow-wrap: anywhere;
+}
+
+.document-check-row small {
+  margin-top: 3px;
+  color: #6a7682;
+  font-size: 12px;
+}
+
 .import-summary-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -986,6 +1050,7 @@ td {
   .content-grid,
   .content-grid.wide-left,
   .document-picker-grid,
+  .shipment-key-grid,
   .import-summary-grid,
   .learning-form-grid,
   .security-form-grid,
@@ -1090,6 +1155,7 @@ body {
 .action-card,
 .workflow-step,
 .answer-card,
+.document-check-row,
 .document-row,
 .queue-row,
 .audit-event,
@@ -1138,6 +1204,7 @@ h1,
 h2,
 .metric-card strong,
 .action-card-top strong,
+.document-check-row strong,
 .summary-item strong,
 .queue-row strong,
 .audit-event strong,
@@ -1162,6 +1229,8 @@ h2,
 .bar-row span,
 .role-card span,
 .answer-card span,
+.document-check-row small,
+.selection-count,
 .status-line,
 .empty-state,
 .queue-row-main span,

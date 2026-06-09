@@ -62,39 +62,68 @@ def save_import_candidate(candidate: ImportFileCandidate) -> ImportFileCandidate
 def assemble_import_candidate_from_documents(
     request: ImportAssemblyRequest,
 ) -> ImportFileCandidate:
-    invoice_record = require_document(
+    invoice_document_ids = normalize_document_ids(
+        request.commercial_invoice_document_ids,
         request.commercial_invoice_document_id,
-        DocumentType.COMMERCIAL_INVOICE,
     )
-    packing_record = require_document(
+    packing_document_ids = normalize_document_ids(
+        request.packing_list_document_ids,
         request.packing_list_document_id,
-        DocumentType.PACKING_LIST,
     )
+    if not invoice_document_ids:
+        raise ValueError("Select at least one Commercial Invoice.")
+    if not packing_document_ids:
+        raise ValueError("Select at least one Packing List.")
+
+    invoice_records = [
+        require_document(document_id, DocumentType.COMMERCIAL_INVOICE)
+        for document_id in invoice_document_ids
+    ]
+    packing_records = [
+        require_document(document_id, DocumentType.PACKING_LIST)
+        for document_id in packing_document_ids
+    ]
     awb_record = (
         require_document(request.awb_document_id, DocumentType.AIR_WAYBILL)
         if request.awb_document_id
         else None
     )
 
-    invoice_text = extract_text(Path(invoice_record.saved_path))
-    packing_text = extract_text(Path(packing_record.saved_path))
+    invoice_texts = [extract_text(Path(record.saved_path)) for record in invoice_records]
+    packing_texts = [extract_text(Path(record.saved_path)) for record in packing_records]
     awb_text = extract_text(Path(awb_record.saved_path)) if awb_record else ""
 
     warnings: list[str] = []
-    if not invoice_text.strip():
-        warnings.append("Commercial invoice has no readable text. Manual validation is required.")
-    if not packing_text.strip():
-        warnings.append("Packing list has no readable text. Manual validation is required.")
+    for record, text in zip(invoice_records, invoice_texts):
+        if not text.strip():
+            warnings.append(f"{record.filename} has no readable text. Manual invoice validation is required.")
+    for record, text in zip(packing_records, packing_texts):
+        if not text.strip():
+            warnings.append(f"{record.filename} has no readable text. Manual packing-list validation is required.")
     if awb_record and not awb_text.strip():
         warnings.append("AWB has no readable text. OCR must be installed or AWB fields must be validated manually.")
     if not awb_record:
         warnings.append("AWB was not selected. AWB fields are pending.")
+    if len(invoice_records) > 1:
+        warnings.append(f"{len(invoice_records)} commercial invoices are linked to this shipment.")
+    if len(packing_records) > 1:
+        warnings.append(f"{len(packing_records)} packing lists are linked to this shipment.")
 
-    invoice_header = parse_invoice_header(invoice_text)
-    packing_header = parse_packing_header(packing_text)
+    invoice_headers = [parse_invoice_header(text) for text in invoice_texts]
+    packing_headers = [parse_packing_header(text) for text in packing_texts]
     awb_header = parse_awb_header(awb_text)
-    invoice_lines = parse_invoice_lines(invoice_text)
-    packing_lines = parse_packing_lines(packing_text)
+    invoice_lines, duplicated_invoice_items = merge_line_maps(
+        [parse_invoice_lines(text) for text in invoice_texts],
+    )
+    packing_lines, duplicated_packing_items = merge_line_maps(
+        [parse_packing_lines(text) for text in packing_texts],
+    )
+    duplicated_items = sorted(duplicated_invoice_items | duplicated_packing_items)
+    if duplicated_items:
+        warnings.append(
+            "Duplicate item codes across selected documents were merged. Validate quantities and batches for: "
+            + ", ".join(duplicated_items[:12])
+        )
 
     item_codes = list(dict.fromkeys([*invoice_lines.keys(), *packing_lines.keys()]))
     lines: list[ImportLineCandidate] = []
@@ -116,7 +145,7 @@ def assemble_import_candidate_from_documents(
                 quantity=float(packing_line.get("quantity") or invoice_line.get("quantity") or 0),
                 uom=str(learned_uom or invoice_line.get("uom") or "EA"),
                 unit_value=to_float(invoice_line.get("unit_value")),
-                currency=invoice_header.get("currency"),
+                currency=string_or_none(first_header_value(invoice_headers, "currency")),
                 product_profile_status="known"
                 if profile_response.is_known
                 else "first_time_questions_required",
@@ -126,38 +155,74 @@ def assemble_import_candidate_from_documents(
     if not lines:
         warnings.append("No product lines were extracted. Upload readable invoice and packing list files.")
 
-    destination_country = (
-        invoice_header.get("destination_country")
-        or packing_header.get("destination_country")
+    requested_country = normalize_optional_text(request.shipment_country)
+    requested_vertical = normalize_optional_text(request.shipment_vertical)
+    requested_shipment_number = normalize_optional_text(request.shipment_number)
+    destination_country_value = (
+        requested_country
+        or first_header_value(invoice_headers, "destination_country")
+        or first_header_value(packing_headers, "destination_country")
         or "Unknown"
     )
-    invoice_number = invoice_header.get("invoice_number") or packing_header.get("invoice_number")
-    import_file_number = build_import_file_number(destination_country, invoice_number, invoice_record.document_id)
+    destination_country = str(destination_country_value).strip() or "Unknown"
+    invoice_numbers = unique_values(
+        [
+            *[header.get("invoice_number") for header in invoice_headers],
+            *[header.get("invoice_number") for header in packing_headers],
+        ]
+    )
+    invoice_number = ", ".join(invoice_numbers) if invoice_numbers else None
+    shipment_vertical = requested_vertical or "General"
+    shipment_number = (
+        requested_shipment_number
+        or awb_header.get("awb_number")
+        or first_value(invoice_numbers)
+        or invoice_records[0].document_id
+    )
+    shipment_name = build_shipment_name(
+        country=destination_country,
+        vertical=shipment_vertical,
+        shipment_number=str(shipment_number),
+        fallback_document_id=invoice_records[0].document_id,
+    )
+    import_file_number = shipment_name
     source_document_ids = [
-        invoice_record.document_id,
-        packing_record.document_id,
+        *[record.document_id for record in invoice_records],
+        *[record.document_id for record in packing_records],
         *([awb_record.document_id] if awb_record else []),
     ]
 
     candidate = ImportFileCandidate(
         import_file_number=import_file_number,
-        supplier_name=invoice_header.get("supplier_name"),
-        destination_entity=invoice_header.get("destination_entity")
-        or packing_header.get("destination_entity")
+        shipment_name=shipment_name,
+        shipment_vertical=shipment_vertical,
+        shipment_number=str(shipment_number),
+        supplier_name=string_or_none(first_header_value(invoice_headers, "supplier_name")),
+        destination_entity=string_or_none(
+            first_header_value(invoice_headers, "destination_entity")
+            or first_header_value(packing_headers, "destination_entity")
+            or "Unknown"
+        )
         or "Unknown",
         destination_country=destination_country,
         status=ImportStatus.VALIDATION_PENDING,
         invoice_number=invoice_number,
-        invoice_date=invoice_header.get("invoice_date") or packing_header.get("invoice_date"),
-        awb_number=awb_header.get("awb_number") or invoice_header.get("awb_number"),
-        origin_country=invoice_header.get("origin_country") or packing_header.get("origin_country"),
-        carrier_name=awb_header.get("carrier_name"),
-        flight_number=awb_header.get("flight_number"),
+        invoice_date=first_header_value(invoice_headers, "invoice_date") or first_header_value(packing_headers, "invoice_date"),
+        awb_number=string_or_none(awb_header.get("awb_number") or first_header_value(invoice_headers, "awb_number")),
+        origin_country=string_or_none(
+            first_header_value(invoice_headers, "origin_country") or first_header_value(packing_headers, "origin_country")
+        ),
+        carrier_name=string_or_none(awb_header.get("carrier_name")),
+        flight_number=string_or_none(awb_header.get("flight_number")),
         flight_date=awb_header.get("flight_date"),
-        package_count=invoice_header.get("package_count") or packing_header.get("package_count") or awb_header.get("package_count"),
-        gross_weight_kg=invoice_header.get("gross_weight_kg") or packing_header.get("gross_weight_kg") or awb_header.get("gross_weight_kg"),
+        package_count=first_header_value(invoice_headers, "package_count") or first_header_value(packing_headers, "package_count") or awb_header.get("package_count"),
+        gross_weight_kg=first_header_value(invoice_headers, "gross_weight_kg") or first_header_value(packing_headers, "gross_weight_kg") or awb_header.get("gross_weight_kg"),
         chargeable_weight_kg=awb_header.get("chargeable_weight_kg"),
         lines=lines,
+        invoice_numbers=invoice_numbers,
+        commercial_invoice_document_ids=[record.document_id for record in invoice_records],
+        packing_list_document_ids=[record.document_id for record in packing_records],
+        awb_document_id=awb_record.document_id if awb_record else None,
         source_document_ids=source_document_ids,
         extraction_warnings=warnings,
     )
@@ -168,7 +233,14 @@ def assemble_import_candidate_from_documents(
         entity_name="import_file",
         entity_id=candidate.import_file_number,
         actor="document_upload_flow",
-        new_value={"status": candidate.status.value, "line_count": len(candidate.lines)},
+        new_value={
+            "status": candidate.status.value,
+            "line_count": len(candidate.lines),
+            "shipment_name": candidate.shipment_name,
+            "commercial_invoice_count": len(candidate.commercial_invoice_document_ids),
+            "packing_list_count": len(candidate.packing_list_document_ids),
+            "awb_document_id": candidate.awb_document_id,
+        },
     )
     return candidate
 
@@ -309,6 +381,86 @@ def require_document(document_id: str, expected_type: DocumentType):
         actual = record.document_type.value.replace("_", " ")
         raise ValueError(f"Expected {expected}, but {record.filename} is {actual}")
     return record
+
+
+def normalize_document_ids(document_ids: list[str], legacy_document_id: str | None) -> list[str]:
+    ordered_ids = [document_id.strip() for document_id in document_ids if document_id.strip()]
+    if legacy_document_id and legacy_document_id.strip():
+        ordered_ids.append(legacy_document_id.strip())
+    return list(dict.fromkeys(ordered_ids))
+
+
+def normalize_optional_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned = value.strip()
+    return cleaned or None
+
+
+def merge_line_maps(line_maps: list[dict[str, dict[str, object]]]) -> tuple[dict[str, dict[str, object]], set[str]]:
+    merged: dict[str, dict[str, object]] = {}
+    duplicated_item_codes: set[str] = set()
+    for line_map in line_maps:
+        for item_code, next_line in line_map.items():
+            if item_code not in merged:
+                merged[item_code] = dict(next_line)
+                continue
+            duplicated_item_codes.add(item_code)
+            current_line = merged[item_code]
+            current_line["quantity"] = to_float(current_line.get("quantity")) + to_float(next_line.get("quantity"))
+            for field_name, value in next_line.items():
+                if field_name == "quantity":
+                    continue
+                if not current_line.get(field_name) and value:
+                    current_line[field_name] = value
+    return merged, duplicated_item_codes
+
+
+def first_header_value(headers: list[dict[str, object]], key: str) -> object | None:
+    for header in headers:
+        value = header.get(key)
+        if value is not None and str(value).strip():
+            return value
+    return None
+
+
+def unique_values(values: list[object | None]) -> list[str]:
+    return list(
+        dict.fromkeys(
+            str(value).strip()
+            for value in values
+            if value is not None and str(value).strip()
+        )
+    )
+
+
+def string_or_none(value: object | None) -> str | None:
+    if value is None:
+        return None
+    cleaned = str(value).strip()
+    return cleaned or None
+
+
+def first_value(values: list[str]) -> str | None:
+    return values[0] if values else None
+
+
+def build_shipment_name(
+    *,
+    country: object,
+    vertical: str,
+    shipment_number: str,
+    fallback_document_id: str,
+) -> str:
+    country_part = sanitize_name_part(str(country or "Unknown"))
+    vertical_part = sanitize_name_part(vertical or "General")
+    number_part = sanitize_name_part(shipment_number or fallback_document_id)
+    return "-".join(part for part in [country_part, vertical_part, number_part] if part) or fallback_document_id
+
+
+def sanitize_name_part(value: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9]+", "-", value.strip()).strip("-")
+    return cleaned.upper() or "UNKNOWN"
 
 
 def parse_invoice_header(text: str) -> dict[str, object]:
@@ -696,7 +848,10 @@ def exp_0361_development_fixture() -> ImportFileCandidate:
         )
 
     return ImportFileCandidate(
-        import_file_number="IMP-IT-2926200361",
+        import_file_number="ITALY-CARDIO-2926200361",
+        shipment_name="ITALY-CARDIO-2926200361",
+        shipment_vertical="Cardio",
+        shipment_number="2926200361",
         destination_entity="Meril Italy S.R.L.",
         destination_country="Italy",
         status=ImportStatus.VALIDATION_PENDING,
@@ -711,4 +866,5 @@ def exp_0361_development_fixture() -> ImportFileCandidate:
         gross_weight_kg=2.420,
         chargeable_weight_kg=2.5,
         lines=lines,
+        invoice_numbers=["2926200361"],
     )

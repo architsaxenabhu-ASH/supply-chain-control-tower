@@ -33,6 +33,9 @@ class ImportLineCandidate(BaseModel):
 
 class ImportFileCandidate(BaseModel):
     import_file_number: str
+    shipment_name: str | None = None
+    shipment_vertical: str | None = None
+    shipment_number: str | None = None
     supplier_name: str | None = None
     destination_entity: str
     destination_country: str
@@ -48,14 +51,23 @@ class ImportFileCandidate(BaseModel):
     gross_weight_kg: float | None = None
     chargeable_weight_kg: float | None = None
     lines: list[ImportLineCandidate]
+    invoice_numbers: list[str] = Field(default_factory=list)
+    commercial_invoice_document_ids: list[str] = Field(default_factory=list)
+    packing_list_document_ids: list[str] = Field(default_factory=list)
+    awb_document_id: str | None = None
     source_document_ids: list[str] = Field(default_factory=list)
     extraction_warnings: list[str] = Field(default_factory=list)
 
 
 class ImportAssemblyRequest(BaseModel):
-    commercial_invoice_document_id: str
-    packing_list_document_id: str
+    commercial_invoice_document_ids: list[str] = Field(default_factory=list)
+    packing_list_document_ids: list[str] = Field(default_factory=list)
+    commercial_invoice_document_id: str | None = None
+    packing_list_document_id: str | None = None
     awb_document_id: str | None = None
+    shipment_country: str | None = None
+    shipment_vertical: str | None = None
+    shipment_number: str | None = None
 
 
 class ImportApprovalRequest(BaseModel):

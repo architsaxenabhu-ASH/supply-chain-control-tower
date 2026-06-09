@@ -295,6 +295,9 @@ export type ApiProductLearningProfileResponse = {
 
 export type ApiImportFileCandidate = {
   import_file_number: string;
+  shipment_name: string | null;
+  shipment_vertical: string | null;
+  shipment_number: string | null;
   supplier_name: string | null;
   destination_entity: string;
   destination_country: string;
@@ -310,6 +313,10 @@ export type ApiImportFileCandidate = {
   gross_weight_kg: number | null;
   chargeable_weight_kg: number | null;
   source_document_ids: string[];
+  invoice_numbers: string[];
+  commercial_invoice_document_ids: string[];
+  packing_list_document_ids: string[];
+  awb_document_id: string | null;
   extraction_warnings: string[];
   lines: Array<{
     item_code: string;
@@ -325,9 +332,14 @@ export type ApiImportFileCandidate = {
 };
 
 export type ApiImportAssemblyRequest = {
-  commercial_invoice_document_id: string;
-  packing_list_document_id: string;
+  commercial_invoice_document_ids: string[];
+  packing_list_document_ids: string[];
+  commercial_invoice_document_id?: string | null;
+  packing_list_document_id?: string | null;
   awb_document_id?: string | null;
+  shipment_country?: string | null;
+  shipment_vertical?: string | null;
+  shipment_number?: string | null;
 };
 
 export type ApiImportGoodsReceiptPostRequest = {
