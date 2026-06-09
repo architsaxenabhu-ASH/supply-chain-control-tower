@@ -2778,6 +2778,54 @@ td {
   background: rgba(255, 93, 108, 0.14);
 }
 
+/* Extraction confidence badge (used in extraction + validation views). */
+.confidence-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid var(--tower-border);
+  background: rgba(9, 24, 36, 0.55);
+  white-space: nowrap;
+}
+
+.confidence-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 8px currentColor;
+}
+
+.confidence-high {
+  color: var(--tower-emerald);
+  border-color: rgba(54, 226, 155, 0.45);
+}
+
+.confidence-medium {
+  color: var(--tower-amber);
+  border-color: rgba(255, 189, 74, 0.45);
+}
+
+.confidence-low {
+  color: var(--tower-crimson);
+  border-color: rgba(255, 93, 108, 0.5);
+}
+
+.confidence-unknown {
+  color: var(--tower-muted);
+}
+
+.confidence-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--tower-muted);
+}
+
 @media (max-width: 920px) {
   .learning-grid {
     grid-template-columns: 1fr;

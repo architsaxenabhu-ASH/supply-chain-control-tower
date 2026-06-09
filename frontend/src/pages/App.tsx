@@ -2857,7 +2857,7 @@ function DocumentsView({
                 <tr key={field.field_name}>
                   <td>{field.field_name}</td>
                   <td>{formatExtractedValue(field)}</td>
-                  <td>{field.confidence_score ? `${Math.round(field.confidence_score * 100)}%` : "-"}</td>
+                  <td><ConfidenceBadge score={field.confidence_score} /></td>
                   <td><StatusTag label={field.validation_status} /></td>
                 </tr>
               ))
@@ -3512,6 +3512,13 @@ function ImportValidationView({
                       <strong>Source document</strong>
                       <span>{selectedQueueItem.filename}</span>
                     </div>
+                    <div className="validation-banner">
+                      <strong>Extraction confidence</strong>
+                      <span className="confidence-line">
+                        <ConfidenceBadge score={selectedQueueItem.confidence_score} />
+                        {selectedQueueItem.source_engine ? ` · read by ${selectedQueueItem.source_engine}` : ""}
+                      </span>
+                    </div>
                     <label className="field-control">
                       <span>Extracted value</span>
                       <textarea readOnly value={selectedQueueItem.extracted_value ?? "Missing"} />
@@ -3580,13 +3587,14 @@ function ImportValidationView({
                 <th>Issue</th>
                 <th>Document</th>
                 <th>Field</th>
+                <th>Confidence</th>
                 <th>Value</th>
               </tr>
             </thead>
             <tbody>
               {validationQueue.items.length === 0 ? (
                 <tr>
-                  <td colSpan={4}>No queue items.</td>
+                  <td colSpan={5}>No queue items.</td>
                 </tr>
               ) : (
                 validationQueue.items.slice(0, 10).map((item) => (
@@ -3594,6 +3602,7 @@ function ImportValidationView({
                     <td><StatusTag label={formatValidationIssue(item.issue_type)} /></td>
                     <td>{item.filename}</td>
                     <td>{item.field_name}</td>
+                    <td><ConfidenceBadge score={item.confidence_score} /></td>
                     <td>{item.effective_value ?? "Missing"}</td>
                   </tr>
                 ))
@@ -5891,4 +5900,25 @@ function BarRow({ label, value, max }: { label: string; value: number; max: numb
 function StatusTag({ label }: { label: string }) {
   const normalized = label.toLowerCase().replace(/[^a-z0-9]+/g, "-");
   return <span className={`status-tag status-${normalized}`}>{label}</span>;
+}
+
+// Colour-coded extraction confidence. Accepts a 0-1 fraction or a 0-100 number.
+// High (>=85%) reads green, medium (60-84%) amber "review", low (<60%) red.
+function ConfidenceBadge({ score }: { score: number | null | undefined }) {
+  if (score === null || score === undefined) {
+    return (
+      <span className="confidence-badge confidence-unknown" title="No confidence score">
+        —
+      </span>
+    );
+  }
+  const percent = score <= 1 ? Math.round(score * 100) : Math.round(score);
+  const level = percent >= 85 ? "high" : percent >= 60 ? "medium" : "low";
+  const labelText = level === "high" ? "High" : level === "medium" ? "Review" : "Low";
+  return (
+    <span className={`confidence-badge confidence-${level}`} title={`${labelText} confidence`}>
+      <span className="confidence-dot" aria-hidden="true" />
+      {percent}%
+    </span>
+  );
 }
