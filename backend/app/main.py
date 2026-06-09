@@ -23,7 +23,8 @@ app.add_middleware(
         r"localhost|127\.0\.0\.1|"
         r"10\.\d{1,3}\.\d{1,3}\.\d{1,3}|"
         r"172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}|"
-        r"192\.168\.\d{1,3}\.\d{1,3}"
+        r"192\.168\.\d{1,3}\.\d{1,3}|"
+        r"[a-zA-Z0-9-]+\.trycloudflare\.com"
         r")(:\d+)?$"
     ),
     allow_credentials=True,
