@@ -245,7 +245,7 @@ def approve_import_candidate(request: ImportApprovalRequest) -> ImportFileCandid
 
     resolution = resolve_approver(
         ApprovalResolutionRequest(
-            process_name="import_validation",
+            process_name="import_approval",
             country=request.candidate.destination_country,
             vertical="All",
             material_code="All",

@@ -104,6 +104,12 @@ button:disabled {
   display: grid;
   gap: 5px;
   min-width: 0;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.nav-list::-webkit-scrollbar {
+  display: none;
 }
 
 .nav-item {
@@ -550,7 +556,8 @@ h2 {
 }
 
 .field-control select,
-.field-control input {
+.field-control input,
+.field-control textarea {
   min-height: 40px;
   width: 100%;
   border: 1px solid #cfd8de;
@@ -558,6 +565,17 @@ h2 {
   background: #ffffff;
   color: #1c2430;
   padding: 8px 10px;
+}
+
+.field-control textarea {
+  min-height: 92px;
+  resize: vertical;
+}
+
+.validation-correction-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
 }
 
 .learning-form-grid {
@@ -990,10 +1008,12 @@ td {
     max-width: 100%;
     overflow-x: auto;
     padding-bottom: 4px;
+    scroll-snap-type: x proximity;
   }
 
   .nav-item {
     flex: 0 0 148px;
+    scroll-snap-align: start;
   }
 
   h1 {
@@ -1468,6 +1488,7 @@ h2,
 
 .field-control input,
 .field-control select,
+.field-control textarea,
 .filter-control select,
 .upload-form select,
 .upload-form input,
@@ -1576,7 +1597,8 @@ td {
 
 @media (max-width: 860px) {
   .shipment-form-grid,
-  .simulator-results {
+  .simulator-results,
+  .validation-correction-grid {
     grid-template-columns: 1fr;
   }
 

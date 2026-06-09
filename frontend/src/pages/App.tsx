@@ -54,12 +54,14 @@ import {
   fetchProducts,
   fetchSecurityOverview,
   fetchShipments,
+  fetchValidationQueue,
   fetchWarehouses,
   getExtractionMaster,
   listDocuments,
   loginUser,
   postImportGoodsReceipt,
   rescanDocument,
+  saveFieldCorrection,
   saveApprovalRule,
   saveCountryDocumentRequirement,
   saveProductFreeTextProfile,
@@ -79,11 +81,14 @@ import type {
   ApiInventoryBatch,
   ApiInventoryCount,
   ApiImportFileCandidate,
+  ApiFieldCorrectionRequest,
   ApiSaveApprovalRuleRequest,
   ApiSaveSecurityUserRequest,
   ApiProduct,
   ApiSecurityOverview,
   ApiShipment,
+  ApiValidationQueueItem,
+  ApiValidationQueueResponse,
   ApiWarehouseLocation,
 } from "../lib/api";
 import type {
@@ -193,6 +198,7 @@ type Customer = {
 };
 
 const CURRENT_USER_STORAGE_KEY = "supply-chain-control-tower-current-user";
+const TOUR_SEEN_STORAGE_PREFIX = "supply-chain-control-tower-tour-seen";
 
 const fallbackProducts: Product[] = [
   {
@@ -569,43 +575,90 @@ const platformCapabilities: PlatformCapability[] = [
   },
 ];
 
-const walkthroughSteps: Array<{
+type TourGuideStep = {
   title: string;
   detail: string;
   viewId: string;
   icon: IconComponent;
-}> = [
-  {
-    title: "Upload documents",
-    detail: "Start with Commercial Invoice, Packing List, and AWB. The document is the beginning of the import process.",
-    viewId: "documents",
+};
+
+const tourGuideContent: Record<string, Omit<TourGuideStep, "viewId">> = {
+  dashboard: {
+    title: "Dashboard",
+    detail: "Start here for live inventory value, expiry risk, open shipments, route monitoring, and the what-if delay simulator.",
+    icon: BarChart3,
+  },
+  "platform-progress": {
+    title: "Progress command center",
+    detail: "See what is complete, what is partial, and what remains before the control tower becomes fully autonomous.",
+    icon: GitBranch,
+  },
+  documents: {
+    title: "Documents",
+    detail: "Upload Commercial Invoice, Packing List, AWB, and future country documents. Upload triggers scan, extraction, required-field checks, and master candidates.",
     icon: FileUp,
   },
-  {
-    title: "Validate extracted data",
-    detail: "The system combines documents, highlights missing values, asks first-time questions, and learns corrections.",
-    viewId: "import-validation",
+  "import-validation": {
+    title: "Import validation",
+    detail: "Combine invoice, packing list, and AWB, correct extracted fields with mandatory reason, learn first-time products, approve, then post Goods Receipt.",
     icon: ClipboardCheck,
   },
-  {
-    title: "Approve and post inventory",
-    detail: "Country approval unlocks Goods Receipt. Inventory increases only through approved transactions.",
-    viewId: "import-validation",
-    icon: ShieldCheck,
+  products: {
+    title: "Products",
+    detail: "Search product masters. New products can be learned from documents and first-time free-text answers.",
+    icon: Package,
   },
-  {
-    title: "Create shipment and dispatch",
-    detail: "Shipment requests check stock, approval confirms quantity, dispatch reduces exact warehouse and batch.",
-    viewId: "shipments",
+  inventory: {
+    title: "Inventory",
+    detail: "Review stock by warehouse, vertical, item code, batch, expiry, quantity, and value. Inventory changes only through controlled transactions.",
+    icon: Boxes,
+  },
+  shipments: {
+    title: "Shipments",
+    detail: "Create shipment requests, validate stock, approve quantities, and keep shipment status under role control.",
+    icon: Ship,
+  },
+  dispatches: {
+    title: "Dispatches",
+    detail: "Confirm dispatch with transporter, tracking number, dispatch user, and exact inventory deduction.",
     icon: Truck,
   },
-  {
-    title: "Monitor intelligence",
-    detail: "Progress, dashboards, alerts, what-if delay simulation, and AI readiness show what needs attention.",
-    viewId: "platform-progress",
-    icon: BrainCircuit,
+  receipts: {
+    title: "Receipts",
+    detail: "View Goods Receipt history created after approved imports or warehouse receipts.",
+    icon: FileSpreadsheet,
   },
-];
+  counts: {
+    title: "Counts",
+    detail: "Review physical inventory counts, system quantity, physical quantity, variance, excess, and deficit.",
+    icon: ClipboardCheck,
+  },
+  expiry: {
+    title: "Expiry",
+    detail: "Monitor expiry buckets, days to expiry, and FEFO risk for medical-device batches.",
+    icon: ClipboardList,
+  },
+  customers: {
+    title: "Customers",
+    detail: "View customers linked to shipment and dispatch flows.",
+    icon: Users,
+  },
+  security: {
+    title: "Security",
+    detail: "Manage email-based users, roles, approval rules, country scope, warehouse scope, and RBAC controls.",
+    icon: ShieldCheck,
+  },
+  audit: {
+    title: "Audit",
+    detail: "Track who changed what, when, why, and which transaction or extracted field was affected.",
+    icon: History,
+  },
+  assistant: {
+    title: "Assistant",
+    detail: "Ask operational questions about stock, expiry, shipments, value, variance, and traceability.",
+    icon: Bot,
+  },
+};
 
 const documentTypes: Array<{ label: string; value: DocumentType }> = [
   { label: "Commercial Invoice", value: "commercial_invoice" },
@@ -1034,6 +1087,14 @@ export function App() {
   const [selectedWarehouse, setSelectedWarehouse] = useState("");
   const [newWarehouseName, setNewWarehouseName] = useState("");
   const [importMessage, setImportMessage] = useState("Select uploaded import documents to create a validation file.");
+  const [validationQueue, setValidationQueue] = useState<ApiValidationQueueResponse>({
+    items: [],
+    total_count: 0,
+    missing_required_count: 0,
+    pending_review_count: 0,
+    corrected_count: 0,
+  });
+  const [validationMessage, setValidationMessage] = useState("Load documents to review extracted values.");
 
   useEffect(() => {
     let isMounted = true;
@@ -1051,6 +1112,7 @@ export function App() {
           apiSummary,
           apiAuditEvents,
           apiImportQueue,
+          apiValidationQueue,
         ] = await Promise.all([
           fetchProducts(),
           fetchInventoryBatches(),
@@ -1062,6 +1124,7 @@ export function App() {
           fetchDashboardSummary(),
           fetchAuditEvents(20),
           fetchImportCandidates(),
+          fetchValidationQueue(),
         ]);
         const initialImportCandidate = apiImportQueue[0] ?? null;
         const initialWarehouses = initialImportCandidate
@@ -1081,6 +1144,7 @@ export function App() {
         setCustomers(apiCustomers.map(mapCustomer));
         setAuditEvents(apiAuditEvents);
         setImportQueue(apiImportQueue);
+        setValidationQueue(apiValidationQueue);
         setImportCandidate(initialImportCandidate);
         setDestinationWarehouses(initialWarehouses);
         setSelectedWarehouse(initialWarehouses[0]?.warehouse_code ?? "");
@@ -1183,6 +1247,7 @@ export function App() {
       setSelectedFile(null);
       setDocumentMessage("Document uploaded, scanned, and extraction master generated.");
       setApiStatus("Connected to backend / document scanned");
+      await refreshValidationQueue("Validation queue refreshed after document scan.");
     } catch (error) {
       setDocumentMessage(error instanceof Error ? error.message : "Document upload failed.");
       setApiStatus("Backend not connected / document upload unavailable");
@@ -1200,6 +1265,15 @@ export function App() {
     } catch (error) {
       setDocumentMessage(error instanceof Error ? error.message : "Could not load extraction master.");
     }
+  }
+
+  async function refreshValidationQueue(nextMessage?: string) {
+    const queue = await fetchValidationQueue();
+    setValidationQueue(queue);
+    if (nextMessage) {
+      setValidationMessage(nextMessage);
+    }
+    return queue;
   }
 
   async function handleRescanSelectedDocument() {
@@ -1220,6 +1294,7 @@ export function App() {
       setSelectedMaster(master);
       setDocumentMessage("Document rescanned and extraction master refreshed.");
       setApiStatus("Connected to backend / document rescanned");
+      await refreshValidationQueue("Validation queue refreshed after rescan.");
     } catch (error) {
       setDocumentMessage(error instanceof Error ? error.message : "Document rescan failed.");
       setApiStatus("Backend not connected / document rescan unavailable");
@@ -1237,6 +1312,7 @@ export function App() {
         fetchImportCandidates(),
         fetchAuditEvents(20),
       ]);
+      await refreshValidationQueue("Validation queue refreshed from selected documents.");
       setImportCandidate(candidate);
       setImportQueue(apiImportQueue);
       setAuditEvents(apiAuditEvents);
@@ -1252,6 +1328,25 @@ export function App() {
       setImportMessage(error instanceof Error ? error.message : "Could not create import validation file.");
       setApiStatus("Backend not connected / import file unavailable");
     }
+  }
+
+  async function handleSaveFieldCorrection(payload: ApiFieldCorrectionRequest) {
+    setValidationMessage("Saving correction, audit reason, and learning memory...");
+    const response = await saveFieldCorrection(payload);
+    const [queue, records, apiAuditEvents] = await Promise.all([
+      fetchValidationQueue(),
+      listDocuments(),
+      fetchAuditEvents(20),
+    ]);
+    setValidationQueue(queue);
+    setDocuments(records);
+    setAuditEvents(apiAuditEvents);
+    if (selectedMaster?.document.document_id === payload.document_id) {
+      setSelectedMaster(await getExtractionMaster(payload.document_id));
+    }
+    setValidationMessage(response.message);
+    setApiStatus("Connected to backend / correction learned");
+    return response.message;
   }
 
   async function handlePostImportGoodsReceipt(payload: ApiImportGoodsReceiptPostRequest) {
@@ -1464,6 +1559,10 @@ export function App() {
     () => navItems.filter((item) => canAccessView(currentUser, item.id)),
     [currentUser],
   );
+  const visibleWalkthroughSteps = useMemo(
+    () => buildVisibleWalkthroughSteps(visibleNavItems),
+    [visibleNavItems],
+  );
   const canExportActiveView = hasPermission(currentUser, "reports_export");
 
   useEffect(() => {
@@ -1487,6 +1586,19 @@ export function App() {
       window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}${nextHash}`);
     }
   }, [activeView]);
+
+  useEffect(() => {
+    if (!currentUser || visibleWalkthroughSteps.length === 0) {
+      return;
+    }
+    const storageKey = `${TOUR_SEEN_STORAGE_PREFIX}:${currentUser.email}`;
+    if (window.localStorage.getItem(storageKey)) {
+      return;
+    }
+    setWalkthroughStep(0);
+    setIsWalkthroughOpen(true);
+    window.localStorage.setItem(storageKey, "true");
+  }, [currentUser, visibleWalkthroughSteps.length]);
 
   function handleExportActiveView() {
     if (!canExportActiveView) {
@@ -1523,9 +1635,19 @@ export function App() {
   }
 
   function handleStartWalkthrough() {
+    if (visibleWalkthroughSteps.length === 0) {
+      return;
+    }
     setWalkthroughStep(0);
     setIsWalkthroughOpen(true);
-    setActiveView(walkthroughSteps[0].viewId);
+    setActiveView(visibleWalkthroughSteps[0].viewId);
+  }
+
+  function handleCloseWalkthrough() {
+    if (currentUser) {
+      window.localStorage.setItem(`${TOUR_SEEN_STORAGE_PREFIX}:${currentUser.email}`, "true");
+    }
+    setIsWalkthroughOpen(false);
   }
 
   if (!currentUser) {
@@ -1580,7 +1702,7 @@ export function App() {
             </button>
             <button className="secondary-action" onClick={handleStartWalkthrough}>
               <Play size={17} aria-hidden="true" />
-              Start Tour
+              Tour Guide
             </button>
             <button className="secondary-action" onClick={handleExportActiveView} disabled={!canExportActiveView}>
               <Download size={17} aria-hidden="true" />
@@ -1636,9 +1758,12 @@ export function App() {
             onAssembleImport={handleAssembleImportFromDocuments}
             onNewWarehouseNameChange={setNewWarehouseName}
             onPostGoodsReceipt={handlePostImportGoodsReceipt}
+            onSaveFieldCorrection={handleSaveFieldCorrection}
             onSelectedWarehouseChange={setSelectedWarehouse}
             securityOverview={securityOverview}
             selectedWarehouse={selectedWarehouse}
+            validationMessage={validationMessage}
+            validationQueue={validationQueue}
           />
         ) : null}
         {activeView === "products" ? (
@@ -1712,10 +1837,11 @@ export function App() {
         </div>
         {isWalkthroughOpen ? (
           <GuidedWalkthrough
-            onClose={() => setIsWalkthroughOpen(false)}
+            onClose={handleCloseWalkthrough}
             onNavigate={setActiveView}
             setStep={setWalkthroughStep}
             step={walkthroughStep}
+            steps={visibleWalkthroughSteps}
           />
         ) : null}
       </section>
@@ -2635,9 +2761,12 @@ function ImportValidationView({
   onAssembleImport,
   onNewWarehouseNameChange,
   onPostGoodsReceipt,
+  onSaveFieldCorrection,
   onSelectedWarehouseChange,
   securityOverview,
   selectedWarehouse,
+  validationMessage,
+  validationQueue,
 }: {
   candidate: ApiImportFileCandidate | null;
   currentUser: ApiAuthenticatedUser;
@@ -2649,9 +2778,12 @@ function ImportValidationView({
   onAssembleImport: (payload: ApiImportAssemblyRequest) => void;
   onNewWarehouseNameChange: (value: string) => void;
   onPostGoodsReceipt: (payload: ApiImportGoodsReceiptPostRequest) => Promise<string>;
+  onSaveFieldCorrection: (payload: ApiFieldCorrectionRequest) => Promise<string>;
   onSelectedWarehouseChange: (value: string) => void;
   securityOverview: ApiSecurityOverview;
   selectedWarehouse: string;
+  validationMessage: string;
+  validationQueue: ApiValidationQueueResponse;
 }) {
   const actorName = currentUser.email;
   const [supplierName, setSupplierName] = useState("");
@@ -2660,9 +2792,14 @@ function ImportValidationView({
   const [learningMessage, setLearningMessage] = useState("");
   const [approvalMessage, setApprovalMessage] = useState("");
   const [postingMessage, setPostingMessage] = useState("");
+  const [correctionMessage, setCorrectionMessage] = useState("");
   const [isApprovingImport, setIsApprovingImport] = useState(false);
   const [isPostingReceipt, setIsPostingReceipt] = useState(false);
+  const [isSavingCorrection, setIsSavingCorrection] = useState(false);
   const [firstTimeAnswers, setFirstTimeAnswers] = useState<Record<string, string>>({});
+  const [selectedQueueId, setSelectedQueueId] = useState("");
+  const [correctionValue, setCorrectionValue] = useState("");
+  const [correctionReason, setCorrectionReason] = useState("");
   const invoiceDocuments = documents.filter((document) => document.document_type === "commercial_invoice");
   const packingDocuments = documents.filter((document) => document.document_type === "packing_list");
   const awbDocuments = documents.filter((document) => document.document_type === "air_waybill");
@@ -2680,12 +2817,16 @@ function ImportValidationView({
   const importApprovalRule = candidate
     ? securityOverview.approval_rules.find((rule) =>
         rule.is_active &&
-        rule.process_name === "import_validation" &&
+        rule.process_name === "import_approval" &&
         matchesScopeValue(rule.country, candidate.destination_country) &&
         matchesScopeValue(rule.vertical, "All") &&
         matchesScopeValue(rule.material_code, "All"),
       )
     : null;
+  const selectedQueueItem =
+    validationQueue.items.find((item) => item.queue_id === selectedQueueId)
+    ?? validationQueue.items[0]
+    ?? null;
 
   useEffect(() => {
     if (!selectedInvoiceDocumentId && invoiceDocuments[0]) {
@@ -2712,6 +2853,19 @@ function ImportValidationView({
     }
   }, [candidate, supplierName]);
 
+  useEffect(() => {
+    if (!selectedQueueItem) {
+      setSelectedQueueId("");
+      setCorrectionValue("");
+      return;
+    }
+    if (selectedQueueId !== selectedQueueItem.queue_id) {
+      setSelectedQueueId(selectedQueueItem.queue_id);
+    }
+    setCorrectionValue(selectedQueueItem.effective_value ?? "");
+    setCorrectionReason("");
+  }, [selectedQueueItem, selectedQueueId]);
+
   function handleAssembleImport() {
     if (!selectedInvoiceDocumentId || !selectedPackingDocumentId) {
       setLearningMessage("Upload and select at least Commercial Invoice and Packing List.");
@@ -2724,6 +2878,39 @@ function ImportValidationView({
       packing_list_document_id: selectedPackingDocumentId,
       awb_document_id: selectedAwbDocumentId || null,
     });
+  }
+
+  async function handleSaveCorrection() {
+    if (!selectedQueueItem) {
+      setCorrectionMessage("Select a validation queue item first.");
+      return;
+    }
+    if (!correctionValue.trim()) {
+      setCorrectionMessage("Corrected value is mandatory.");
+      return;
+    }
+    if (!correctionReason.trim()) {
+      setCorrectionMessage("Correction reason is mandatory.");
+      return;
+    }
+
+    setIsSavingCorrection(true);
+    setCorrectionMessage("Saving correction...");
+    try {
+      const message = await onSaveFieldCorrection({
+        document_id: selectedQueueItem.document_id,
+        field_name: selectedQueueItem.field_name,
+        corrected_value: correctionValue,
+        correction_reason: correctionReason,
+        corrected_by: currentUser.email,
+        auth_token: currentUser.session_token,
+      });
+      setCorrectionMessage(message);
+    } catch (error) {
+      setCorrectionMessage(error instanceof Error ? error.message : "Could not save correction.");
+    } finally {
+      setIsSavingCorrection(false);
+    }
   }
 
   async function handleSaveWarehouseCandidate() {
@@ -2998,6 +3185,109 @@ function ImportValidationView({
         </Panel>
       </section>
 
+      <section className="content-grid wide-left">
+        <Panel title="Field validation queue" meta={`${validationQueue.total_count} item(s)`}>
+          <div className="validation-stack">
+            <div className="import-summary-grid">
+              <SummaryItem label="Missing Required" value={String(validationQueue.missing_required_count)} />
+              <SummaryItem label="Pending Review" value={String(validationQueue.pending_review_count)} />
+              <SummaryItem label="Corrected" value={String(validationQueue.corrected_count)} />
+              <SummaryItem label="Visible To" value={currentUser.role_name} />
+            </div>
+            {validationQueue.items.length === 0 ? (
+              <p className="empty-state">No extracted fields are waiting for validation.</p>
+            ) : (
+              <>
+                <label className="field-control">
+                  <span>Queue item</span>
+                  <select
+                    value={selectedQueueId}
+                    onChange={(event) => setSelectedQueueId(event.target.value)}
+                  >
+                    {validationQueue.items.slice(0, 80).map((item) => (
+                      <option key={item.queue_id} value={item.queue_id}>
+                        {item.issue_label} / {item.filename} / {item.field_name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {selectedQueueItem ? (
+                  <div className="validation-correction-grid">
+                    <div className="validation-banner warning">
+                      <strong>{selectedQueueItem.field_name}</strong>
+                      <span>{selectedQueueItem.issue_label}</span>
+                    </div>
+                    <div className="validation-banner">
+                      <strong>Source document</strong>
+                      <span>{selectedQueueItem.filename}</span>
+                    </div>
+                    <label className="field-control">
+                      <span>Extracted value</span>
+                      <textarea readOnly value={selectedQueueItem.extracted_value ?? "Missing"} />
+                    </label>
+                    <label className="field-control">
+                      <span>Corrected value</span>
+                      <textarea
+                        value={correctionValue}
+                        onChange={(event) => setCorrectionValue(event.target.value)}
+                      />
+                    </label>
+                    <label className="field-control">
+                      <span>Correction reason</span>
+                      <textarea
+                        placeholder="Mandatory: why are you changing or confirming this value?"
+                        value={correctionReason}
+                        onChange={(event) => setCorrectionReason(event.target.value)}
+                      />
+                    </label>
+                    <div className="validation-stack">
+                      <div className="validation-banner">
+                        <strong>Recorded user</strong>
+                        <span>{currentUser.email}</span>
+                      </div>
+                      <button className="primary-action" onClick={handleSaveCorrection} disabled={isSavingCorrection}>
+                        <ClipboardCheck size={17} aria-hidden="true" />
+                        {isSavingCorrection ? "Saving correction" : "Save correction and learn"}
+                      </button>
+                      <p className="status-line">{correctionMessage || validationMessage}</p>
+                    </div>
+                  </div>
+                ) : null}
+              </>
+            )}
+          </div>
+        </Panel>
+
+        <Panel title="Recent validation items" meta="Priority order">
+          <table>
+            <thead>
+              <tr>
+                <th>Issue</th>
+                <th>Document</th>
+                <th>Field</th>
+                <th>Value</th>
+              </tr>
+            </thead>
+            <tbody>
+              {validationQueue.items.length === 0 ? (
+                <tr>
+                  <td colSpan={4}>No queue items.</td>
+                </tr>
+              ) : (
+                validationQueue.items.slice(0, 10).map((item) => (
+                  <tr key={item.queue_id}>
+                    <td><StatusTag label={formatValidationIssue(item.issue_type)} /></td>
+                    <td>{item.filename}</td>
+                    <td>{item.field_name}</td>
+                    <td>{item.effective_value ?? "Missing"}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </Panel>
+      </section>
+
       <section className="content-grid">
         <Panel title="Country document learning" meta="Country + Vertical + Material">
           <div className="validation-stack">
@@ -3218,6 +3508,10 @@ function formatDocumentOption(document: DocumentRecord): string {
   return `${document.filename}${createdLabel}`;
 }
 
+function formatValidationIssue(value: string) {
+  return toTitleCase(value.replace(/_/g, " "));
+}
+
 function formatTimestamp(value: string | null | undefined) {
   if (!value) {
     return "-";
@@ -3295,20 +3589,38 @@ function canAccessView(user: ApiAuthenticatedUser | null, viewId: string) {
   return (permissionByView[viewId] ?? []).some((permission) => user.permissions.includes(permission));
 }
 
+function buildVisibleWalkthroughSteps(
+  items: Array<{ id: string; label: string; icon: IconComponent }>,
+): TourGuideStep[] {
+  return items.map((item) => {
+    const content = tourGuideContent[item.id] ?? {
+      title: item.label,
+      detail: "This page is available for your role and follows the same RBAC and audit rules as the rest of the control tower.",
+      icon: item.icon,
+    };
+    return {
+      ...content,
+      viewId: item.id,
+    };
+  });
+}
+
 function GuidedWalkthrough({
   onClose,
   onNavigate,
   setStep,
   step,
+  steps,
 }: {
   onClose: () => void;
   onNavigate: (viewId: string) => void;
   setStep: (step: number) => void;
   step: number;
+  steps: TourGuideStep[];
 }) {
-  const currentStep = walkthroughSteps[step] ?? walkthroughSteps[0];
+  const currentStep = steps[step] ?? steps[0];
   const Icon = currentStep.icon;
-  const isLastStep = step >= walkthroughSteps.length - 1;
+  const isLastStep = step >= steps.length - 1;
 
   useEffect(() => {
     onNavigate(currentStep.viewId);
@@ -3342,7 +3654,7 @@ function GuidedWalkthrough({
       </div>
       <p>{currentStep.detail}</p>
       <div className="walkthrough-rail">
-        {walkthroughSteps.map((item, index) => {
+        {steps.map((item, index) => {
           const StepIcon = item.icon;
           return (
             <button

@@ -27,6 +27,7 @@ class CorrectionEventRequest(BaseModel):
     field_name: str
     original_value: str | None = None
     corrected_value: str | None = None
+    correction_reason: str | None = None
     corrected_by: str
     document_reference: str | None = None
 

@@ -316,6 +316,7 @@ def record_correction(event: CorrectionEventRequest) -> CorrectionEventRequest:
         entity_name="ocr_field",
         entity_id=event.document_reference or event.field_name,
         actor=event.corrected_by,
+        reason=event.correction_reason,
         old_value={event.field_name: event.original_value},
         new_value={event.field_name: event.corrected_value},
     )

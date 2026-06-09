@@ -347,6 +347,46 @@ export type ApiWarehouseLocation = {
   is_active: boolean;
 };
 
+export type ApiValidationQueueItem = {
+  queue_id: string;
+  document_id: string;
+  filename: string;
+  document_type: DocumentType;
+  field_name: string;
+  extracted_value: string | null;
+  corrected_value: string | null;
+  effective_value: string | null;
+  confidence_score: number | null;
+  validation_status: "pending" | "approved" | "corrected" | "rejected";
+  issue_type: string;
+  issue_label: string;
+  required_group: string | null;
+  source_engine: string | null;
+  created_at: string;
+};
+
+export type ApiValidationQueueResponse = {
+  items: ApiValidationQueueItem[];
+  total_count: number;
+  missing_required_count: number;
+  pending_review_count: number;
+  corrected_count: number;
+};
+
+export type ApiFieldCorrectionRequest = {
+  document_id: string;
+  field_name: string;
+  corrected_value: string;
+  correction_reason: string;
+  corrected_by: string;
+  auth_token: string;
+};
+
+export type ApiFieldCorrectionResponse = {
+  item: ApiValidationQueueItem;
+  message: string;
+};
+
 export function fetchProducts(): Promise<ApiProduct[]> {
   return getJson<ApiProduct[]>("/products");
 }
@@ -377,6 +417,16 @@ export function fetchCustomers(): Promise<ApiCustomer[]> {
 
 export function fetchDashboardSummary(): Promise<ApiDashboardSummary> {
   return getJson<ApiDashboardSummary>("/dashboard/summary");
+}
+
+export function fetchValidationQueue(): Promise<ApiValidationQueueResponse> {
+  return getJson<ApiValidationQueueResponse>("/validation/queue");
+}
+
+export function saveFieldCorrection(
+  payload: ApiFieldCorrectionRequest,
+): Promise<ApiFieldCorrectionResponse> {
+  return postJson<ApiFieldCorrectionResponse, typeof payload>("/validation/corrections", payload);
 }
 
 export function askAssistant(question: string): Promise<ApiAssistantAnswer> {

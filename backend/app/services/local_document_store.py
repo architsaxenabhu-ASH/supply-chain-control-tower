@@ -9,7 +9,7 @@ from uuid import uuid4
 from fastapi import UploadFile
 
 from app.schemas.documents import DocumentRecord
-from app.schemas.extraction import DocumentType, ExtractedField
+from app.schemas.extraction import DocumentType, ExtractedField, ValidationStatus
 from app.services.document_field_catalog import get_fields_for_document_type
 from app.services.master_candidate_generator import generate_master_candidates
 from app.services.required_field_rules import check_required_fields
@@ -219,3 +219,87 @@ def get_master_candidates(document_id: str) -> list[dict[str, object]]:
         return []
     payload = json.loads(path.read_text(encoding="utf-8"))
     return payload.get("candidates", [])
+
+
+def update_extracted_field_correction(
+    *,
+    document_id: str,
+    field_name: str,
+    corrected_value: str,
+) -> tuple[DocumentRecord, ExtractedField, str | None]:
+    record = get_saved_document(document_id)
+    if record is None:
+        raise ValueError(f"Document not found: {document_id}")
+
+    master = get_extraction_master(document_id)
+    if master is None:
+        raise ValueError(f"Extraction master not found: {document_id}")
+
+    fields = [ExtractedField(**field) for field in master.get("fields", [])]
+    matching_field = next((field for field in fields if field.field_name == field_name), None)
+    if matching_field is None:
+        matching_field = ExtractedField(
+            document_id=document_id,
+            field_name=field_name,
+            validation_status=ValidationStatus.PENDING,
+            source_engine="manual_validation",
+        )
+        fields.append(matching_field)
+
+    old_value = matching_field.corrected_value or matching_field.extracted_value
+    matching_field.corrected_value = corrected_value.strip()
+    matching_field.validation_status = ValidationStatus.CORRECTED
+    matching_field.confidence_score = 1
+    matching_field.source_engine = "human_validation"
+
+    extraction_master_path = Path(record.extraction_master_path)
+    extraction_master_path.write_text(
+        json.dumps(
+            {
+                **master,
+                "fields": [field.model_dump(mode="json") for field in fields],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    master_candidates = generate_master_candidates(
+        document_id=document_id,
+        extracted_fields=fields,
+    )
+    master_candidates_path = Path(record.master_candidates_path)
+    master_candidates_path.write_text(
+        json.dumps(
+            {
+                "document_id": document_id,
+                "document_type": record.document_type.value,
+                "candidates": [candidate.model_dump(mode="json") for candidate in master_candidates],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    required_field_checks = check_required_fields(
+        document_type=record.document_type,
+        extracted_fields=fields,
+    )
+    missing_required_count = sum(
+        1 for check in required_field_checks if not check.is_satisfied
+    )
+    updated_record = record.model_copy(
+        update={
+            "master_candidate_count": len(master_candidates),
+            "required_field_count": len(required_field_checks),
+            "missing_required_count": missing_required_count,
+        }
+    )
+    records = [
+        updated_record.model_dump(mode="json")
+        if saved_record.get("document_id") == document_id
+        else saved_record
+        for saved_record in load_document_index()
+    ]
+    save_document_index(records)
+    return updated_record, matching_field, old_value
