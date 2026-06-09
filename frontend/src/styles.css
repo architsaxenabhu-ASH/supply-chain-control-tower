@@ -2826,6 +2826,103 @@ td {
   color: var(--tower-muted);
 }
 
+/* Dashboard: animated extraction-quality meter. */
+.confidence-meter {
+  display: grid;
+  gap: 12px;
+}
+
+.confidence-meter-track {
+  display: flex;
+  height: 14px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(9, 24, 36, 0.7);
+  border: 1px solid var(--tower-border);
+}
+
+.confidence-seg {
+  height: 100%;
+  transition: width 760ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.confidence-seg-high {
+  background: var(--tower-emerald);
+}
+
+.confidence-seg-review {
+  background: var(--tower-amber);
+}
+
+.confidence-seg-low {
+  background: var(--tower-crimson);
+}
+
+.confidence-meter-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-size: 13px;
+}
+
+.confidence-meter-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Dashboard: "needs a human" clickable review rows. */
+.review-list {
+  display: grid;
+  gap: 8px;
+}
+
+.review-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--tower-border);
+  background: rgba(9, 24, 36, 0.55);
+  color: var(--tower-text);
+  cursor: pointer;
+  transition:
+    transform 200ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 200ms ease,
+    background 200ms ease;
+}
+
+.review-row:hover {
+  transform: translateY(-2px);
+  border-color: var(--tower-border-strong);
+  background: rgba(72, 229, 255, 0.08);
+}
+
+.review-row > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.review-row strong {
+  color: var(--tower-text);
+}
+
+.review-row span {
+  color: var(--tower-muted);
+  font-size: 12px;
+}
+
+/* Extend the entrance stagger to cover the extra dashboard metric cards. */
+.kpi-grid > *:nth-child(11),
+.action-grid > *:nth-child(11) { animation-delay: 540ms; }
+.kpi-grid > *:nth-child(12),
+.action-grid > *:nth-child(12) { animation-delay: 590ms; }
+
 @media (max-width: 920px) {
   .learning-grid {
     grid-template-columns: 1fr;

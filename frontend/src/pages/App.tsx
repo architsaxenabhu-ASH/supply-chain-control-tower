@@ -1851,6 +1851,7 @@ export function App() {
             inventory={inventory}
             onNavigate={setActiveView}
             shipments={shipments}
+            validationQueue={validationQueue}
           />
         ) : null}
         {activeView === "documents" ? (
@@ -1999,6 +2000,7 @@ function DashboardView({
   inventory,
   onNavigate,
   shipments,
+  validationQueue,
 }: {
   expiredInventoryCount: number;
   totalInventoryValue: number;
@@ -2015,7 +2017,24 @@ function DashboardView({
   inventory: InventoryBatch[];
   onNavigate: (view: string) => void;
   shipments: Shipment[];
+  validationQueue: ApiValidationQueueResponse;
 }) {
+  const scoredItems = validationQueue.items.filter(
+    (item) => item.confidence_score !== null && item.confidence_score !== undefined,
+  );
+  const asPercent = (score: number) => (score <= 1 ? score * 100 : score);
+  const highConfidence = scoredItems.filter((item) => asPercent(item.confidence_score as number) >= 85).length;
+  const reviewConfidence = scoredItems.filter((item) => {
+    const percent = asPercent(item.confidence_score as number);
+    return percent >= 60 && percent < 85;
+  }).length;
+  const lowConfidence = scoredItems.filter((item) => asPercent(item.confidence_score as number) < 60).length;
+  const confidenceChecked = scoredItems.length;
+  const extractionNeedsReview = reviewConfidence + lowConfidence;
+  const reviewList = [...scoredItems]
+    .sort((a, b) => asPercent(a.confidence_score as number) - asPercent(b.confidence_score as number))
+    .filter((item) => asPercent(item.confidence_score as number) < 85)
+    .slice(0, 6);
   const warehouseValues = inventory.reduce<Record<string, number>>((totals, batch) => {
     totals[batch.warehouse] = (totals[batch.warehouse] ?? 0) + batch.quantity * batch.unitValue;
     return totals;
@@ -2072,6 +2091,7 @@ function DashboardView({
         <MetricCard label="Receipts Today" value={String(goodsReceivedToday)} detail="Posted GRNs" />
         <MetricCard label="Expired Inventory" value={String(expiredInventoryCount)} detail="Blocked review" />
         <MetricCard label="Variance Quantity" value={String(varianceTotal)} detail="Open count variance" />
+        <MetricCard label="Extraction Review" value={String(extractionNeedsReview)} detail="Low/medium confidence fields" />
       </section>
 
       <section className="action-grid" aria-label="Next actions">
@@ -2099,6 +2119,34 @@ function DashboardView({
           action="Open audit"
           onClick={() => onNavigate("audit")}
         />
+      </section>
+
+      <section className="content-grid" aria-label="Extraction quality">
+        <Panel title="Extraction quality" meta={`${confidenceChecked} checked field(s)`}>
+          <ConfidenceMeter high={highConfidence} review={reviewConfidence} low={lowConfidence} />
+        </Panel>
+        <Panel title="Needs a human" meta="Lowest confidence first">
+          {reviewList.length === 0 ? (
+            <p className="empty-state">No low-confidence extractions. Everything read cleanly.</p>
+          ) : (
+            <div className="review-list">
+              {reviewList.map((item) => (
+                <button
+                  type="button"
+                  className="review-row"
+                  key={item.queue_id}
+                  onClick={() => onNavigate("import-validation")}
+                >
+                  <div>
+                    <strong>{item.field_name}</strong>
+                    <span>{item.filename}</span>
+                  </div>
+                  <ConfidenceBadge score={item.confidence_score} />
+                </button>
+              ))}
+            </div>
+          )}
+        </Panel>
       </section>
 
       <section className="control-grid" aria-label="Control tower intelligence">
@@ -2844,13 +2892,14 @@ function DocumentsView({
               <th>Field</th>
               <th>Extracted Value</th>
               <th>Confidence</th>
+              <th>Source</th>
               <th>Status</th>
             </tr>
           </thead>
           <tbody>
             {fields.length === 0 ? (
               <tr>
-                <td colSpan={4}>No extracted fields yet.</td>
+                <td colSpan={5}>No extracted fields yet.</td>
               </tr>
             ) : (
               fields.slice(0, 40).map((field) => (
@@ -2858,6 +2907,10 @@ function DocumentsView({
                   <td>{field.field_name}</td>
                   <td>{formatExtractedValue(field)}</td>
                   <td><ConfidenceBadge score={field.confidence_score} /></td>
+                  <td>
+                    {field.page_number ? `Page ${field.page_number}` : "—"}
+                    {field.source_engine ? <span className="muted-cell"> · {field.source_engine}</span> : null}
+                  </td>
                   <td><StatusTag label={field.validation_status} /></td>
                 </tr>
               ))
@@ -5849,6 +5902,62 @@ function LearningCenterView({ insights }: { insights: ApiLearningInsights | null
           )}
         </Panel>
       </div>
+
+      <div className="learning-grid">
+        <Panel title="Entity aliases" meta="Name variations mapped">
+          {insights.recent_entity_aliases.length === 0 ? (
+            <p className="empty-state">No name aliases learned yet.</p>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>Type</th>
+                  <th>Alias</th>
+                  <th>Maps to</th>
+                  <th>Approved</th>
+                </tr>
+              </thead>
+              <tbody>
+                {insights.recent_entity_aliases.map((alias, index) => (
+                  <tr key={`${alias.alias_text}-${index}`}>
+                    <td>{toTitleCase(alias.entity_type)}</td>
+                    <td><span className="muted-cell">{alias.alias_text}</span></td>
+                    <td>{alias.master_code}</td>
+                    <td><StatusTag label={alias.approved ? "Approved" : "Pending"} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Panel>
+
+        <Panel title="Warehouse candidates" meta="Discovered from imports">
+          {insights.recent_warehouse_candidates.length === 0 ? (
+            <p className="empty-state">No warehouse candidates discovered yet.</p>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>Country</th>
+                  <th>Warehouse</th>
+                  <th>Status</th>
+                  <th>Added by</th>
+                </tr>
+              </thead>
+              <tbody>
+                {insights.recent_warehouse_candidates.map((candidate, index) => (
+                  <tr key={`${candidate.warehouse_name}-${index}`}>
+                    <td>{candidate.country}</td>
+                    <td>{candidate.warehouse_name}</td>
+                    <td><StatusTag label={toTitleCase(candidate.status.replace(/_/g, " "))} /></td>
+                    <td><span className="muted-cell">{candidate.created_by}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Panel>
+      </div>
     </>
   );
 }
@@ -5920,5 +6029,40 @@ function ConfidenceBadge({ score }: { score: number | null | undefined }) {
       <span className="confidence-dot" aria-hidden="true" />
       {percent}%
     </span>
+  );
+}
+
+// Animated stacked bar of extraction-confidence buckets. The segments grow from
+// zero on mount for a smooth reveal (and collapse to instant under reduced motion).
+function ConfidenceMeter({ high, review, low }: { high: number; review: number; low: number }) {
+  const total = high + review + low;
+  const [revealed, setRevealed] = useState(false);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setRevealed(true));
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
+  if (total === 0) {
+    return (
+      <p className="empty-state">
+        No extraction confidence data yet. Upload and scan documents to see quality here.
+      </p>
+    );
+  }
+
+  const width = (count: number) => (revealed ? `${(count / total) * 100}%` : "0%");
+  return (
+    <div className="confidence-meter">
+      <div className="confidence-meter-track">
+        <span className="confidence-seg confidence-seg-high" style={{ width: width(high) }} />
+        <span className="confidence-seg confidence-seg-review" style={{ width: width(review) }} />
+        <span className="confidence-seg confidence-seg-low" style={{ width: width(low) }} />
+      </div>
+      <div className="confidence-meter-legend">
+        <span className="confidence-high"><span className="confidence-dot" aria-hidden="true" /> High {high}</span>
+        <span className="confidence-medium"><span className="confidence-dot" aria-hidden="true" /> Review {review}</span>
+        <span className="confidence-low"><span className="confidence-dot" aria-hidden="true" /> Low {low}</span>
+      </div>
+    </div>
   );
 }

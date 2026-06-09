@@ -360,6 +360,22 @@ export type ApiCorrectionEvent = {
   document_reference: string | null;
 };
 
+export type ApiEntityAlias = {
+  entity_type: string;
+  alias_text: string;
+  master_code: string;
+  approved: boolean;
+};
+
+export type ApiWarehouseCandidate = {
+  country: string;
+  warehouse_name: string;
+  created_from_import_file: string | null;
+  status: string;
+  created_by: string;
+  created_at: string;
+};
+
 export type ApiLearningInsights = {
   total_learning_rules: number;
   total_corrections: number;
@@ -373,6 +389,8 @@ export type ApiLearningInsights = {
   top_learned_rules: ApiLearningRule[];
   country_document_rules: ApiCountryDocumentRule[];
   recent_corrections: ApiCorrectionEvent[];
+  recent_entity_aliases: ApiEntityAlias[];
+  recent_warehouse_candidates: ApiWarehouseCandidate[];
 };
 
 export type ApiImportFileCandidate = {

@@ -198,3 +198,5 @@ class LearningInsights(BaseModel):
     top_learned_rules: list[LearningRule] = Field(default_factory=list)
     country_document_rules: list[CountryDocumentRequirementRule] = Field(default_factory=list)
     recent_corrections: list[CorrectionEventRequest] = Field(default_factory=list)
+    recent_entity_aliases: list[EntityAliasRequest] = Field(default_factory=list)
+    recent_warehouse_candidates: list[WarehouseCandidate] = Field(default_factory=list)

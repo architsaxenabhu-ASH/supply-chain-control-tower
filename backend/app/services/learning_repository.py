@@ -463,6 +463,8 @@ def get_learning_insights() -> LearningInsights:
         top_learned_rules=top_rules,
         country_document_rules=COUNTRY_DOCUMENT_REQUIREMENT_RULES[:12],
         recent_corrections=recent_corrections,
+        recent_entity_aliases=list(reversed(ENTITY_ALIASES))[:8],
+        recent_warehouse_candidates=list(reversed(WAREHOUSE_CANDIDATES))[:8],
     )
 
 
