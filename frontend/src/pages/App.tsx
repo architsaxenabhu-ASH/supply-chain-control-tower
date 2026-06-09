@@ -3025,6 +3025,7 @@ function ImportValidationView({
   const [correctionValue, setCorrectionValue] = useState("");
   const [correctionReason, setCorrectionReason] = useState("");
   const [suggestion, setSuggestion] = useState<ApiCorrectionSuggestion | null>(null);
+  const [queueFilter, setQueueFilter] = useState<"all" | "review" | "low" | "corrected">("all");
   const invoiceDocuments = useMemo(
     () => documents.filter((document) => document.document_type === "commercial_invoice"),
     [documents],
@@ -3064,8 +3065,28 @@ function ImportValidationView({
         matchesScopeValue(rule.material_code, "All"),
       )
     : null;
+  const queueScorePercent = (score: number | null) =>
+    score === null || score === undefined ? null : score <= 1 ? score * 100 : score;
+  const isLowConfidence = (item: ApiValidationQueueItem) => {
+    const percent = queueScorePercent(item.confidence_score);
+    return percent !== null && percent < 60;
+  };
+  const queueFilterCounts = {
+    all: validationQueue.items.length,
+    review: validationQueue.items.filter((item) => item.validation_status === "pending").length,
+    low: validationQueue.items.filter(isLowConfidence).length,
+    corrected: validationQueue.items.filter((item) => item.validation_status === "corrected").length,
+  };
+  const filteredQueueItems = validationQueue.items.filter((item) => {
+    if (queueFilter === "review") return item.validation_status === "pending";
+    if (queueFilter === "low") return isLowConfidence(item);
+    if (queueFilter === "corrected") return item.validation_status === "corrected";
+    return true;
+  });
   const selectedQueueItem =
-    validationQueue.items.find((item) => item.queue_id === selectedQueueId)
+    filteredQueueItems.find((item) => item.queue_id === selectedQueueId)
+    ?? validationQueue.items.find((item) => item.queue_id === selectedQueueId)
+    ?? filteredQueueItems[0]
     ?? validationQueue.items[0]
     ?? null;
 
@@ -3563,13 +3584,45 @@ function ImportValidationView({
               <p className="empty-state">No extracted fields are waiting for validation.</p>
             ) : (
               <>
+                <div className="queue-filter-chips" role="group" aria-label="Filter validation queue">
+                  {([
+                    { key: "all", label: "All" },
+                    { key: "review", label: "Needs review" },
+                    { key: "low", label: "Low confidence" },
+                    { key: "corrected", label: "Corrected" },
+                  ] as const).map((chip) => (
+                    <button
+                      key={chip.key}
+                      type="button"
+                      className={queueFilter === chip.key ? "queue-chip active" : "queue-chip"}
+                      onClick={() => {
+                        setQueueFilter(chip.key);
+                        const next = validationQueue.items.filter((item) => {
+                          if (chip.key === "review") return item.validation_status === "pending";
+                          if (chip.key === "low") return isLowConfidence(item);
+                          if (chip.key === "corrected") return item.validation_status === "corrected";
+                          return true;
+                        });
+                        if (next[0]) {
+                          setSelectedQueueId(next[0].queue_id);
+                        }
+                      }}
+                    >
+                      {chip.label} <span className="queue-chip-count">{queueFilterCounts[chip.key]}</span>
+                    </button>
+                  ))}
+                </div>
+                {filteredQueueItems.length === 0 ? (
+                  <p className="empty-state">No items match this filter. Try "All".</p>
+                ) : (
+                  <>
                 <label className="field-control">
                   <span>Queue item</span>
                   <select
                     value={selectedQueueId}
                     onChange={(event) => setSelectedQueueId(event.target.value)}
                   >
-                    {validationQueue.items.slice(0, 80).map((item) => (
+                    {filteredQueueItems.slice(0, 80).map((item) => (
                       <option key={item.queue_id} value={item.queue_id}>
                         {item.issue_label} / {item.filename} / {item.field_name}
                       </option>
@@ -3649,6 +3702,8 @@ function ImportValidationView({
                     </div>
                   </div>
                 ) : null}
+                  </>
+                )}
               </>
             )}
           </div>
@@ -3666,12 +3721,12 @@ function ImportValidationView({
               </tr>
             </thead>
             <tbody>
-              {validationQueue.items.length === 0 ? (
+              {filteredQueueItems.length === 0 ? (
                 <tr>
-                  <td colSpan={5}>No queue items.</td>
+                  <td colSpan={5}>No queue items for this filter.</td>
                 </tr>
               ) : (
-                validationQueue.items.slice(0, 10).map((item) => (
+                filteredQueueItems.slice(0, 10).map((item) => (
                   <tr key={item.queue_id}>
                     <td><StatusTag label={formatValidationIssue(item.issue_type)} /></td>
                     <td>{item.filename}</td>
