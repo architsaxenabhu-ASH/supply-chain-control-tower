@@ -5,7 +5,7 @@ const DEFAULT_API_BASE_URL =
     ? "http://localhost:8000/api/v1"
     : `${window.location.protocol}//${window.location.hostname}:8000/api/v1`;
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? DEFAULT_API_BASE_URL;
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || DEFAULT_API_BASE_URL;
 
 export async function getHealth(): Promise<Response> {
   return fetch(`${API_BASE_URL.replace("/api/v1", "")}/health`);

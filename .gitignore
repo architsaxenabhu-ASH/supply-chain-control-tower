@@ -7,6 +7,8 @@ data/*.sqlite
 data/*.sqlite3
 backend/.env
 frontend/.env
+deployment/.env
+.env
 backend/.venv/
 frontend/node_modules/
 frontend/dist/
