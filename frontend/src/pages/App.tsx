@@ -3909,6 +3909,7 @@ function ImportValidationView({
               <th>Item Code</th>
               <th>Description</th>
               <th>Batch</th>
+              <th>Serial</th>
               <th>Expiry</th>
               <th>Days to Expiry</th>
               <th>Qty</th>
@@ -3919,14 +3920,15 @@ function ImportValidationView({
           <tbody>
             {!candidate ? (
               <tr>
-                <td colSpan={8}>Create the import validation file to review product lines.</td>
+                <td colSpan={9}>Create the import validation file to review product lines.</td>
               </tr>
             ) : (
-              candidate.lines.map((line) => (
-                <tr key={`${line.item_code}-${line.batch_number}`}>
+              candidate.lines.map((line, lineIndex) => (
+                <tr key={`${line.item_code}-${line.batch_number}-${line.serial_number ?? lineIndex}`}>
                   <td>{line.item_code}</td>
                   <td>{line.product_description}</td>
                   <td>{line.batch_number}</td>
+                  <td>{line.serial_number ? <span className="muted-cell">{line.serial_number}</span> : "-"}</td>
                   <td>{line.expiry_date ?? "-"}</td>
                   <td>{formatDaysToExpiry(line.expiry_date)}</td>
                   <td>{line.quantity} {line.uom}</td>

@@ -143,6 +143,7 @@ def assemble_import_candidate_from_documents(
                 or item_code
             ),
             batch_number=str(packing_line.get("batch_number") or ""),
+            serial_number=string_or_none(packing_line.get("serial_number")),
             expiry_date=packing_line.get("expiry_date"),
             quantity=float(packing_line.get("quantity") or invoice_line.get("quantity") or 0),
             uom=str(learned_uom or invoice_line.get("uom") or "EA"),
@@ -581,44 +582,79 @@ def parse_packing_lines(text: str) -> dict[str, dict[str, object]]:
     lines = clean_lines(text)
     parsed: dict[str, dict[str, object]] = {}
     index = 0
-    while index < len(lines) - 8:
-        if (
+    while index < len(lines) - 6:
+        if not (
             re.fullmatch(r"\d{1,3}", lines[index])
             and index + 3 < len(lines)
             and is_item_code(lines[index + 3])
         ):
-            item_code = lines[index + 3]
-            cursor = index + 4
-            description_parts: list[str] = []
-            while cursor + 1 < len(lines) and not (
-                is_batch_number(lines[cursor])
-                and parse_date(lines[cursor + 1]) is not None
-            ):
-                description_parts.append(lines[cursor])
-                cursor += 1
-            if cursor + 3 >= len(lines):
-                index += 1
-                continue
-            batch_number = lines[cursor]
-            parsed[packing_line_key(item_code, batch_number)] = {
-                "item_code": item_code,
-                "product_description": " ".join(description_parts).strip(),
-                "batch_number": batch_number,
-                "expiry_date": parse_date(lines[cursor + 1]),
-                "quantity": to_float(lines[cursor + 2]),
-                "weight_kg": to_float(lines[cursor + 3]),
-            }
-            index = cursor + 4
+            index += 1
             continue
-        index += 1
+
+        item_code = lines[index + 3]
+        body_start = index + 4
+
+        # A packing-list row has the shape:
+        #   <description...> <batch> [serial] <expiry date> <qty> <weight>
+        # The expiry date is the most reliable anchor, so find it first, then read
+        # batch (+ optional serial) backwards and quantity/weight forwards. This
+        # handles serialised devices (valves) where a serial sits between the
+        # batch and the date, which the old "batch immediately before date" rule
+        # could not.
+        date_index = None
+        for offset in range(body_start, min(body_start + 14, len(lines) - 2)):
+            if parse_date(lines[offset]) is not None:
+                date_index = offset
+                break
+        if date_index is None or date_index + 2 >= len(lines):
+            index += 1
+            continue
+
+        codes: list[str] = []
+        scan = date_index - 1
+        while scan >= body_start and len(codes) < 2 and _is_code_token(lines[scan]):
+            codes.insert(0, lines[scan])
+            scan -= 1
+        if not codes:
+            index += 1
+            continue
+
+        batch_number = codes[0]
+        serial_number = codes[1] if len(codes) > 1 else None
+        description_parts = lines[body_start : scan + 1]
+
+        parsed[packing_line_key(item_code, batch_number, serial_number)] = {
+            "item_code": item_code,
+            "product_description": " ".join(description_parts).strip(),
+            "batch_number": batch_number,
+            "serial_number": serial_number,
+            "expiry_date": parse_date(lines[date_index]),
+            "quantity": to_float(lines[date_index + 1]),
+            "weight_kg": to_float(lines[date_index + 2]),
+        }
+        index = date_index + 3
     return parsed
 
 
-def packing_line_key(item_code: str, batch_number: str) -> str:
-    """Key a packing-list row by item code + batch so different batches of the
-    same medical device stay as separate, traceable lines instead of merging."""
-    batch = (batch_number or "").strip()
-    return f"{item_code} / {batch}" if batch else item_code
+def _is_code_token(value: str) -> bool:
+    """True for a batch/serial token: one word (no spaces) of letters/digits,
+    at least 4 characters, containing at least one digit. Description words
+    (which contain spaces, commas, or no digits) are excluded."""
+    token = value.strip()
+    if " " in token or len(token) < 4:
+        return False
+    if not re.fullmatch(r"[A-Za-z0-9/-]+", token):
+        return False
+    return any(character.isdigit() for character in token)
+
+
+def packing_line_key(item_code: str, batch_number: str, serial_number: str | None = None) -> str:
+    """Key a packing-list row by item + batch (+ serial when present) so different
+    batches or serialised units of the same device stay separate and traceable."""
+    parts = [item_code, (batch_number or "").strip()]
+    if serial_number and serial_number.strip():
+        parts.append(serial_number.strip())
+    return " / ".join(part for part in parts if part)
 
 
 def clean_lines(text: str) -> list[str]:

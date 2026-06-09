@@ -123,6 +123,8 @@ def extract_packing_list_values(text: str) -> dict[str, object]:
         "Part Number": first_line.get("item_code"),
         "Batch Number": first_line.get("batch_number"),
         "Lot Number": first_line.get("batch_number"),
+        "Serial Number": first_line.get("serial_number"),
+        "Serial Numbers Detected": line_summary.get("serial_numbers"),
         "Quantity": line_summary.get("total_quantity"),
         "UOM": "EA" if lines else None,
         "Gross Weight": header.get("gross_weight_kg"),
@@ -197,10 +199,17 @@ def summarize_line_items(lines: dict[str, dict[str, object]]) -> dict[str, objec
         for line in lines.values()
         if line.get("batch_number")
     ]
+    serial_numbers = [
+        str(line.get("serial_number"))
+        for line in lines.values()
+        if line.get("serial_number")
+    ]
+    item_codes = [str(line.get("item_code") or key) for key, line in lines.items()]
     return {
         "line_count": len(lines),
-        "item_codes": ", ".join(lines.keys()) if lines else None,
+        "item_codes": ", ".join(dict.fromkeys(item_codes)) if item_codes else None,
         "batch_numbers": ", ".join(dict.fromkeys(batch_numbers)) if batch_numbers else None,
+        "serial_numbers": ", ".join(dict.fromkeys(serial_numbers)) if serial_numbers else None,
         "total_quantity": total_quantity if lines else None,
         "total_line_value": total_line_value if total_line_value else None,
     }
@@ -213,9 +222,10 @@ def build_line_items_json(lines: dict[str, dict[str, object]]) -> str | None:
     for item_code, line in lines.items():
         payload.append(
             {
-                "item_code": item_code,
+                "item_code": stringify_value(line.get("item_code")) or item_code,
                 "product_description": stringify_value(line.get("product_description")),
                 "batch_number": stringify_value(line.get("batch_number")),
+                "serial_number": stringify_value(line.get("serial_number")),
                 "expiry_date": stringify_value(line.get("expiry_date")),
                 "quantity": line.get("quantity"),
                 "uom": line.get("uom") or "EA",

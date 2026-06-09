@@ -422,6 +422,7 @@ export type ApiImportFileCandidate = {
     item_code: string;
     product_description: string;
     batch_number: string;
+    serial_number: string | null;
     expiry_date: string | null;
     quantity: number;
     uom: string;

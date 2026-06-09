@@ -23,6 +23,7 @@ class ImportLineCandidate(BaseModel):
     item_code: str
     product_description: str
     batch_number: str
+    serial_number: str | None = None
     expiry_date: date | None = None
     quantity: float
     uom: str
