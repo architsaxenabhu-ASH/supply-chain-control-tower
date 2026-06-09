@@ -43,6 +43,7 @@ import {
   askAssistant,
   confirmDispatch,
   createShipment,
+  fetchErpTemplates,
   fetchCustomers,
   fetchAuditEvents,
   fetchDashboardSummary,
@@ -60,6 +61,7 @@ import {
   listDocuments,
   loginUser,
   postImportGoodsReceipt,
+  previewErpUpload,
   rescanDocument,
   saveFieldCorrection,
   saveApprovalRule,
@@ -75,6 +77,8 @@ import type {
   ApiGoodsReceipt,
   ApiAuditEvent,
   ApiAuthenticatedUser,
+  ApiErpTemplate,
+  ApiErpUploadPreview,
   ApiImportApprovalRequest,
   ApiImportAssemblyRequest,
   ApiImportGoodsReceiptPostRequest,
@@ -415,6 +419,7 @@ const navItems = [
   { id: "platform-progress", label: "Progress", icon: GitBranch },
   { id: "documents", label: "Documents", icon: FileUp },
   { id: "import-validation", label: "Import Validation", icon: ClipboardCheck },
+  { id: "erp-uploads", label: "ERP Upload", icon: Upload },
   { id: "products", label: "Products", icon: Package },
   { id: "inventory", label: "Inventory", icon: Boxes },
   { id: "shipments", label: "Shipments", icon: Ship },
@@ -540,10 +545,10 @@ const platformCapabilities: PlatformCapability[] = [
   {
     module: "Template and ERP upload engine",
     area: "Integrations",
-    status: "planned",
-    progress: 10,
-    whatDone: "Template concept defined.",
-    stillLeft: "Template master, field mapping, Excel generation, SAP/ERP export.",
+    status: "partial",
+    progress: 46,
+    whatDone: "ERP upload center, configurable backend templates, validation preview, CSV export.",
+    stillLeft: "User-defined template master, true XLSX formatting, SAP/ERP API posting.",
     icon: FileSpreadsheet,
   },
   {
@@ -602,6 +607,11 @@ const tourGuideContent: Record<string, Omit<TourGuideStep, "viewId">> = {
     title: "Import validation",
     detail: "Combine invoice, packing list, and AWB, correct extracted fields with mandatory reason, learn first-time products, approve, then post Goods Receipt.",
     icon: ClipboardCheck,
+  },
+  "erp-uploads": {
+    title: "ERP upload center",
+    detail: "Generate ERP-ready inventory, receipt, dispatch, and import upload rows with mandatory-field checks before download.",
+    icon: Upload,
   },
   products: {
     title: "Products",
@@ -760,6 +770,22 @@ function escapeCsvValue(value: unknown) {
   return `"${text.replace(/"/g, '""')}"`;
 }
 
+function erpRowsForExport(preview: ApiErpUploadPreview | null) {
+  if (!preview) {
+    return [];
+  }
+  return preview.rows.map((row) => ({
+    row_number: row.row_number,
+    source_reference: row.source_reference,
+    validation_status: row.missing_fields.length ? "blocked" : "ready",
+    missing_fields: row.missing_fields.join("; "),
+    ...preview.columns.reduce<Record<string, unknown>>((record, column) => {
+      record[column] = row.values[column];
+      return record;
+    }, {}),
+  }));
+}
+
 function getExportRows({
   activeView,
   auditEvents,
@@ -767,6 +793,7 @@ function getExportRows({
   customers,
   dispatches,
   documents,
+  erpPreview,
   filteredInventory,
   filteredProducts,
   importCandidate,
@@ -780,6 +807,7 @@ function getExportRows({
   customers: Customer[];
   dispatches: Dispatch[];
   documents: DocumentRecord[];
+  erpPreview: ApiErpUploadPreview | null;
   filteredInventory: InventoryBatch[];
   filteredProducts: Product[];
   importCandidate: ApiImportFileCandidate | null;
@@ -842,6 +870,10 @@ function getExportRows({
       missing_required_count: document.missing_required_count,
       created_at: document.created_at,
     }));
+  }
+
+  if (activeView === "erp-uploads") {
+    return erpRowsForExport(erpPreview);
   }
 
   if (activeView === "platform-progress") {
@@ -1095,6 +1127,10 @@ export function App() {
     corrected_count: 0,
   });
   const [validationMessage, setValidationMessage] = useState("Load documents to review extracted values.");
+  const [erpTemplates, setErpTemplates] = useState<ApiErpTemplate[]>([]);
+  const [selectedErpTemplate, setSelectedErpTemplate] = useState("inventory_balance");
+  const [erpPreview, setErpPreview] = useState<ApiErpUploadPreview | null>(null);
+  const [erpMessage, setErpMessage] = useState("Select a template and generate an ERP upload preview.");
 
   useEffect(() => {
     let isMounted = true;
@@ -1113,6 +1149,7 @@ export function App() {
           apiAuditEvents,
           apiImportQueue,
           apiValidationQueue,
+          apiErpTemplates,
         ] = await Promise.all([
           fetchProducts(),
           fetchInventoryBatches(),
@@ -1125,6 +1162,7 @@ export function App() {
           fetchAuditEvents(20),
           fetchImportCandidates(),
           fetchValidationQueue(),
+          fetchErpTemplates(),
         ]);
         const initialImportCandidate = apiImportQueue[0] ?? null;
         const initialWarehouses = initialImportCandidate
@@ -1145,6 +1183,8 @@ export function App() {
         setAuditEvents(apiAuditEvents);
         setImportQueue(apiImportQueue);
         setValidationQueue(apiValidationQueue);
+        setErpTemplates(apiErpTemplates);
+        setSelectedErpTemplate((current) => current || apiErpTemplates[0]?.template_key || "inventory_balance");
         setImportCandidate(initialImportCandidate);
         setDestinationWarehouses(initialWarehouses);
         setSelectedWarehouse(initialWarehouses[0]?.warehouse_code ?? "");
@@ -1347,6 +1387,27 @@ export function App() {
     setValidationMessage(response.message);
     setApiStatus("Connected to backend / correction learned");
     return response.message;
+  }
+
+  async function handleGenerateErpPreview(templateKey: string) {
+    if (!currentUser) {
+      setErpMessage("Log in before generating ERP upload rows.");
+      return;
+    }
+    setErpMessage("Generating ERP upload preview...");
+    try {
+      const preview = await previewErpUpload({
+        template_key: templateKey,
+        auth_token: currentUser.session_token,
+      });
+      setErpPreview(preview);
+      setErpMessage(
+        `Generated ${preview.total_rows} row(s): ${preview.valid_rows} ready, ${preview.blocked_rows} blocked.`,
+      );
+      setApiStatus("Connected to backend / ERP preview ready");
+    } catch (error) {
+      setErpMessage(error instanceof Error ? error.message : "Could not generate ERP preview.");
+    }
   }
 
   async function handlePostImportGoodsReceipt(payload: ApiImportGoodsReceiptPostRequest) {
@@ -1613,6 +1674,7 @@ export function App() {
       customers,
       dispatches,
       documents,
+      erpPreview,
       filteredInventory,
       filteredProducts,
       importCandidate,
@@ -1764,6 +1826,17 @@ export function App() {
             selectedWarehouse={selectedWarehouse}
             validationMessage={validationMessage}
             validationQueue={validationQueue}
+          />
+        ) : null}
+        {activeView === "erp-uploads" ? (
+          <ErpUploadView
+            message={erpMessage}
+            onDownload={(preview) => downloadCsv(preview.export_filename, erpRowsForExport(preview))}
+            onGenerate={handleGenerateErpPreview}
+            preview={erpPreview}
+            selectedTemplate={selectedErpTemplate}
+            setSelectedTemplate={setSelectedErpTemplate}
+            templates={erpTemplates}
           />
         ) : null}
         {activeView === "products" ? (
@@ -3575,6 +3648,7 @@ function canAccessView(user: ApiAuthenticatedUser | null, viewId: string) {
   const permissionByView: Record<string, string[]> = {
     documents: ["import_approval", "goods_receipt"],
     "import-validation": ["import_approval", "goods_receipt"],
+    "erp-uploads": ["reports_export", "import_approval", "goods_receipt"],
     products: ["masters"],
     inventory: ["goods_receipt", "inventory_approval", "inventory_value", "expiry_review"],
     shipments: ["shipment_request", "shipment_approval"],
@@ -3742,6 +3816,150 @@ function LoginView({
       </section>
     </main>
   );
+}
+
+function ErpUploadView({
+  message,
+  onDownload,
+  onGenerate,
+  preview,
+  selectedTemplate,
+  setSelectedTemplate,
+  templates,
+}: {
+  message: string;
+  onDownload: (preview: ApiErpUploadPreview) => void;
+  onGenerate: (templateKey: string) => Promise<void>;
+  preview: ApiErpUploadPreview | null;
+  selectedTemplate: string;
+  setSelectedTemplate: (templateKey: string) => void;
+  templates: ApiErpTemplate[];
+}) {
+  const activeTemplate =
+    templates.find((template) => template.template_key === selectedTemplate)
+    ?? templates[0]
+    ?? null;
+  const visibleRows = preview?.rows.slice(0, 40) ?? [];
+
+  return (
+    <>
+      <section className="content-grid wide-left">
+        <Panel title="ERP template selector" meta={`${templates.length} template(s)`}>
+          {templates.length === 0 ? (
+            <p className="empty-state">No ERP templates loaded yet.</p>
+          ) : (
+            <div className="erp-template-grid">
+              {templates.map((template) => (
+                <button
+                  className={
+                    template.template_key === selectedTemplate
+                      ? "erp-template-card active"
+                      : "erp-template-card"
+                  }
+                  key={template.template_key}
+                  onClick={() => setSelectedTemplate(template.template_key)}
+                >
+                  <span>{template.source_module}</span>
+                  <strong>{template.template_name}</strong>
+                  <small>{template.description}</small>
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="form-action-row">
+            <button
+              className="primary-action"
+              disabled={!activeTemplate}
+              onClick={() => activeTemplate && onGenerate(activeTemplate.template_key)}
+            >
+              <Upload size={17} aria-hidden="true" />
+              Generate preview
+            </button>
+            <button
+              className="secondary-action"
+              disabled={!preview || preview.total_rows === 0}
+              onClick={() => preview && onDownload(preview)}
+            >
+              <Download size={17} aria-hidden="true" />
+              Download CSV
+            </button>
+          </div>
+          <p className="status-line">{message}</p>
+        </Panel>
+
+        <Panel title="Upload readiness" meta={preview ? preview.template_name : "Pending preview"}>
+          <div className="import-summary-grid">
+            <SummaryItem label="Total Rows" value={preview ? String(preview.total_rows) : "-"} />
+            <SummaryItem label="Ready Rows" value={preview ? String(preview.valid_rows) : "-"} />
+            <SummaryItem label="Blocked Rows" value={preview ? String(preview.blocked_rows) : "-"} />
+            <SummaryItem label="Columns" value={preview ? String(preview.columns.length) : "-"} />
+          </div>
+          {preview?.warnings.length ? (
+            <div className="warning-list">
+              {preview.warnings.map((warning) => (
+                <div className="validation-banner warning" key={warning}>
+                  <strong>Check before upload</strong>
+                  <span>{warning}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="status-line">
+              ERP rows are generated from live application transactions and validated against mandatory fields.
+            </p>
+          )}
+        </Panel>
+      </section>
+
+      <Panel title="ERP row preview" meta={preview ? preview.export_filename : "Generate a preview first"}>
+        {!preview ? (
+          <p className="empty-state">Choose a template and generate preview to see ERP upload rows.</p>
+        ) : preview.rows.length === 0 ? (
+          <p className="empty-state">No rows available for this template.</p>
+        ) : (
+          <>
+            <table>
+              <thead>
+                <tr>
+                  <th>Status</th>
+                  <th>Source</th>
+                  {preview.columns.map((column) => (
+                    <th key={column}>{column}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {visibleRows.map((row) => (
+                  <tr key={`${row.row_number}-${row.source_reference}`}>
+                    <td>
+                      <StatusTag label={row.missing_fields.length ? "Blocked" : "Ready"} />
+                      {row.missing_fields.length ? (
+                        <span className="muted-cell">{row.missing_fields.join(", ")}</span>
+                      ) : null}
+                    </td>
+                    <td>{row.source_reference}</td>
+                    {preview.columns.map((column) => (
+                      <td key={`${row.row_number}-${column}`}>{formatErpCell(row.values[column])}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {preview.rows.length > visibleRows.length ? (
+              <p className="status-line">Showing first {visibleRows.length} rows. Download CSV for full output.</p>
+            ) : null}
+          </>
+        )}
+      </Panel>
+    </>
+  );
+}
+
+function formatErpCell(value: unknown) {
+  if (value === null || value === undefined || value === "") {
+    return "-";
+  }
+  return String(value);
 }
 
 function ProductsView({

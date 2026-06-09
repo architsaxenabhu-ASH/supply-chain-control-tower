@@ -392,6 +392,34 @@ export type ApiFieldCorrectionResponse = {
   message: string;
 };
 
+export type ApiErpTemplate = {
+  template_key: string;
+  template_name: string;
+  description: string;
+  source_module: string;
+  columns: string[];
+};
+
+export type ApiErpUploadRow = {
+  row_number: number;
+  source_reference: string;
+  values: Record<string, unknown>;
+  missing_fields: string[];
+};
+
+export type ApiErpUploadPreview = {
+  template_key: string;
+  template_name: string;
+  generated_at: string;
+  export_filename: string;
+  columns: string[];
+  rows: ApiErpUploadRow[];
+  total_rows: number;
+  valid_rows: number;
+  blocked_rows: number;
+  warnings: string[];
+};
+
 export function fetchProducts(): Promise<ApiProduct[]> {
   return getJson<ApiProduct[]>("/products");
 }
@@ -432,6 +460,17 @@ export function saveFieldCorrection(
   payload: ApiFieldCorrectionRequest,
 ): Promise<ApiFieldCorrectionResponse> {
   return postJson<ApiFieldCorrectionResponse, typeof payload>("/validation/corrections", payload);
+}
+
+export function fetchErpTemplates(): Promise<ApiErpTemplate[]> {
+  return getJson<ApiErpTemplate[]>("/erp-uploads/templates");
+}
+
+export function previewErpUpload(payload: {
+  template_key: string;
+  auth_token: string;
+}): Promise<ApiErpUploadPreview> {
+  return postJson<ApiErpUploadPreview, typeof payload>("/erp-uploads/preview", payload);
 }
 
 export function askAssistant(question: string): Promise<ApiAssistantAnswer> {

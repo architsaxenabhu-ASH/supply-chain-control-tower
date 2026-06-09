@@ -7,6 +7,7 @@ from app.api.routes import (
     dashboard,
     dispatches,
     documents,
+    erp_uploads,
     expiry,
     goods_receipts,
     inventory,
@@ -29,6 +30,7 @@ api_router.include_router(products.router, prefix="/products", tags=["products"]
 api_router.include_router(customers.router, prefix="/customers", tags=["customers"])
 api_router.include_router(warehouses.router, prefix="/warehouses", tags=["warehouses"])
 api_router.include_router(documents.router, prefix="/documents", tags=["documents"])
+api_router.include_router(erp_uploads.router, prefix="/erp-uploads", tags=["erp-uploads"])
 api_router.include_router(validation.router, prefix="/validation", tags=["validation"])
 api_router.include_router(inventory.router, prefix="/inventory", tags=["inventory"])
 api_router.include_router(shipments.router, prefix="/shipments", tags=["shipments"])

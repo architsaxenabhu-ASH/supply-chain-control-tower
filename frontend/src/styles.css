@@ -852,33 +852,57 @@ td {
   gap: 10px;
 }
 
+.erp-template-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
 .candidate-card,
-.required-card {
+.required-card,
+.erp-template-card {
   display: grid;
   gap: 7px;
   min-height: 96px;
   border: 1px solid #e3e8ec;
   border-radius: 6px;
+  background: #ffffff;
+  color: #1c2430;
   padding: 12px;
+  text-align: left;
 }
 
 .candidate-card span,
 .candidate-card small,
 .required-card span,
-.required-card small {
+.required-card small,
+.erp-template-card span,
+.erp-template-card small {
   color: #6a7682;
   font-size: 13px;
 }
 
 .candidate-card span,
-.required-card span {
+.required-card span,
+.erp-template-card span {
   font-weight: 800;
   text-transform: capitalize;
 }
 
 .candidate-card strong,
-.required-card strong {
+.required-card strong,
+.erp-template-card strong {
   overflow-wrap: anywhere;
+}
+
+.erp-template-card {
+  cursor: pointer;
+}
+
+.erp-template-card.active,
+.erp-template-card:hover {
+  border-color: #116466;
+  background: #e7f1f1;
 }
 
 .required-card.satisfied {
@@ -967,6 +991,7 @@ td {
   .security-form-grid,
   .security-change-grid,
   .candidate-grid,
+  .erp-template-grid,
   .required-grid,
   .role-grid {
     grid-template-columns: 1fr;
@@ -1069,6 +1094,7 @@ body {
 .queue-row,
 .audit-event,
 .candidate-card,
+.erp-template-card,
 .required-card,
 .summary-item,
 .validation-banner,
@@ -1116,6 +1142,7 @@ h2,
 .queue-row strong,
 .audit-event strong,
 .candidate-card strong,
+.erp-template-card strong,
 .required-card strong,
 .role-card strong,
 .bucket-row strong,
@@ -1145,6 +1172,8 @@ h2,
 .muted-cell,
 .candidate-card span,
 .candidate-card small,
+.erp-template-card span,
+.erp-template-card small,
 .required-card span,
 .required-card small,
 .bucket-row span,
@@ -1546,6 +1575,7 @@ td {
 .status-181-365-days,
 .status-above-365-days,
 .status-matched,
+.status-ready,
 .status-autofill {
   background: rgba(54, 226, 155, 0.13);
   color: #8df0c2;
@@ -1555,6 +1585,7 @@ td {
 .status-0-90-days,
 .status-deficit,
 .status-expired,
+.status-blocked,
 .status-ask-first-time {
   background: rgba(255, 93, 108, 0.14);
   color: #ff9aa4;
@@ -1580,6 +1611,8 @@ td {
 }
 
 .validation-banner,
+.erp-template-card.active,
+.erp-template-card:hover,
 .required-card.satisfied {
   border-color: rgba(54, 226, 155, 0.24);
   background: rgba(13, 48, 41, 0.5);
