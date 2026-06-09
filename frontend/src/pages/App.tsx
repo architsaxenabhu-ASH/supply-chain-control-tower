@@ -43,6 +43,7 @@ import {
   askAssistant,
   confirmDispatch,
   createShipment,
+  fetchCorrectionSuggestion,
   fetchErpTemplates,
   fetchCustomers,
   fetchAuditEvents,
@@ -78,6 +79,7 @@ import type {
   ApiGoodsReceipt,
   ApiAuditEvent,
   ApiAuthenticatedUser,
+  ApiCorrectionSuggestion,
   ApiErpTemplate,
   ApiErpUploadPreview,
   ApiImportApprovalRequest,
@@ -2936,6 +2938,7 @@ function ImportValidationView({
   const [selectedQueueId, setSelectedQueueId] = useState("");
   const [correctionValue, setCorrectionValue] = useState("");
   const [correctionReason, setCorrectionReason] = useState("");
+  const [suggestion, setSuggestion] = useState<ApiCorrectionSuggestion | null>(null);
   const invoiceDocuments = useMemo(
     () => documents.filter((document) => document.document_type === "commercial_invoice"),
     [documents],
@@ -3037,6 +3040,33 @@ function ImportValidationView({
     setCorrectionValue(selectedQueueItem.effective_value ?? "");
     setCorrectionReason("");
   }, [selectedQueueItem, selectedQueueId]);
+
+  useEffect(() => {
+    if (!selectedQueueItem) {
+      setSuggestion(null);
+      return;
+    }
+    let isMounted = true;
+    fetchCorrectionSuggestion(
+      selectedQueueItem.document_type,
+      selectedQueueItem.field_name,
+      selectedQueueItem.extracted_value,
+    )
+      .then((response) => {
+        if (isMounted) {
+          setSuggestion(response.suggestion);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setSuggestion(null);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedQueueItem]);
 
   function handleAssembleImport() {
     if (selectedInvoiceDocumentIds.length === 0 || selectedPackingDocumentIds.length === 0) {
@@ -3435,6 +3465,30 @@ function ImportValidationView({
                       <span>Extracted value</span>
                       <textarea readOnly value={selectedQueueItem.extracted_value ?? "Missing"} />
                     </label>
+                    {suggestion ? (
+                      <div className="learning-suggestion">
+                        <div>
+                          <strong>Learned suggestion: {suggestion.suggested_value}</strong>
+                          <span>
+                            Seen {suggestion.times_seen} time{suggestion.times_seen === 1 ? "" : "s"} ·{" "}
+                            {Math.round(suggestion.confidence)}% confidence · from {suggestion.based_on}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          className="secondary-action"
+                          onClick={() => {
+                            setCorrectionValue(suggestion.suggested_value);
+                            if (!correctionReason.trim()) {
+                              setCorrectionReason("Applied learned correction from previous fixes.");
+                            }
+                          }}
+                        >
+                          <Sparkles size={16} aria-hidden="true" />
+                          Apply
+                        </button>
+                      </div>
+                    ) : null}
                     <label className="field-control">
                       <span>Corrected value</span>
                       <textarea
@@ -5603,8 +5657,9 @@ function LearningCenterView({ insights }: { insights: ApiLearningInsights | null
             <thead>
               <tr>
                 <th>Document</th>
+                <th>Field</th>
                 <th>When it sees</th>
-                <th>It fills</th>
+                <th>Auto-fills to</th>
                 <th>Confidence</th>
                 <th>Times used</th>
               </tr>
@@ -5613,10 +5668,11 @@ function LearningCenterView({ insights }: { insights: ApiLearningInsights | null
               {insights.top_learned_rules.map((rule, index) => (
                 <tr key={`${rule.document_type}-${rule.target_field}-${index}`}>
                   <td>{toTitleCase(rule.document_type.replace(/_/g, " "))}</td>
+                  <td>{toTitleCase(rule.target_field.replace(/_/g, " "))}</td>
                   <td>
                     <span className="muted-cell">{rule.source_text}</span>
                   </td>
-                  <td>{toTitleCase(rule.target_field.replace(/_/g, " "))}</td>
+                  <td>{rule.corrected_value ?? "—"}</td>
                   <td>
                     <StatusTag label={`${Math.round(rule.confidence)}%`} />
                   </td>

@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
 
 from app.schemas.learning import (
+    CorrectionSuggestionResponse,
     CountryDocumentRequirementRequest,
     CountryDocumentRequirementRule,
     CorrectionEventRequest,
@@ -22,6 +23,7 @@ from app.services.learning_repository import (
     get_country_document_requirements,
     learn_country_document_requirement,
     list_learning_rules,
+    suggest_field_correction,
     record_correction,
     record_entity_alias,
     edit_product_learning_profile,
@@ -41,6 +43,19 @@ def rules() -> list[LearningRule]:
 @router.get("/insights", response_model=LearningInsights)
 def insights() -> LearningInsights:
     return get_learning_insights()
+
+
+@router.get("/suggest-correction", response_model=CorrectionSuggestionResponse)
+def suggest_correction(
+    document_type: str,
+    field_name: str,
+    current_value: str | None = None,
+) -> CorrectionSuggestionResponse:
+    return suggest_field_correction(
+        document_type=document_type,
+        field_name=field_name,
+        current_value=current_value,
+    )
 
 
 @router.get("/product-profiles/{item_code}", response_model=ProductLearningProfileResponse)

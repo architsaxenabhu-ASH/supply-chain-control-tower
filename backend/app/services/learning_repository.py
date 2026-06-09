@@ -3,6 +3,8 @@ from datetime import datetime
 
 from app.db.local_persistence import load_collection, record_audit_event, save_collection
 from app.schemas.learning import (
+    CorrectionSuggestion,
+    CorrectionSuggestionResponse,
     CountryDocumentRequirementRequest,
     CountryDocumentRequirementRule,
     CorrectionEventRequest,
@@ -60,7 +62,9 @@ def _save_learning_rules() -> None:
     save_collection(
         "learning_rules",
         LEARNING_RULES,
-        lambda rule: "|".join([rule.document_type, rule.source_text, rule.target_field]),
+        lambda rule: "|".join(
+            [rule.document_type, rule.source_text, rule.target_field, rule.corrected_value or ""]
+        ),
     )
 
 
@@ -301,16 +305,35 @@ def edit_product_learning_profile(request: ProductProfileEditRequest) -> Product
 def record_correction(event: CorrectionEventRequest) -> CorrectionEventRequest:
     CORRECTION_EVENTS.append(event)
     if event.original_value and event.corrected_value:
-        LEARNING_RULES.append(
-            LearningRule(
-                document_type=event.document_type,
-                source_text=event.original_value,
-                target_field=event.field_name,
-                confidence=70,
-                success_count=1,
-                failure_count=0,
-            )
+        # Reinforce an identical past rule so repeated corrections grow confidence
+        # instead of piling up duplicates. A different corrected value for the same
+        # source becomes its own competing rule.
+        existing_rule = next(
+            (
+                rule
+                for rule in LEARNING_RULES
+                if rule.document_type == event.document_type
+                and rule.source_text == event.original_value
+                and rule.target_field == event.field_name
+                and rule.corrected_value == event.corrected_value
+            ),
+            None,
         )
+        if existing_rule:
+            existing_rule.success_count += 1
+            existing_rule.confidence = min(99, existing_rule.confidence + 5)
+        else:
+            LEARNING_RULES.append(
+                LearningRule(
+                    document_type=event.document_type,
+                    source_text=event.original_value,
+                    target_field=event.field_name,
+                    corrected_value=event.corrected_value,
+                    confidence=70,
+                    success_count=1,
+                    failure_count=0,
+                )
+            )
         _save_learning_rules()
     _save_correction_events()
     record_audit_event(
@@ -342,6 +365,52 @@ def record_entity_alias(alias: EntityAliasRequest) -> EntityAliasRequest:
 
 def list_learning_rules() -> list[LearningRule]:
     return LEARNING_RULES
+
+
+def suggest_field_correction(
+    document_type: str,
+    field_name: str,
+    current_value: str | None,
+) -> CorrectionSuggestionResponse:
+    """Suggest a corrected value the platform has already learned for this field.
+
+    This is what makes repeat corrections disappear: once a human has fixed a
+    given value on a given field, the same fix is offered automatically next time.
+    """
+    empty = CorrectionSuggestionResponse(field_name=field_name, current_value=current_value)
+    if not current_value:
+        return empty
+
+    def matches(rule: LearningRule, same_document: bool) -> bool:
+        if not rule.corrected_value or rule.target_field != field_name:
+            return False
+        if rule.source_text != current_value:
+            return False
+        if same_document:
+            return rule.document_type == document_type
+        return True
+
+    # Prefer rules learned on the same document type, then fall back to any document.
+    candidates = [rule for rule in LEARNING_RULES if matches(rule, same_document=True)]
+    based_on = document_type
+    if not candidates:
+        candidates = [rule for rule in LEARNING_RULES if matches(rule, same_document=False)]
+        based_on = "all documents"
+
+    if not candidates:
+        return empty
+
+    best = max(candidates, key=lambda rule: (rule.confidence, rule.success_count))
+    return CorrectionSuggestionResponse(
+        field_name=field_name,
+        current_value=current_value,
+        suggestion=CorrectionSuggestion(
+            suggested_value=best.corrected_value or "",
+            confidence=best.confidence,
+            times_seen=best.success_count,
+            based_on=based_on,
+        ),
+    )
 
 
 def _top_stats(counter: Counter[str], limit: int = 6) -> list[LearningStat]:

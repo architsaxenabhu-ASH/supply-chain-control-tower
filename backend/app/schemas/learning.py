@@ -17,6 +17,7 @@ class LearningRule(BaseModel):
     document_type: str
     source_text: str
     target_field: str
+    corrected_value: str | None = None
     confidence: float = 50
     success_count: int = 0
     failure_count: int = 0
@@ -140,6 +141,21 @@ class LearningStat(BaseModel):
 
     label: str
     count: int
+
+
+class CorrectionSuggestion(BaseModel):
+    """A value the platform suggests because it learned it from past corrections."""
+
+    suggested_value: str
+    confidence: float
+    times_seen: int
+    based_on: str
+
+
+class CorrectionSuggestionResponse(BaseModel):
+    field_name: str
+    current_value: str | None = None
+    suggestion: CorrectionSuggestion | None = None
 
 
 class LearningInsights(BaseModel):

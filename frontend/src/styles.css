@@ -2713,6 +2713,39 @@ td {
   gap: 12px;
 }
 
+/* Learned-suggestion banner shown in the Import Validation correction form. */
+.learning-suggestion {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--tower-border-strong);
+  background: linear-gradient(135deg, rgba(72, 229, 255, 0.14), rgba(54, 226, 155, 0.08));
+  animation: panel-rise 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.learning-suggestion > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.learning-suggestion strong {
+  color: var(--tower-text);
+  word-break: break-word;
+}
+
+.learning-suggestion span {
+  color: var(--tower-muted);
+  font-size: 12px;
+}
+
+.learning-suggestion .secondary-action {
+  flex: 0 0 auto;
+}
+
 @media (max-width: 920px) {
   .learning-grid {
     grid-template-columns: 1fr;

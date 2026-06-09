@@ -302,9 +302,23 @@ export type ApiLearningRule = {
   document_type: string;
   source_text: string;
   target_field: string;
+  corrected_value: string | null;
   confidence: number;
   success_count: number;
   failure_count: number;
+};
+
+export type ApiCorrectionSuggestion = {
+  suggested_value: string;
+  confidence: number;
+  times_seen: number;
+  based_on: string;
+};
+
+export type ApiCorrectionSuggestionResponse = {
+  field_name: string;
+  current_value: string | null;
+  suggestion: ApiCorrectionSuggestion | null;
 };
 
 export type ApiCountryDocumentRule = {
@@ -724,4 +738,19 @@ export function saveCountryDocumentRequirement(payload: {
 
 export function fetchLearningInsights(): Promise<ApiLearningInsights> {
   return getJson<ApiLearningInsights>("/learning/insights");
+}
+
+export function fetchCorrectionSuggestion(
+  documentType: string,
+  fieldName: string,
+  currentValue: string | null,
+): Promise<ApiCorrectionSuggestionResponse> {
+  const params = new URLSearchParams({
+    document_type: documentType,
+    field_name: fieldName,
+  });
+  if (currentValue) {
+    params.set("current_value", currentValue);
+  }
+  return getJson<ApiCorrectionSuggestionResponse>(`/learning/suggest-correction?${params.toString()}`);
 }
