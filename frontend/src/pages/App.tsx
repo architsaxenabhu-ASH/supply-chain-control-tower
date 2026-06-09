@@ -65,6 +65,7 @@ import {
   getExtractionMaster,
   listDocuments,
   loginUser,
+  markImportDelivered,
   postImportGoodsReceipt,
   previewErpUpload,
   rescanDocument,
@@ -88,6 +89,7 @@ import type {
   ApiErpUploadPreview,
   ApiImportApprovalRequest,
   ApiImportAssemblyRequest,
+  ApiImportDeliveryRequest,
   ApiImportGoodsReceiptPostRequest,
   ApiInventoryBatch,
   ApiInventoryCount,
@@ -1505,7 +1507,20 @@ export function App() {
     setImportQueue(apiImportQueue);
     setAuditEvents(apiAuditEvents);
     setApiStatus(`Connected to backend / ${approvedCandidate.import_file_number} approved`);
-    return `Import file approved by ${payload.approved_by}. Goods Receipt is now allowed.`;
+    return `Import file approved by ${payload.approved_by}. Mark the shipment delivered, then post Goods Receipt.`;
+  }
+
+  async function handleMarkImportDelivered(payload: ApiImportDeliveryRequest) {
+    const deliveredCandidate = await markImportDelivered(payload);
+    const [apiImportQueue, apiAuditEvents] = await Promise.all([
+      fetchImportCandidates(),
+      fetchAuditEvents(20),
+    ]);
+    setImportCandidate(deliveredCandidate);
+    setImportQueue(apiImportQueue);
+    setAuditEvents(apiAuditEvents);
+    setApiStatus(`Connected to backend / ${deliveredCandidate.import_file_number} delivered`);
+    return `Shipment marked delivered by ${payload.delivered_by}. Goods Receipt is now allowed.`;
   }
 
   async function refreshWarehouseSnapshot(statusMessage?: string) {
@@ -1900,6 +1915,7 @@ export function App() {
             newWarehouseName={newWarehouseName}
             onApproveImport={handleApproveImportCandidate}
             onAssembleImport={handleAssembleImportFromDocuments}
+            onMarkDelivered={handleMarkImportDelivered}
             onNewWarehouseNameChange={setNewWarehouseName}
             onPostGoodsReceipt={handlePostImportGoodsReceipt}
             onSaveFieldCorrection={handleSaveFieldCorrection}
@@ -2981,6 +2997,7 @@ function ImportValidationView({
   newWarehouseName,
   onApproveImport,
   onAssembleImport,
+  onMarkDelivered,
   onNewWarehouseNameChange,
   onPostGoodsReceipt,
   onSaveFieldCorrection,
@@ -2998,6 +3015,7 @@ function ImportValidationView({
   newWarehouseName: string;
   onApproveImport: (payload: ApiImportApprovalRequest) => Promise<string>;
   onAssembleImport: (payload: ApiImportAssemblyRequest) => void;
+  onMarkDelivered: (payload: ApiImportDeliveryRequest) => Promise<string>;
   onNewWarehouseNameChange: (value: string) => void;
   onPostGoodsReceipt: (payload: ApiImportGoodsReceiptPostRequest) => Promise<string>;
   onSaveFieldCorrection: (payload: ApiFieldCorrectionRequest) => Promise<string>;
@@ -3017,7 +3035,9 @@ function ImportValidationView({
   const [approvalMessage, setApprovalMessage] = useState("");
   const [postingMessage, setPostingMessage] = useState("");
   const [correctionMessage, setCorrectionMessage] = useState("");
+  const [deliveryMessage, setDeliveryMessage] = useState("");
   const [isApprovingImport, setIsApprovingImport] = useState(false);
+  const [isMarkingDelivered, setIsMarkingDelivered] = useState(false);
   const [isPostingReceipt, setIsPostingReceipt] = useState(false);
   const [isSavingCorrection, setIsSavingCorrection] = useState(false);
   const [firstTimeAnswers, setFirstTimeAnswers] = useState<Record<string, string>>({});
@@ -3054,6 +3074,8 @@ function ImportValidationView({
     candidate?.lines.filter((line) => line.product_profile_status === "known").length ?? 0;
   const firstUnknownLine = candidate?.lines.find((line) => line.product_profile_status !== "known");
   const isImportApproved = candidate?.status === "validated";
+  const isImportDelivered = candidate?.status === "arrived";
+  const isImportReceived = candidate?.status === "received";
   const canApproveImport = hasPermission(currentUser, "import_approval");
   const canPostReceipt = hasPermission(currentUser, "goods_receipt");
   const importApprovalRule = candidate
@@ -3334,8 +3356,8 @@ function ImportValidationView({
       setPostingMessage("Create the import validation file first.");
       return;
     }
-    if (!isImportApproved) {
-      setPostingMessage("Approve the import file before posting Goods Receipt.");
+    if (!isImportDelivered) {
+      setPostingMessage("Mark the shipment delivered before posting Goods Receipt.");
       return;
     }
     if (!actorName.trim()) {
@@ -3395,11 +3417,34 @@ function ImportValidationView({
         approval_note: "Approved from Import Validation screen",
       });
       setApprovalMessage(message);
-      setPostingMessage("Approval complete. Select warehouse and post Goods Receipt.");
+      setDeliveryMessage("Approval complete. Mark the shipment delivered once goods arrive.");
     } catch (error) {
       setApprovalMessage(error instanceof Error ? error.message : "Could not approve import file.");
     } finally {
       setIsApprovingImport(false);
+    }
+  }
+
+  async function handleMarkDelivered() {
+    if (!candidate) {
+      setDeliveryMessage("Create and approve the import validation file first.");
+      return;
+    }
+    setIsMarkingDelivered(true);
+    setDeliveryMessage("Recording delivery...");
+    try {
+      const message = await onMarkDelivered({
+        candidate,
+        delivered_by: actorName,
+        auth_token: currentUser.session_token,
+        delivery_note: "Marked delivered from Import Validation screen",
+      });
+      setDeliveryMessage(message);
+      setPostingMessage("Delivery confirmed. Select warehouse and post Goods Receipt.");
+    } catch (error) {
+      setDeliveryMessage(error instanceof Error ? error.message : "Could not mark shipment delivered.");
+    } finally {
+      setIsMarkingDelivered(false);
     }
   }
 
@@ -3517,13 +3562,14 @@ function ImportValidationView({
                   : "No rule configured for this destination country"}
               </span>
             </div>
-            <div className={isImportApproved ? "validation-banner" : "validation-banner warning"}>
-              <strong>Approval status</strong>
+            <div className="validation-banner">
+              <strong>Shipment stage</strong>
               <span>{candidate ? candidate.status.replace(/_/g, " ") : "Create import validation file"}</span>
             </div>
+            <ImportStageTracker status={candidate?.status} />
             <div className="validation-banner warning">
               <strong>Stock increase rule</strong>
-              <span>Only after approval and Goods Receipt in destination warehouse</span>
+              <span>Stock increases only after approval, delivery, and Goods Receipt in the destination warehouse</span>
             </div>
             <label className="field-control">
               <span>Supplier</span>
@@ -3559,12 +3605,41 @@ function ImportValidationView({
                 Save warehouse candidate
               </button>
             ) : null}
-            <button className="secondary-action" onClick={handleApproveImport} disabled={isApprovingImport || isImportApproved || !canApproveImport}>
-              {isApprovingImport ? "Approving import file" : isImportApproved ? "Import approved" : "Approve import file"}
+            <button
+              className="secondary-action"
+              onClick={handleApproveImport}
+              disabled={isApprovingImport || isImportApproved || isImportDelivered || isImportReceived || !canApproveImport}
+            >
+              {isApprovingImport
+                ? "Approving import file"
+                : isImportApproved || isImportDelivered || isImportReceived
+                  ? "Import approved"
+                  : "1 · Approve import file"}
             </button>
             <p className="status-line">{approvalMessage}</p>
-            <button className="primary-action" onClick={handlePostGoodsReceipt} disabled={isPostingReceipt || !isImportApproved || !canPostReceipt}>
-              {isPostingReceipt ? "Posting Goods Receipt" : "Validate and post Goods Receipt"}
+            <button
+              className="secondary-action"
+              onClick={handleMarkDelivered}
+              disabled={isMarkingDelivered || !isImportApproved || !canPostReceipt}
+            >
+              <Truck size={17} aria-hidden="true" />
+              {isMarkingDelivered
+                ? "Recording delivery"
+                : isImportDelivered || isImportReceived
+                  ? "Goods delivered"
+                  : "2 · Mark goods delivered"}
+            </button>
+            <p className="status-line">{deliveryMessage}</p>
+            <button
+              className="primary-action"
+              onClick={handlePostGoodsReceipt}
+              disabled={isPostingReceipt || !isImportDelivered || !canPostReceipt}
+            >
+              {isPostingReceipt
+                ? "Posting Goods Receipt"
+                : isImportReceived
+                  ? "Goods Receipt posted"
+                  : "3 · Validate and post Goods Receipt"}
             </button>
             <p className="status-line">{postingMessage}</p>
           </div>
@@ -5583,6 +5658,48 @@ function MetricCard({ label, value, detail }: { label: string; value: string; de
       <strong>{animatedValue}</strong>
       <small>{detail}</small>
     </article>
+  );
+}
+
+const IMPORT_STAGES = ["Validation", "Approved", "Delivered", "Received"] as const;
+
+function importStageIndex(status: string | undefined): number {
+  switch (status) {
+    case "validated":
+    case "country_documents_pending":
+    case "customs_in_progress":
+    case "in_transit":
+      return 1;
+    case "arrived":
+    case "goods_receipt_pending":
+      return 2;
+    case "received":
+    case "closed":
+      return 3;
+    default:
+      return 0;
+  }
+}
+
+// Animated stage tracker for an import shipment: Validation -> Approved ->
+// Delivered -> Received, highlighting the stage the shipment is currently in.
+function ImportStageTracker({ status }: { status?: string }) {
+  const current = importStageIndex(status);
+  return (
+    <div className="stage-tracker" aria-label="Import shipment progress">
+      {IMPORT_STAGES.map((label, index) => {
+        const state = index < current ? "done" : index === current ? "active" : "pending";
+        return (
+          <div className={`stage-step stage-${state}`} key={label}>
+            <span className="stage-dot" aria-hidden="true">
+              {index < current ? <CheckCircle2 size={14} /> : index + 1}
+            </span>
+            <span className="stage-label">{label}</span>
+            {index < IMPORT_STAGES.length - 1 ? <span className="stage-line" aria-hidden="true" /> : null}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 

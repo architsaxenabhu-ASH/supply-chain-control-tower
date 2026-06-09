@@ -6,6 +6,7 @@ from app.schemas.extraction import DocumentType
 from app.schemas.imports import (
     ImportApprovalRequest,
     ImportAssemblyRequest,
+    ImportDeliveryRequest,
     ImportFileCandidate,
     ImportGoodsReceiptPostRequest,
     ImportLineCandidate,
@@ -267,8 +268,10 @@ def assemble_import_candidate_from_documents(
 
 def post_import_goods_receipt(request: ImportGoodsReceiptPostRequest) -> WorkflowResult:
     posted_user = require_user_permission(request.auth_token, "goods_receipt")
-    if request.candidate.status != ImportStatus.VALIDATED:
-        raise ValueError("Import file must be approved before Goods Receipt posting")
+    if request.candidate.status == ImportStatus.VALIDATED:
+        raise ValueError("Mark the shipment as delivered before posting Goods Receipt")
+    if request.candidate.status != ImportStatus.ARRIVED:
+        raise ValueError("Goods Receipt can be posted only after the shipment is approved and delivered")
     if not request.warehouse_name.strip():
         raise ValueError("Destination warehouse is mandatory")
     if not request.candidate.lines:
@@ -336,22 +339,26 @@ def approve_import_candidate(request: ImportApprovalRequest) -> ImportFileCandid
     if not request.candidate.lines:
         raise ValueError("Import file has no product lines to approve")
 
-    resolution = resolve_approver(
-        ApprovalResolutionRequest(
-            process_name="import_approval",
-            country=request.candidate.destination_country,
-            vertical="All",
-            material_code="All",
-        )
-    )
-    if not resolution.approver_email:
-        raise ValueError(
-            "No import approval rule is configured. Add one in Security for this destination country."
-        )
     if normalize_email(request.approved_by) != approving_user.email:
         raise ValueError("Approval request does not match logged-in user.")
-    if approving_user.email != resolution.approver_email:
-        raise ValueError(f"Only configured approver {resolution.approver_email} can approve this import file")
+
+    # An Admin can approve any import. Otherwise a country approval rule must
+    # exist and the logged-in user must be its configured approver.
+    if approving_user.role_name != "Admin":
+        resolution = resolve_approver(
+            ApprovalResolutionRequest(
+                process_name="import_approval",
+                country=request.candidate.destination_country,
+                vertical="All",
+                material_code="All",
+            )
+        )
+        if not resolution.approver_email:
+            raise ValueError(
+                "No import approval rule is configured. Add one in Security for this destination country."
+            )
+        if approving_user.email != resolution.approver_email:
+            raise ValueError(f"Only configured approver {resolution.approver_email} can approve this import file")
 
     for line in request.candidate.lines:
         if not line.item_code.strip():
@@ -378,6 +385,32 @@ def approve_import_candidate(request: ImportApprovalRequest) -> ImportFileCandid
         new_value={"status": approved_candidate.status.value},
     )
     return approved_candidate
+
+
+def mark_import_delivered(request: ImportDeliveryRequest) -> ImportFileCandidate:
+    """Record that the physical goods have arrived/been delivered. Goods Receipt
+    can only be posted after this step, so stock is never increased before the
+    shipment is actually in the destination warehouse."""
+    acting_user = require_user_permission(request.auth_token, "goods_receipt")
+    ensure_country_scope(acting_user, request.candidate.destination_country, "mark deliveries")
+    if request.candidate.status != ImportStatus.VALIDATED:
+        raise ValueError("Import file must be approved before it can be marked delivered")
+
+    delivered_candidate = request.candidate.model_copy(
+        update={"status": ImportStatus.ARRIVED},
+    )
+    save_import_candidate(delivered_candidate)
+    record_audit_event(
+        action="mark_delivered",
+        module_name="import",
+        entity_name="import_file",
+        entity_id=request.candidate.import_file_number,
+        actor=acting_user.email,
+        reason=request.delivery_note,
+        old_value={"status": request.candidate.status.value},
+        new_value={"status": delivered_candidate.status.value},
+    )
+    return delivered_candidate
 
 
 def ensure_pending_product_master(line: ImportLineCandidate) -> None:

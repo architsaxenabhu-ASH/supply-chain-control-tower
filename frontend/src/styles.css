@@ -2974,6 +2974,80 @@ td {
   text-align: center;
 }
 
+/* Import shipment stage tracker (Validation -> Approved -> Delivered -> Received). */
+.stage-tracker {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 2px;
+}
+
+.stage-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.stage-dot {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid var(--tower-border);
+  background: rgba(9, 24, 36, 0.55);
+  color: var(--tower-muted);
+  font-size: 12px;
+  font-weight: 700;
+  transition: all 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.stage-label {
+  font-size: 12px;
+  color: var(--tower-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stage-line {
+  flex: 1;
+  height: 2px;
+  min-width: 12px;
+  border-radius: 2px;
+  background: var(--tower-border);
+}
+
+.stage-step.stage-done .stage-dot {
+  border-color: var(--tower-emerald);
+  background: rgba(54, 226, 155, 0.18);
+  color: var(--tower-emerald);
+}
+
+.stage-step.stage-done .stage-label {
+  color: var(--tower-text);
+}
+
+.stage-step.stage-done .stage-line {
+  background: var(--tower-emerald);
+}
+
+.stage-step.stage-active .stage-dot {
+  border-color: var(--tower-cyan);
+  background: rgba(72, 229, 255, 0.18);
+  color: var(--tower-cyan);
+  box-shadow: 0 0 0 4px rgba(72, 229, 255, 0.12);
+  animation: ring-breathe 2.4s ease-in-out infinite;
+}
+
+.stage-step.stage-active .stage-label {
+  color: var(--tower-cyan);
+  font-weight: 600;
+}
+
 @media (max-width: 920px) {
   .learning-grid {
     grid-template-columns: 1fr;

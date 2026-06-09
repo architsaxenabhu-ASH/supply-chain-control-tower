@@ -1,6 +1,12 @@
 from fastapi import APIRouter, HTTPException
 
-from app.schemas.imports import ImportApprovalRequest, ImportAssemblyRequest, ImportFileCandidate, ImportGoodsReceiptPostRequest
+from app.schemas.imports import (
+    ImportApprovalRequest,
+    ImportAssemblyRequest,
+    ImportDeliveryRequest,
+    ImportFileCandidate,
+    ImportGoodsReceiptPostRequest,
+)
 from app.schemas.warehouse import WorkflowResult
 from app.services.import_repository import (
     approve_import_candidate,
@@ -8,6 +14,7 @@ from app.services.import_repository import (
     exp_0361_development_fixture,
     latest_import_candidate,
     list_import_candidates,
+    mark_import_delivered,
     post_import_goods_receipt,
 )
 
@@ -37,6 +44,14 @@ def assemble_from_documents(request: ImportAssemblyRequest) -> ImportFileCandida
 def approve_import(request: ImportApprovalRequest) -> ImportFileCandidate:
     try:
         return approve_import_candidate(request)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@router.post("/mark-delivered", response_model=ImportFileCandidate)
+def mark_delivered(request: ImportDeliveryRequest) -> ImportFileCandidate:
+    try:
+        return mark_import_delivered(request)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
 

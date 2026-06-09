@@ -78,6 +78,13 @@ class ImportApprovalRequest(BaseModel):
     approval_note: str | None = None
 
 
+class ImportDeliveryRequest(BaseModel):
+    candidate: ImportFileCandidate
+    delivered_by: str
+    auth_token: str
+    delivery_note: str | None = None
+
+
 class ImportGoodsReceiptPostRequest(BaseModel):
     candidate: ImportFileCandidate
     warehouse_name: str

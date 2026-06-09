@@ -458,6 +458,13 @@ export type ApiImportApprovalRequest = {
   approval_note?: string | null;
 };
 
+export type ApiImportDeliveryRequest = {
+  candidate: ApiImportFileCandidate;
+  delivered_by: string;
+  auth_token: string;
+  delivery_note?: string | null;
+};
+
 export type ApiWarehouseLocation = {
   warehouse_code: string;
   warehouse_name: string;
@@ -704,6 +711,12 @@ export function approveImportCandidate(
   payload: ApiImportApprovalRequest,
 ): Promise<ApiImportFileCandidate> {
   return postJson<ApiImportFileCandidate, typeof payload>("/imports/approve", payload);
+}
+
+export function markImportDelivered(
+  payload: ApiImportDeliveryRequest,
+): Promise<ApiImportFileCandidate> {
+  return postJson<ApiImportFileCandidate, typeof payload>("/imports/mark-delivered", payload);
 }
 
 export function postImportGoodsReceipt(
