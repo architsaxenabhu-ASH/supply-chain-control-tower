@@ -3048,6 +3048,91 @@ td {
   font-weight: 600;
 }
 
+/* Goods Tracking: status pipeline funnel. */
+.funnel {
+  display: grid;
+  gap: 10px;
+}
+
+.funnel-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.8fr) minmax(0, 1.6fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.funnel-label {
+  font-size: 13px;
+  color: var(--tower-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.funnel-track {
+  height: 12px;
+  border-radius: 999px;
+  background: rgba(9, 24, 36, 0.6);
+  border: 1px solid var(--tower-border);
+  overflow: hidden;
+}
+
+.funnel-track > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--tower-cyan), var(--tower-emerald));
+  transition: width 760ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.funnel-count {
+  min-width: 38px;
+  text-align: right;
+  color: var(--tower-text);
+}
+
+/* Goods Tracking: risk severity dots + search box. */
+.risk-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 4px;
+  background: var(--tower-muted);
+}
+
+.risk-dot.risk-danger {
+  background: var(--tower-crimson);
+  box-shadow: 0 0 8px var(--tower-crimson);
+}
+
+.risk-dot.risk-warn {
+  background: var(--tower-amber);
+  box-shadow: 0 0 8px var(--tower-amber);
+}
+
+.risk-dot.risk-active {
+  background: var(--tower-cyan);
+  box-shadow: 0 0 8px var(--tower-cyan);
+}
+
+.tracking-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+}
+
+.tracking-search input {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  color: var(--tower-text);
+  outline: none;
+}
+
 @media (max-width: 920px) {
   .learning-grid {
     grid-template-columns: 1fr;

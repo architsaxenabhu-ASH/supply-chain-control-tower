@@ -426,6 +426,7 @@ const fallbackSecurityOverview: ApiSecurityOverview = {
 
 const navItems = [
   { id: "dashboard", label: "Dashboard", icon: BarChart3 },
+  { id: "goods-tracking", label: "Goods Tracking", icon: RadioTower },
   { id: "platform-progress", label: "Progress", icon: GitBranch },
   { id: "documents", label: "Documents", icon: FileUp },
   { id: "import-validation", label: "Import Validation", icon: ClipboardCheck },
@@ -1890,6 +1891,15 @@ export function App() {
             validationQueue={validationQueue}
           />
         ) : null}
+        {activeView === "goods-tracking" ? (
+          <GoodsTrackingView
+            documents={documents}
+            importQueue={importQueue}
+            inventory={inventory}
+            onNavigate={setActiveView}
+            shipments={shipments}
+          />
+        ) : null}
         {activeView === "documents" ? (
           <DocumentsView
             documentMessage={documentMessage}
@@ -2018,6 +2028,252 @@ export function App() {
         ) : null}
       </section>
     </main>
+  );
+}
+
+const TRACKING_STATUS_LABELS: Record<string, string> = {
+  documents_pending: "Documents Pending",
+  uploaded: "Document Uploaded",
+  extracted: "OCR Processing",
+  validation_pending: "Validation Pending",
+  validated: "Approved",
+  country_documents_pending: "Customs Documents",
+  customs_in_progress: "Customs Clearance",
+  in_transit: "In Transit",
+  arrived: "Awaiting Receipt",
+  goods_receipt_pending: "Awaiting Receipt",
+  received: "Received",
+  closed: "Closed",
+};
+
+function trackingStatusLabel(status: string): string {
+  return TRACKING_STATUS_LABELS[status] ?? toTitleCase(status.replace(/_/g, " "));
+}
+
+// The Goods Tracking Control Tower: one screen answering "where are my goods,
+// what stage are they in, what risks exist, and what action is required". Every
+// number is derived from data the platform already holds (no hardcoded values).
+function GoodsTrackingView({
+  documents,
+  importQueue,
+  inventory,
+  onNavigate,
+  shipments,
+}: {
+  documents: DocumentRecord[];
+  importQueue: ApiImportFileCandidate[];
+  inventory: InventoryBatch[];
+  onNavigate: (view: string) => void;
+  shipments: Shipment[];
+}) {
+  const [search, setSearch] = useState("");
+  const [revealed, setRevealed] = useState(false);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setRevealed(true));
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
+  const inTransitStatuses = ["validated", "in_transit", "customs_in_progress", "country_documents_pending"];
+  const approvedPlusStatuses = [...inTransitStatuses, "arrived", "goods_receipt_pending", "received", "closed"];
+
+  const openImports = importQueue.filter((candidate) => !["received", "closed"].includes(candidate.status));
+  const inTransit = importQueue.filter((candidate) => inTransitStatuses.includes(candidate.status)).length;
+  const awaitingReceipt = importQueue.filter((candidate) => candidate.status === "arrived").length;
+  const receivedImports = importQueue.filter((candidate) => candidate.status === "received").length;
+  const validationPending = importQueue.filter((candidate) => candidate.status === "validation_pending").length;
+  const approvedPlus = importQueue.filter((candidate) => approvedPlusStatuses.includes(candidate.status)).length;
+  const inventoryQty = inventory.reduce((total, batch) => total + batch.quantity, 0);
+  const expiryRisk = inventory.filter((batch) => batch.daysToExpiry >= 0 && batch.daysToExpiry <= 90).length;
+  const expiredCount = inventory.filter((batch) => batch.daysToExpiry < 0).length;
+  const dispatchedOpen = shipments.filter((shipment) => shipment.status === "Dispatched").length;
+  const deliveredCount = shipments.filter((shipment) => shipment.status === "Delivered").length;
+
+  const pipeline = [
+    { label: "Documents Uploaded", count: documents.length },
+    { label: "Validation Pending", count: validationPending },
+    { label: "Approved Imports", count: approvedPlus },
+    { label: "In Transit", count: inTransit },
+    { label: "Awaiting Receipt", count: awaitingReceipt },
+    { label: "Received", count: receivedImports },
+    { label: "Available Inventory", count: inventory.length },
+    { label: "Dispatched", count: dispatchedOpen },
+    { label: "Delivered", count: deliveredCount },
+  ];
+  const maxPipeline = Math.max(...pipeline.map((stage) => stage.count), 1);
+
+  type Risk = { severity: "danger" | "warn" | "active"; message: string; action: string; view: string };
+  const risks: Risk[] = [];
+  if (validationPending > 0) {
+    risks.push({ severity: "warn", message: `${validationPending} import(s) pending validation / approval`, action: "Approve imports", view: "import-validation" });
+  }
+  if (awaitingReceipt > 0) {
+    risks.push({ severity: "active", message: `${awaitingReceipt} delivered shipment(s) awaiting Goods Receipt`, action: "Post Goods Receipt", view: "import-validation" });
+  }
+  const missingAwb = openImports.filter((candidate) => !candidate.awb_number).length;
+  if (missingAwb > 0) {
+    risks.push({ severity: "warn", message: `${missingAwb} open shipment(s) missing an AWB number`, action: "Open imports", view: "import-validation" });
+  }
+  const missingDocs = openImports.filter((candidate) => !candidate.invoice_number || candidate.packing_list_document_ids.length === 0).length;
+  if (missingDocs > 0) {
+    risks.push({ severity: "warn", message: `${missingDocs} open shipment(s) missing invoice or packing list`, action: "Open documents", view: "documents" });
+  }
+  if (expiryRisk > 0) {
+    risks.push({ severity: "danger", message: `${expiryRisk} inventory batch(es) expiring within 90 days`, action: "Review expiry", view: "expiry" });
+  }
+  if (expiredCount > 0) {
+    risks.push({ severity: "danger", message: `${expiredCount} expired inventory batch(es) need disposal review`, action: "Review inventory", view: "inventory" });
+  }
+
+  const term = search.trim().toLowerCase();
+  const rows = importQueue
+    .map((candidate) => {
+      const expiryDates = candidate.lines.map((line) => line.expiry_date).filter((value): value is string => Boolean(value));
+      const earliestExpiry = expiryDates.length ? [...expiryDates].sort()[0] : null;
+      const expiryDays = earliestExpiry ? daysUntil(earliestExpiry) : null;
+      let score = 0;
+      if (!candidate.awb_number) score += 25;
+      if (!candidate.invoice_number) score += 20;
+      if (candidate.status === "validation_pending") score += 20;
+      if (expiryDays !== null && expiryDays <= 90) score += 30;
+      const riskLevel = score >= 50 ? "High" : score >= 25 ? "Medium" : "Low";
+      const haystack = [
+        candidate.shipment_name,
+        candidate.import_file_number,
+        candidate.awb_number,
+        candidate.invoice_number,
+        candidate.supplier_name,
+        candidate.destination_country,
+        candidate.destination_entity,
+        candidate.carrier_name,
+        ...candidate.lines.map((line) => line.item_code),
+        ...candidate.lines.map((line) => line.batch_number),
+        ...candidate.lines.map((line) => line.serial_number ?? ""),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return { candidate, earliestExpiry, riskLevel, haystack };
+    })
+    .filter((row) => !term || row.haystack.includes(term));
+
+  return (
+    <>
+      <section className="learning-hero panel">
+        <div className="learning-hero-mark">
+          <RadioTower size={26} aria-hidden="true" />
+        </div>
+        <div>
+          <p className="eyebrow">Goods Tracking Control Tower</p>
+          <h2>Where your goods are, what stage they are in, and what needs action</h2>
+          <p className="status-line">
+            End-to-end visibility from supplier to customer, built live from your documents,
+            imports, inventory, and dispatches.
+          </p>
+        </div>
+      </section>
+
+      <section className="kpi-grid" aria-label="Goods tracking metrics">
+        <MetricCard label="Open Import Shipments" value={String(openImports.length)} detail="Not yet received" />
+        <MetricCard label="Goods In Transit" value={String(inTransit)} detail="Approved, en route" />
+        <MetricCard label="Awaiting Receipt" value={String(awaitingReceipt)} detail="Delivered, not posted" />
+        <MetricCard label="Received Imports" value={String(receivedImports)} detail="Posted to inventory" />
+        <MetricCard label="Inventory Available" value={formatNumber(inventoryQty)} detail="On-hand quantity" />
+        <MetricCard label="Goods At Expiry Risk" value={String(expiryRisk)} detail="Within 90 days" />
+        <MetricCard label="Dispatched" value={String(dispatchedOpen)} detail="Out for delivery" />
+        <MetricCard label="Delivered" value={String(deliveredCount)} detail="Customer confirmed" />
+      </section>
+
+      <div className="learning-grid">
+        <Panel title="Goods status pipeline" meta="Live funnel">
+          <div className="funnel">
+            {pipeline.map((stage) => (
+              <div className="funnel-row" key={stage.label}>
+                <span className="funnel-label">{stage.label}</span>
+                <div className="funnel-track">
+                  <span style={{ width: revealed ? `${Math.max((stage.count / maxPipeline) * 100, 2)}%` : "0%" }} />
+                </div>
+                <strong className="funnel-count">{stage.count}</strong>
+              </div>
+            ))}
+          </div>
+        </Panel>
+
+        <Panel title="Risks & recommended actions" meta={`${risks.length} open`}>
+          {risks.length === 0 ? (
+            <p className="empty-state">No open risks. Every shipment is on track.</p>
+          ) : (
+            <div className="review-list">
+              {risks.map((risk) => (
+                <button
+                  type="button"
+                  className="review-row"
+                  key={risk.message}
+                  onClick={() => onNavigate(risk.view)}
+                >
+                  <div>
+                    <strong>
+                      <span className={`risk-dot risk-${risk.severity}`} aria-hidden="true" /> {risk.message}
+                    </strong>
+                    <span>Recommended: {risk.action}</span>
+                  </div>
+                  <ChevronRight size={16} aria-hidden="true" />
+                </button>
+              ))}
+            </div>
+          )}
+        </Panel>
+      </div>
+
+      <Panel title="Live goods tracking" meta={`${rows.length} shipment(s)`}>
+        <div className="search-box tracking-search">
+          <Search size={16} aria-hidden="true" />
+          <input
+            placeholder="Search shipment, AWB, invoice, supplier, product, batch, or serial"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+        </div>
+        {rows.length === 0 ? (
+          <p className="empty-state">No shipments match your search.</p>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>Shipment</th>
+                <th>Status</th>
+                <th>AWB</th>
+                <th>Invoice</th>
+                <th>Supplier</th>
+                <th>Country</th>
+                <th>Carrier / Flight</th>
+                <th>Lines</th>
+                <th>Earliest Expiry</th>
+                <th>Risk</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(({ candidate, earliestExpiry, riskLevel }) => (
+                <tr key={candidate.import_file_number}>
+                  <td>{candidate.shipment_name ?? candidate.import_file_number}</td>
+                  <td><StatusTag label={trackingStatusLabel(candidate.status)} /></td>
+                  <td><span className="muted-cell">{candidate.awb_number ?? "-"}</span></td>
+                  <td><span className="muted-cell">{candidate.invoice_number ?? "-"}</span></td>
+                  <td>{candidate.supplier_name ?? "-"}</td>
+                  <td>{candidate.destination_country}</td>
+                  <td>
+                    {candidate.carrier_name ?? "-"}
+                    {candidate.flight_number ? <span className="muted-cell"> · {candidate.flight_number}</span> : null}
+                  </td>
+                  <td>{candidate.lines.length}</td>
+                  <td>{earliestExpiry ?? "-"}</td>
+                  <td><StatusTag label={riskLevel} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Panel>
+    </>
   );
 }
 
@@ -4199,6 +4455,7 @@ function canAccessView(user: ApiAuthenticatedUser | null, viewId: string) {
   if (
     user.role_name === "Admin" ||
     viewId === "dashboard" ||
+    viewId === "goods-tracking" ||
     viewId === "assistant" ||
     viewId === "platform-progress" ||
     viewId === "learning"
