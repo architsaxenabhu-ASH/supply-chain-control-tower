@@ -121,36 +121,50 @@ def assemble_import_candidate_from_documents(
     duplicated_items = sorted(duplicated_invoice_items | duplicated_packing_items)
     if duplicated_items:
         warnings.append(
-            "Duplicate item codes across selected documents were merged. Validate quantities and batches for: "
+            "Duplicate item/batch rows across selected documents were merged. Validate quantities for: "
             + ", ".join(duplicated_items[:12])
         )
 
-    item_codes = list(dict.fromkeys([*invoice_lines.keys(), *packing_lines.keys()]))
-    lines: list[ImportLineCandidate] = []
-    for item_code in item_codes:
-        invoice_line = invoice_lines.get(item_code, {})
-        packing_line = packing_lines.get(item_code, {})
+    invoice_currency = string_or_none(first_header_value(invoice_headers, "currency"))
+
+    def build_line(item_code: str, invoice_line: dict, packing_line: dict) -> ImportLineCandidate:
         profile_response = get_product_learning_profile(item_code)
         learned_uom = profile_response.profile.uom if profile_response.profile else None
-        lines.append(
-            ImportLineCandidate(
-                item_code=item_code,
-                product_description=str(
-                    invoice_line.get("product_description")
-                    or packing_line.get("product_description")
-                    or item_code
-                ),
-                batch_number=str(packing_line.get("batch_number") or ""),
-                expiry_date=packing_line.get("expiry_date"),
-                quantity=float(packing_line.get("quantity") or invoice_line.get("quantity") or 0),
-                uom=str(learned_uom or invoice_line.get("uom") or "EA"),
-                unit_value=to_float(invoice_line.get("unit_value")),
-                currency=string_or_none(first_header_value(invoice_headers, "currency")),
-                product_profile_status="known"
-                if profile_response.is_known
-                else "first_time_questions_required",
-            )
+        return ImportLineCandidate(
+            item_code=item_code,
+            product_description=str(
+                invoice_line.get("product_description")
+                or packing_line.get("product_description")
+                or item_code
+            ),
+            batch_number=str(packing_line.get("batch_number") or ""),
+            expiry_date=packing_line.get("expiry_date"),
+            quantity=float(packing_line.get("quantity") or invoice_line.get("quantity") or 0),
+            uom=str(learned_uom or invoice_line.get("uom") or "EA"),
+            unit_value=to_float(invoice_line.get("unit_value")),
+            currency=invoice_currency,
+            product_profile_status="known"
+            if profile_response.is_known
+            else "first_time_questions_required",
         )
+
+    # One line per (item code + batch) from the packing lists, joined to invoice
+    # data by item code. Items that appear only on the invoice (no packing batch)
+    # still produce a single line with an empty batch number.
+    lines: list[ImportLineCandidate] = []
+    items_with_batches: set[str] = set()
+    for packing_line in packing_lines.values():
+        item_code = str(packing_line.get("item_code") or "").strip()
+        if not item_code:
+            continue
+        invoice_line = invoice_lines.get(item_code, {})
+        lines.append(build_line(item_code, invoice_line, packing_line))
+        items_with_batches.add(item_code)
+
+    for item_code, invoice_line in invoice_lines.items():
+        if item_code in items_with_batches:
+            continue
+        lines.append(build_line(item_code, invoice_line, {}))
 
     if not lines:
         warnings.append("No product lines were extracted. Upload readable invoice and packing list files.")
@@ -579,9 +593,11 @@ def parse_packing_lines(text: str) -> dict[str, dict[str, object]]:
             if cursor + 3 >= len(lines):
                 index += 1
                 continue
-            parsed[item_code] = {
+            batch_number = lines[cursor]
+            parsed[packing_line_key(item_code, batch_number)] = {
+                "item_code": item_code,
                 "product_description": " ".join(description_parts).strip(),
-                "batch_number": lines[cursor],
+                "batch_number": batch_number,
                 "expiry_date": parse_date(lines[cursor + 1]),
                 "quantity": to_float(lines[cursor + 2]),
                 "weight_kg": to_float(lines[cursor + 3]),
@@ -590,6 +606,13 @@ def parse_packing_lines(text: str) -> dict[str, dict[str, object]]:
             continue
         index += 1
     return parsed
+
+
+def packing_line_key(item_code: str, batch_number: str) -> str:
+    """Key a packing-list row by item code + batch so different batches of the
+    same medical device stay as separate, traceable lines instead of merging."""
+    batch = (batch_number or "").strip()
+    return f"{item_code} / {batch}" if batch else item_code
 
 
 def clean_lines(text: str) -> list[str]:
