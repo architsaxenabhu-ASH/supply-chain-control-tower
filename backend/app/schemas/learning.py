@@ -158,6 +158,31 @@ class CorrectionSuggestionResponse(BaseModel):
     suggestion: CorrectionSuggestion | None = None
 
 
+class ImportChecklistItem(BaseModel):
+    required_document_type: str
+    confidence: float
+    success_count: int
+    present: bool
+
+
+class ImportChecklistRequest(BaseModel):
+    country: str
+    vertical: str
+    material_code: str
+    present_document_types: list[str] = Field(default_factory=list)
+
+
+class ImportChecklistResponse(BaseModel):
+    country: str
+    vertical: str
+    material_code: str
+    is_known: bool = False
+    items: list[ImportChecklistItem] = Field(default_factory=list)
+    required_count: int = 0
+    present_count: int = 0
+    missing_count: int = 0
+
+
 class LearningInsights(BaseModel):
     """Aggregated view of everything the platform has learned so far."""
 

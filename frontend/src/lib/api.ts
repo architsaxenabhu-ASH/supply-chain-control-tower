@@ -321,6 +321,24 @@ export type ApiCorrectionSuggestionResponse = {
   suggestion: ApiCorrectionSuggestion | null;
 };
 
+export type ApiImportChecklistItem = {
+  required_document_type: string;
+  confidence: number;
+  success_count: number;
+  present: boolean;
+};
+
+export type ApiImportChecklistResponse = {
+  country: string;
+  vertical: string;
+  material_code: string;
+  is_known: boolean;
+  items: ApiImportChecklistItem[];
+  required_count: number;
+  present_count: number;
+  missing_count: number;
+};
+
 export type ApiCountryDocumentRule = {
   country: string;
   vertical: string;
@@ -738,6 +756,15 @@ export function saveCountryDocumentRequirement(payload: {
 
 export function fetchLearningInsights(): Promise<ApiLearningInsights> {
   return getJson<ApiLearningInsights>("/learning/insights");
+}
+
+export function evaluateImportChecklist(payload: {
+  country: string;
+  vertical: string;
+  material_code: string;
+  present_document_types: string[];
+}): Promise<ApiImportChecklistResponse> {
+  return postJson<ApiImportChecklistResponse, typeof payload>("/learning/import-checklist", payload);
 }
 
 export function fetchCorrectionSuggestion(

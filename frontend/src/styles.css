@@ -2746,6 +2746,38 @@ td {
   flex: 0 0 auto;
 }
 
+/* Country/vertical/material document checklist in Import Validation. */
+.checklist-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.checklist-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--tower-border);
+  background: rgba(9, 24, 36, 0.55);
+}
+
+.status-tag.status-present {
+  color: var(--tower-emerald);
+  border-color: rgba(54, 226, 155, 0.5);
+  background: rgba(54, 226, 155, 0.14);
+}
+
+.status-tag.status-missing {
+  color: var(--tower-crimson);
+  border-color: rgba(255, 93, 108, 0.5);
+  background: rgba(255, 93, 108, 0.14);
+}
+
 @media (max-width: 920px) {
   .learning-grid {
     grid-template-columns: 1fr;

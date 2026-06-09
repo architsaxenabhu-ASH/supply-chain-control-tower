@@ -9,6 +9,8 @@ from app.schemas.learning import (
     CountryDocumentRequirementRule,
     CorrectionEventRequest,
     EntityAliasRequest,
+    ImportChecklistItem,
+    ImportChecklistResponse,
     LearningInsights,
     LearningRule,
     LearningStat,
@@ -521,6 +523,56 @@ def get_country_document_requirements(
         and rule.vertical.lower() == vertical.lower()
         and rule.material_code.lower() == material_code.lower()
     ]
+
+
+def _normalize_document_type(value: str) -> str:
+    return "".join(char for char in value.lower() if char.isalnum())
+
+
+def evaluate_import_checklist(
+    country: str,
+    vertical: str,
+    material_code: str,
+    present_document_types: list[str],
+) -> ImportChecklistResponse:
+    """Decide which documents this country/vertical/material combination needs.
+
+    Requirements are never hardcoded: they come only from rules the user has
+    taught the platform. An unknown combination (no rules) returns is_known=False
+    so the UI can ask the user and save what they answer.
+    """
+    rules = get_country_document_requirements(
+        country=country,
+        vertical=vertical,
+        material_code=material_code,
+    )
+    present_normalized = {_normalize_document_type(value) for value in present_document_types}
+
+    items: list[ImportChecklistItem] = []
+    present_count = 0
+    for rule in rules:
+        is_present = _normalize_document_type(rule.required_document_type) in present_normalized
+        if is_present:
+            present_count += 1
+        items.append(
+            ImportChecklistItem(
+                required_document_type=rule.required_document_type,
+                confidence=rule.confidence,
+                success_count=rule.success_count,
+                present=is_present,
+            )
+        )
+
+    return ImportChecklistResponse(
+        country=country,
+        vertical=vertical,
+        material_code=material_code,
+        is_known=len(rules) > 0,
+        items=items,
+        required_count=len(items),
+        present_count=present_count,
+        missing_count=len(items) - present_count,
+    )
 
 
 def create_warehouse_candidate(request: WarehouseCandidateRequest) -> WarehouseCandidate:

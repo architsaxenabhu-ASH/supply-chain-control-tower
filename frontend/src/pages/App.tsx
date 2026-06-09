@@ -43,6 +43,7 @@ import {
   askAssistant,
   confirmDispatch,
   createShipment,
+  evaluateImportChecklist,
   fetchCorrectionSuggestion,
   fetchErpTemplates,
   fetchCustomers,
@@ -80,6 +81,7 @@ import type {
   ApiAuditEvent,
   ApiAuthenticatedUser,
   ApiCorrectionSuggestion,
+  ApiImportChecklistResponse,
   ApiErpTemplate,
   ApiErpUploadPreview,
   ApiImportApprovalRequest,
@@ -2927,6 +2929,8 @@ function ImportValidationView({
   const [supplierName, setSupplierName] = useState("");
   const [verticalName, setVerticalName] = useState("");
   const [extraDocumentType, setExtraDocumentType] = useState("");
+  const [checklist, setChecklist] = useState<ApiImportChecklistResponse | null>(null);
+  const [isCheckingChecklist, setIsCheckingChecklist] = useState(false);
   const [learningMessage, setLearningMessage] = useState("");
   const [approvalMessage, setApprovalMessage] = useState("");
   const [postingMessage, setPostingMessage] = useState("");
@@ -2949,6 +2953,10 @@ function ImportValidationView({
   );
   const awbDocuments = useMemo(
     () => documents.filter((document) => document.document_type === "air_waybill"),
+    [documents],
+  );
+  const presentDocumentTypes = useMemo(
+    () => Array.from(new Set(documents.map((document) => document.document_type))),
     [documents],
   );
   const [selectedInvoiceDocumentIds, setSelectedInvoiceDocumentIds] = useState<string[]>([]);
@@ -3068,6 +3076,12 @@ function ImportValidationView({
     };
   }, [selectedQueueItem]);
 
+  useEffect(() => {
+    // Auto-check the document checklist whenever a different import file loads.
+    void runChecklist();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [candidate?.import_file_number, presentDocumentTypes]);
+
   function handleAssembleImport() {
     if (selectedInvoiceDocumentIds.length === 0 || selectedPackingDocumentIds.length === 0) {
       setLearningMessage("Upload and select at least Commercial Invoice and Packing List.");
@@ -3141,6 +3155,33 @@ function ImportValidationView({
     }
   }
 
+  async function runChecklist() {
+    if (!candidate) {
+      setChecklist(null);
+      return;
+    }
+    const vertical = (verticalName.trim() || candidate.shipment_vertical || "").trim();
+    const material = firstUnknownLine?.item_code ?? candidate.lines[0]?.item_code ?? "";
+    if (!vertical || !material) {
+      setChecklist(null);
+      return;
+    }
+    setIsCheckingChecklist(true);
+    try {
+      const result = await evaluateImportChecklist({
+        country: candidate.destination_country,
+        vertical,
+        material_code: material,
+        present_document_types: presentDocumentTypes,
+      });
+      setChecklist(result);
+    } catch {
+      setChecklist(null);
+    } finally {
+      setIsCheckingChecklist(false);
+    }
+  }
+
   async function handleSaveCountryDocumentRule() {
     if (!candidate || !firstUnknownLine || !verticalName.trim() || !extraDocumentType.trim() || !actorName.trim()) {
       setLearningMessage("Enter your email, vertical, material, and required document type.");
@@ -3155,7 +3196,9 @@ function ImportValidationView({
         required_document_type: extraDocumentType,
         approved_by: actorName,
       });
-      setLearningMessage("Country document rule saved from user input.");
+      setLearningMessage("Country document rule saved. The checklist now remembers it.");
+      setExtraDocumentType("");
+      await runChecklist();
     } catch (error) {
       setLearningMessage(error instanceof Error ? error.message : "Could not save document rule.");
     }
@@ -3559,10 +3602,52 @@ function ImportValidationView({
               <strong>Destination country</strong>
               <span>{candidate?.destination_country ?? "Create import validation file"}</span>
             </div>
-            <div className="validation-banner warning">
-              <strong>Learned extra documents</strong>
-              <span>No rule learned yet until the user enters and saves it</span>
-            </div>
+            {!candidate ? (
+              <div className="validation-banner">
+                <strong>Learned document checklist</strong>
+                <span>Create an import validation file to check learned document requirements.</span>
+              </div>
+            ) : checklist && checklist.is_known ? (
+              <div className="validation-stack">
+                <div className={checklist.missing_count > 0 ? "validation-banner warning" : "validation-banner"}>
+                  <strong>
+                    Checklist · {checklist.country} / {checklist.vertical} / {checklist.material_code}
+                  </strong>
+                  <span>
+                    {checklist.present_count} of {checklist.required_count} learned document(s) present
+                    {checklist.missing_count > 0 ? ` · ${checklist.missing_count} missing` : " · all present"}
+                  </span>
+                </div>
+                <ul className="checklist-list">
+                  {checklist.items.map((item) => (
+                    <li className="checklist-row" key={item.required_document_type}>
+                      <span>{toTitleCase(item.required_document_type.replace(/_/g, " "))}</span>
+                      <StatusTag label={item.present ? "Present" : "Missing"} />
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <div className="validation-banner warning">
+                <strong>New combination — not learned yet</strong>
+                <span>
+                  The platform has not learned which documents{" "}
+                  {candidate.destination_country} /{" "}
+                  {verticalName.trim() || candidate.shipment_vertical || "this vertical"} requires for{" "}
+                  {firstUnknownLine?.item_code ?? candidate.lines[0]?.item_code ?? "this material"}. Add
+                  them below and they will be remembered.
+                </span>
+              </div>
+            )}
+            <button
+              className="secondary-action"
+              type="button"
+              onClick={() => void runChecklist()}
+              disabled={isCheckingChecklist || !candidate}
+            >
+              <RefreshCw size={16} aria-hidden="true" />
+              {isCheckingChecklist ? "Checking" : "Re-check requirements"}
+            </button>
             <label className="field-control">
               <span>Vertical / product category</span>
               <input

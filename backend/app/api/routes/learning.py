@@ -6,6 +6,8 @@ from app.schemas.learning import (
     CountryDocumentRequirementRule,
     CorrectionEventRequest,
     EntityAliasRequest,
+    ImportChecklistRequest,
+    ImportChecklistResponse,
     LearningInsights,
     LearningRule,
     ProductProfileEditEvent,
@@ -18,6 +20,7 @@ from app.schemas.learning import (
 )
 from app.services.learning_repository import (
     create_warehouse_candidate,
+    evaluate_import_checklist,
     get_learning_insights,
     get_product_learning_profile,
     get_country_document_requirements,
@@ -108,6 +111,16 @@ def country_document_requirements(
         country=country,
         vertical=vertical,
         material_code=material_code,
+    )
+
+
+@router.post("/import-checklist", response_model=ImportChecklistResponse)
+def import_checklist(request: ImportChecklistRequest) -> ImportChecklistResponse:
+    return evaluate_import_checklist(
+        country=request.country,
+        vertical=request.vertical,
+        material_code=request.material_code,
+        present_document_types=request.present_document_types,
     )
 
 
