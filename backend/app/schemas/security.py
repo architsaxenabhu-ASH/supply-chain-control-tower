@@ -29,6 +29,7 @@ class SaveSecurityUserRequest(BaseModel):
     password: str | None = None
     changed_by: str
     change_reason: str
+    auth_token: str = ""
 
 
 class LoginRequest(BaseModel):
@@ -69,6 +70,7 @@ class SaveApprovalRuleRequest(BaseModel):
     is_active: bool = True
     changed_by: str
     change_reason: str
+    auth_token: str = ""
 
 
 class ApprovalResolutionRequest(BaseModel):

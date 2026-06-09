@@ -25,7 +25,7 @@ from app.schemas.warehouse import (
     WarehouseLocation,
     WorkflowResult,
 )
-from app.services.security_repository import normalize_email, require_user_permission
+from app.services.security_repository import ensure_country_scope, normalize_email, require_user_permission
 
 
 TODAY = date.today()
@@ -721,10 +721,7 @@ def approve_shipment(shipment_id: str, request: ShipmentApprovalRequest) -> Work
         raise ValueError("Approval must contain at least one line")
     if normalize_email(request.approved_by) != approving_user.email:
         raise ValueError("Shipment approval must match the logged-in user.")
-    if approving_user.role_name != "Admin" and approving_user.country_scope:
-        normalized_scopes = {scope.lower() for scope in approving_user.country_scope}
-        if "all" not in normalized_scopes and shipment.destination_country.lower() not in normalized_scopes:
-            raise ValueError(f"{approving_user.email} is not scoped to approve shipments for {shipment.destination_country}.")
+    ensure_country_scope(approving_user, shipment.destination_country, "approve shipments")
 
     approval_by_key = {
         (

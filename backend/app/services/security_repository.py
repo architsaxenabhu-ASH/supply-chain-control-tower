@@ -95,6 +95,10 @@ def save_security_user(request: SaveSecurityUserRequest) -> SecurityUser:
 
     now = datetime.now(UTC).isoformat()
     users = list_security_users()
+    if users:
+        # Bootstrap exception: the very first user can be created without a
+        # session, otherwise no one could ever create the first Admin.
+        require_admin(request.auth_token, "add or change users")
     existing = next((user for user in users if user.email == email), None)
     user = SecurityUser(
         email=email,
@@ -200,6 +204,7 @@ def save_approval_rule(request: SaveApprovalRuleRequest) -> ApprovalRule:
     if not is_valid_email(approver_email):
         raise ValueError("Enter a valid approver email address.")
     require_change_context(request.changed_by, request.change_reason)
+    require_admin(request.auth_token, "manage approval rules")
 
     process_name = normalize_key(request.process_name)
     country = request.country.strip()
@@ -285,6 +290,32 @@ def require_role(role_name: str) -> None:
     valid_roles = {role.role_name for role in ROLE_DEFINITIONS}
     if role_name not in valid_roles:
         raise ValueError("Select a valid role.")
+
+
+def require_admin(auth_token: str, action: str) -> SecurityUser:
+    """Confirm the caller has a valid Admin session before changing security."""
+    acting_user = authenticate_token(auth_token)
+    if acting_user.role_name != "Admin":
+        raise ValueError(f"Only an Admin can {action}.")
+    return acting_user
+
+
+def ensure_country_scope(user: SecurityUser, country: str, action: str) -> None:
+    """Restrict an approver to their assigned countries.
+
+    Admin is unrestricted. A scope of "All" allows every country. An empty scope
+    means no countries until an Admin assigns one, so a Country Incharge cannot
+    approve outside their territory.
+    """
+    if user.role_name == "Admin":
+        return
+    scopes = {scope.lower() for scope in user.country_scope}
+    if "all" in scopes:
+        return
+    if country.strip().lower() not in scopes:
+        raise ValueError(
+            f"{user.email} is not scoped to {action} for {country}. Ask an Admin to assign your country."
+        )
 
 
 def permissions_for_role(role_name: str) -> list[str]:

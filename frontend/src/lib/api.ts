@@ -256,6 +256,7 @@ export type ApiSaveSecurityUserRequest = {
   password?: string | null;
   changed_by: string;
   change_reason: string;
+  auth_token: string;
 };
 
 export type ApiSaveApprovalRuleRequest = {
@@ -268,6 +269,7 @@ export type ApiSaveApprovalRuleRequest = {
   is_active: boolean;
   changed_by: string;
   change_reason: string;
+  auth_token: string;
 };
 
 export type ApiAssistantAnswer = {

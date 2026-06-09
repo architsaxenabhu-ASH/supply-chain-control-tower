@@ -16,7 +16,12 @@ from app.schemas.warehouse import CreateGoodsReceiptLineRequest, CreateGoodsRece
 from app.db.local_persistence import load_collection, record_audit_event, save_collection
 from app.services.learning_repository import get_product_learning_profile
 from app.services.local_document_store import get_saved_document
-from app.services.security_repository import normalize_email, require_user_permission, resolve_approver
+from app.services.security_repository import (
+    ensure_country_scope,
+    normalize_email,
+    require_user_permission,
+    resolve_approver,
+)
 from app.services.simple_extraction import extract_text
 from app.services.warehouse_repository import create_product, get_product, post_goods_receipt
 
@@ -326,6 +331,7 @@ def post_import_goods_receipt(request: ImportGoodsReceiptPostRequest) -> Workflo
 
 def approve_import_candidate(request: ImportApprovalRequest) -> ImportFileCandidate:
     approving_user = require_user_permission(request.auth_token, "import_approval")
+    ensure_country_scope(approving_user, request.candidate.destination_country, "approve imports")
     if not request.candidate.lines:
         raise ValueError("Import file has no product lines to approve")
 

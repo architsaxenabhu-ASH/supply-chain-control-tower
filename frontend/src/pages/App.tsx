@@ -1556,10 +1556,14 @@ export function App() {
     return result.message;
   }
 
-  async function handleSaveSecurityUser(payload: ApiSaveSecurityUserRequest) {
+  async function handleSaveSecurityUser(payload: Omit<ApiSaveSecurityUserRequest, "auth_token">) {
+    if (!currentUser) {
+      setSecurityMessage("Your session expired. Please log in again.");
+      return;
+    }
     setSecurityMessage("Saving user access...");
     try {
-      await saveSecurityUser(payload);
+      await saveSecurityUser({ ...payload, auth_token: currentUser.session_token });
       const [overview, apiAuditEvents] = await Promise.all([
         fetchSecurityOverview(),
         fetchAuditEvents(20),
@@ -1572,10 +1576,14 @@ export function App() {
     }
   }
 
-  async function handleSaveApprovalRule(payload: ApiSaveApprovalRuleRequest) {
+  async function handleSaveApprovalRule(payload: Omit<ApiSaveApprovalRuleRequest, "auth_token">) {
+    if (!currentUser) {
+      setSecurityMessage("Your session expired. Please log in again.");
+      return;
+    }
     setSecurityMessage("Saving approval rule...");
     try {
-      await saveApprovalRule(payload);
+      await saveApprovalRule({ ...payload, auth_token: currentUser.session_token });
       const [overview, apiAuditEvents] = await Promise.all([
         fetchSecurityOverview(),
         fetchAuditEvents(20),
@@ -4923,8 +4931,8 @@ function SecurityView({
 }: {
   currentUser: ApiAuthenticatedUser;
   message: string;
-  onSaveApprovalRule: (payload: ApiSaveApprovalRuleRequest) => Promise<void>;
-  onSaveUser: (payload: ApiSaveSecurityUserRequest) => Promise<void>;
+  onSaveApprovalRule: (payload: Omit<ApiSaveApprovalRuleRequest, "auth_token">) => Promise<void>;
+  onSaveUser: (payload: Omit<ApiSaveSecurityUserRequest, "auth_token">) => Promise<void>;
   securityOverview: ApiSecurityOverview;
 }) {
   const defaultRole = securityOverview.role_definitions[0]?.role_name ?? "Admin";
