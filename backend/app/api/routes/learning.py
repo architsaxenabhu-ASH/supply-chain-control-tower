@@ -5,6 +5,7 @@ from app.schemas.learning import (
     CountryDocumentRequirementRule,
     CorrectionEventRequest,
     EntityAliasRequest,
+    LearningInsights,
     LearningRule,
     ProductProfileEditEvent,
     ProductProfileEditRequest,
@@ -16,6 +17,7 @@ from app.schemas.learning import (
 )
 from app.services.learning_repository import (
     create_warehouse_candidate,
+    get_learning_insights,
     get_product_learning_profile,
     get_country_document_requirements,
     learn_country_document_requirement,
@@ -34,6 +36,11 @@ router = APIRouter()
 @router.get("/rules", response_model=list[LearningRule])
 def rules() -> list[LearningRule]:
     return list_learning_rules()
+
+
+@router.get("/insights", response_model=LearningInsights)
+def insights() -> LearningInsights:
+    return get_learning_insights()
 
 
 @router.get("/product-profiles/{item_code}", response_model=ProductLearningProfileResponse)

@@ -133,3 +133,27 @@ class WarehouseCandidate(BaseModel):
     status: str = "pending_validation"
     created_by: str
     created_at: datetime = Field(default_factory=datetime.now)
+
+
+class LearningStat(BaseModel):
+    """A simple label/count pair used for the Learning Center charts."""
+
+    label: str
+    count: int
+
+
+class LearningInsights(BaseModel):
+    """Aggregated view of everything the platform has learned so far."""
+
+    total_learning_rules: int = 0
+    total_corrections: int = 0
+    total_product_profiles: int = 0
+    total_country_document_rules: int = 0
+    total_entity_aliases: int = 0
+    total_warehouse_candidates: int = 0
+    average_rule_confidence: float = 0
+    top_corrected_fields: list[LearningStat] = Field(default_factory=list)
+    corrections_by_document_type: list[LearningStat] = Field(default_factory=list)
+    top_learned_rules: list[LearningRule] = Field(default_factory=list)
+    country_document_rules: list[CountryDocumentRequirementRule] = Field(default_factory=list)
+    recent_corrections: list[CorrectionEventRequest] = Field(default_factory=list)

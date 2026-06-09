@@ -1,3 +1,4 @@
+from collections import Counter
 from datetime import datetime
 
 from app.db.local_persistence import load_collection, record_audit_event, save_collection
@@ -6,7 +7,9 @@ from app.schemas.learning import (
     CountryDocumentRequirementRule,
     CorrectionEventRequest,
     EntityAliasRequest,
+    LearningInsights,
     LearningRule,
+    LearningStat,
     ProductProfileEditEvent,
     ProductProfileEditRequest,
     ProductProfileFreeTextSaveRequest,
@@ -339,6 +342,57 @@ def record_entity_alias(alias: EntityAliasRequest) -> EntityAliasRequest:
 
 def list_learning_rules() -> list[LearningRule]:
     return LEARNING_RULES
+
+
+def _top_stats(counter: Counter[str], limit: int = 6) -> list[LearningStat]:
+    return [
+        LearningStat(label=label, count=count)
+        for label, count in counter.most_common(limit)
+        if label
+    ]
+
+
+def get_learning_insights() -> LearningInsights:
+    """Aggregate every learned signal into one summary for the Learning Center.
+
+    This is read-only: it never changes what has been learned, it only reports
+    on it so a non-technical user can see the platform getting smarter.
+    """
+    field_counter: Counter[str] = Counter(
+        event.field_name for event in CORRECTION_EVENTS if event.field_name
+    )
+    document_counter: Counter[str] = Counter(
+        event.document_type for event in CORRECTION_EVENTS if event.document_type
+    )
+
+    average_confidence = (
+        round(sum(rule.confidence for rule in LEARNING_RULES) / len(LEARNING_RULES), 1)
+        if LEARNING_RULES
+        else 0
+    )
+
+    top_rules = sorted(
+        LEARNING_RULES,
+        key=lambda rule: (rule.confidence, rule.success_count),
+        reverse=True,
+    )[:8]
+
+    recent_corrections = list(reversed(CORRECTION_EVENTS))[:8]
+
+    return LearningInsights(
+        total_learning_rules=len(LEARNING_RULES),
+        total_corrections=len(CORRECTION_EVENTS),
+        total_product_profiles=len(PRODUCT_PROFILES),
+        total_country_document_rules=len(COUNTRY_DOCUMENT_REQUIREMENT_RULES),
+        total_entity_aliases=len(ENTITY_ALIASES),
+        total_warehouse_candidates=len(WAREHOUSE_CANDIDATES),
+        average_rule_confidence=average_confidence,
+        top_corrected_fields=_top_stats(field_counter),
+        corrections_by_document_type=_top_stats(document_counter),
+        top_learned_rules=top_rules,
+        country_document_rules=COUNTRY_DOCUMENT_REQUIREMENT_RULES[:12],
+        recent_corrections=recent_corrections,
+    )
 
 
 def learn_country_document_requirement(

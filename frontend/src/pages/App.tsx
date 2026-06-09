@@ -52,6 +52,7 @@ import {
   fetchImportCandidates,
   fetchInventoryBatches,
   fetchInventoryCounts,
+  fetchLearningInsights,
   fetchProducts,
   fetchSecurityOverview,
   fetchShipments,
@@ -84,6 +85,7 @@ import type {
   ApiImportGoodsReceiptPostRequest,
   ApiInventoryBatch,
   ApiInventoryCount,
+  ApiLearningInsights,
   ApiImportFileCandidate,
   ApiFieldCorrectionRequest,
   ApiSaveApprovalRuleRequest,
@@ -430,6 +432,7 @@ const navItems = [
   { id: "customers", label: "Customers", icon: Users },
   { id: "security", label: "Security", icon: ShieldCheck },
   { id: "audit", label: "Audit", icon: History },
+  { id: "learning", label: "Learning", icon: BrainCircuit },
   { id: "assistant", label: "Assistant", icon: Bot },
 ];
 
@@ -1109,6 +1112,7 @@ export function App() {
   const [counts, setCounts] = useState<CountLine[]>(fallbackCounts);
   const [customers, setCustomers] = useState<Customer[]>(fallbackCustomers);
   const [auditEvents, setAuditEvents] = useState<ApiAuditEvent[]>([]);
+  const [learningInsights, setLearningInsights] = useState<ApiLearningInsights | null>(null);
   const [importQueue, setImportQueue] = useState<ApiImportFileCandidate[]>([]);
   const [securityOverview, setSecurityOverview] = useState<ApiSecurityOverview>(fallbackSecurityOverview);
   const [securityMessage, setSecurityMessage] = useState("Enter users and approval rules for email-based access.");
@@ -1230,6 +1234,29 @@ export function App() {
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (activeView !== "learning") {
+      return;
+    }
+    let isMounted = true;
+
+    fetchLearningInsights()
+      .then((insights) => {
+        if (isMounted) {
+          setLearningInsights(insights);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setLearningInsights(null);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activeView]);
 
   useEffect(() => {
     let isMounted = true;
@@ -1908,6 +1935,7 @@ export function App() {
           />
         ) : null}
         {activeView === "audit" ? <AuditView auditEvents={auditEvents} /> : null}
+        {activeView === "learning" ? <LearningCenterView insights={learningInsights} /> : null}
         {activeView === "assistant" ? (
           <AssistantView
             answer={assistantAnswer}
@@ -3806,7 +3834,13 @@ function canAccessView(user: ApiAuthenticatedUser | null, viewId: string) {
   if (!user) {
     return false;
   }
-  if (user.role_name === "Admin" || viewId === "dashboard" || viewId === "assistant" || viewId === "platform-progress") {
+  if (
+    user.role_name === "Admin" ||
+    viewId === "dashboard" ||
+    viewId === "assistant" ||
+    viewId === "platform-progress" ||
+    viewId === "learning"
+  ) {
     return true;
   }
 
@@ -5189,11 +5223,77 @@ function ShipmentTable({
   );
 }
 
+// Pulls the first number out of a display string like "$1,234,567", "1,234",
+// "5", or "-3" so it can be animated while keeping the original prefix/suffix
+// (currency symbol, units) and grouping/decimal style intact.
+function parseMetricNumber(value: string) {
+  const match = value.match(/^(\D*?)(\d[\d,]*(?:\.\d+)?)(.*)$/s);
+  if (!match) {
+    return null;
+  }
+  const [, prefix, numberPart, suffix] = match;
+  const target = Number(numberPart.replace(/,/g, ""));
+  if (!Number.isFinite(target)) {
+    return null;
+  }
+  const decimals = numberPart.includes(".") ? numberPart.split(".")[1].length : 0;
+  const formatter = new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+    useGrouping: numberPart.includes(","),
+  });
+  return { prefix, suffix, target, formatter };
+}
+
+function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+}
+
+// Counts a metric up from zero to its final value on mount. Falls back to the
+// plain value for non-numeric strings or when the user prefers reduced motion.
+function useCountUp(value: string, durationMs = 900): string {
+  const parsed = parseMetricNumber(value);
+  const [display, setDisplay] = useState(() =>
+    parsed && !prefersReducedMotion()
+      ? `${parsed.prefix}${parsed.formatter.format(0)}${parsed.suffix}`
+      : value,
+  );
+
+  useEffect(() => {
+    const target = parseMetricNumber(value);
+    if (!target || prefersReducedMotion()) {
+      setDisplay(value);
+      return;
+    }
+    const start = performance.now();
+    let frame = 0;
+    const tick = (now: number) => {
+      const progress = Math.min(1, (now - start) / durationMs);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setDisplay(`${target.prefix}${target.formatter.format(target.target * eased)}${target.suffix}`);
+      if (progress < 1) {
+        frame = requestAnimationFrame(tick);
+      } else {
+        setDisplay(value);
+      }
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [value, durationMs]);
+
+  return display;
+}
+
 function MetricCard({ label, value, detail }: { label: string; value: string; detail: string }) {
+  const animatedValue = useCountUp(value);
   return (
     <article className="metric-card">
       <span>{label}</span>
-      <strong>{value}</strong>
+      <strong>{animatedValue}</strong>
       <small>{detail}</small>
     </article>
   );
@@ -5372,6 +5472,225 @@ function AuditView({ auditEvents }: { auditEvents: ApiAuditEvent[] }) {
           </tbody>
         </table>
       </Panel>
+    </>
+  );
+}
+
+function LearningBars({ stats }: { stats: ApiLearningInsights["top_corrected_fields"] }) {
+  if (stats.length === 0) {
+    return <p className="empty-state">Nothing learned here yet.</p>;
+  }
+  const maxCount = Math.max(...stats.map((stat) => stat.count), 1);
+  return (
+    <div className="learning-bars">
+      {stats.map((stat) => {
+        const width = `${Math.max((stat.count / maxCount) * 100, 4)}%`;
+        return (
+          <div className="bar-row" key={stat.label}>
+            <div>
+              <span>{toTitleCase(stat.label.replace(/_/g, " "))}</span>
+              <strong>{stat.count}</strong>
+            </div>
+            <div className="bar-track">
+              <span style={{ width }} />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function LearningCenterView({ insights }: { insights: ApiLearningInsights | null }) {
+  if (!insights) {
+    return (
+      <Panel title="Learning Center" meta="Waiting for data">
+        <p className="empty-state">
+          This page shows what the platform has learned from your work. It will fill in
+          automatically once the backend is connected and you start correcting fields,
+          confirming document rules, and building product profiles.
+        </p>
+      </Panel>
+    );
+  }
+
+  const hasLearned =
+    insights.total_learning_rules +
+      insights.total_corrections +
+      insights.total_product_profiles +
+      insights.total_country_document_rules >
+    0;
+
+  return (
+    <>
+      <section className="learning-hero panel">
+        <div className="learning-hero-mark">
+          <BrainCircuit size={26} aria-hidden="true" />
+        </div>
+        <div>
+          <p className="eyebrow">Self-learning platform</p>
+          <h2>Everything the control tower has learned so far</h2>
+          <p className="status-line">
+            Each correction you make, every document rule you confirm, and every product
+            profile you complete is remembered here and reused to make future imports
+            faster and safer.
+          </p>
+        </div>
+      </section>
+
+      <section className="kpi-grid" aria-label="Learning metrics">
+        <MetricCard
+          label="Learned Rules"
+          value={String(insights.total_learning_rules)}
+          detail="Extraction shortcuts learned"
+        />
+        <MetricCard
+          label="Corrections Captured"
+          value={String(insights.total_corrections)}
+          detail="Human fixes remembered"
+        />
+        <MetricCard
+          label="Product Profiles"
+          value={String(insights.total_product_profiles)}
+          detail="Known medical devices"
+        />
+        <MetricCard
+          label="Country Doc Rules"
+          value={String(insights.total_country_document_rules)}
+          detail="Import checklist rules"
+        />
+        <MetricCard
+          label="Avg Rule Confidence"
+          value={`${insights.average_rule_confidence}%`}
+          detail="Across learned rules"
+        />
+        <MetricCard
+          label="Entity Aliases"
+          value={String(insights.total_entity_aliases)}
+          detail="Name variations mapped"
+        />
+        <MetricCard
+          label="Warehouse Candidates"
+          value={String(insights.total_warehouse_candidates)}
+          detail="Discovered from imports"
+        />
+      </section>
+
+      {!hasLearned ? (
+        <Panel title="Learning starts with your first correction" meta="No data yet">
+          <p className="empty-state">
+            The platform has not learned anything yet. As soon as you correct an extracted
+            field, confirm a country document rule, or save a product profile, it will show
+            up here and start improving automatic results.
+          </p>
+        </Panel>
+      ) : null}
+
+      <div className="learning-grid">
+        <Panel title="Most corrected fields" meta="Where humans help most">
+          <LearningBars stats={insights.top_corrected_fields} />
+        </Panel>
+        <Panel title="Corrections by document type" meta="By source document">
+          <LearningBars stats={insights.corrections_by_document_type} />
+        </Panel>
+      </div>
+
+      <Panel title="Top learned rules" meta="Highest confidence first">
+        {insights.top_learned_rules.length === 0 ? (
+          <p className="empty-state">No extraction rules learned yet.</p>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>Document</th>
+                <th>When it sees</th>
+                <th>It fills</th>
+                <th>Confidence</th>
+                <th>Times used</th>
+              </tr>
+            </thead>
+            <tbody>
+              {insights.top_learned_rules.map((rule, index) => (
+                <tr key={`${rule.document_type}-${rule.target_field}-${index}`}>
+                  <td>{toTitleCase(rule.document_type.replace(/_/g, " "))}</td>
+                  <td>
+                    <span className="muted-cell">{rule.source_text}</span>
+                  </td>
+                  <td>{toTitleCase(rule.target_field.replace(/_/g, " "))}</td>
+                  <td>
+                    <StatusTag label={`${Math.round(rule.confidence)}%`} />
+                  </td>
+                  <td>{rule.success_count}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Panel>
+
+      <div className="learning-grid">
+        <Panel title="Country document rules" meta="Import checklist learning">
+          {insights.country_document_rules.length === 0 ? (
+            <p className="empty-state">No country document rules confirmed yet.</p>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>Country</th>
+                  <th>Vertical</th>
+                  <th>Material</th>
+                  <th>Required document</th>
+                  <th>Confidence</th>
+                </tr>
+              </thead>
+              <tbody>
+                {insights.country_document_rules.map((rule, index) => (
+                  <tr key={`${rule.country}-${rule.required_document_type}-${index}`}>
+                    <td>{rule.country}</td>
+                    <td>{rule.vertical}</td>
+                    <td>
+                      <span className="muted-cell">{rule.material_code}</span>
+                    </td>
+                    <td>{toTitleCase(rule.required_document_type.replace(/_/g, " "))}</td>
+                    <td>
+                      <StatusTag label={`${Math.round(rule.confidence)}%`} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Panel>
+
+        <Panel title="Recent corrections" meta="Newest first">
+          {insights.recent_corrections.length === 0 ? (
+            <p className="empty-state">No corrections captured yet.</p>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>Field</th>
+                  <th>Changed to</th>
+                  <th>Reason</th>
+                  <th>By</th>
+                </tr>
+              </thead>
+              <tbody>
+                {insights.recent_corrections.map((event, index) => (
+                  <tr key={`${event.field_name}-${index}`}>
+                    <td>{toTitleCase(event.field_name.replace(/_/g, " "))}</td>
+                    <td>{event.corrected_value ?? "-"}</td>
+                    <td>
+                      <span className="muted-cell">{event.correction_reason ?? "-"}</span>
+                    </td>
+                    <td>{event.corrected_by}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Panel>
+      </div>
     </>
   );
 }

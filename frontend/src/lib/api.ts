@@ -293,6 +293,54 @@ export type ApiProductLearningProfileResponse = {
   }>;
 };
 
+export type ApiLearningStat = {
+  label: string;
+  count: number;
+};
+
+export type ApiLearningRule = {
+  document_type: string;
+  source_text: string;
+  target_field: string;
+  confidence: number;
+  success_count: number;
+  failure_count: number;
+};
+
+export type ApiCountryDocumentRule = {
+  country: string;
+  vertical: string;
+  material_code: string;
+  required_document_type: string;
+  confidence: number;
+  success_count: number;
+};
+
+export type ApiCorrectionEvent = {
+  document_type: string;
+  field_name: string;
+  original_value: string | null;
+  corrected_value: string | null;
+  correction_reason: string | null;
+  corrected_by: string;
+  document_reference: string | null;
+};
+
+export type ApiLearningInsights = {
+  total_learning_rules: number;
+  total_corrections: number;
+  total_product_profiles: number;
+  total_country_document_rules: number;
+  total_entity_aliases: number;
+  total_warehouse_candidates: number;
+  average_rule_confidence: number;
+  top_corrected_fields: ApiLearningStat[];
+  corrections_by_document_type: ApiLearningStat[];
+  top_learned_rules: ApiLearningRule[];
+  country_document_rules: ApiCountryDocumentRule[];
+  recent_corrections: ApiCorrectionEvent[];
+};
+
 export type ApiImportFileCandidate = {
   import_file_number: string;
   shipment_name: string | null;
@@ -672,4 +720,8 @@ export function saveCountryDocumentRequirement(payload: {
   approved_by: string;
 }): Promise<Record<string, unknown>> {
   return postJson<Record<string, unknown>, typeof payload>("/learning/country-document-requirements", payload);
+}
+
+export function fetchLearningInsights(): Promise<ApiLearningInsights> {
+  return getJson<ApiLearningInsights>("/learning/insights");
 }
