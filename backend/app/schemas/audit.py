@@ -14,3 +14,4 @@ class AuditEvent(BaseModel):
     old_value: Any | None = None
     new_value: Any | None = None
     created_at: str
+    event_hash: str | None = None

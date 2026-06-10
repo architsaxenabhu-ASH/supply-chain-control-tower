@@ -738,6 +738,18 @@ export function fetchSecurityOverview(): Promise<ApiSecurityOverview> {
   return getJson<ApiSecurityOverview>("/security");
 }
 
+export type ApiAuditChainStatus = {
+  valid: boolean;
+  broken_at_id: number | null;
+  verified_count: number;
+  legacy_unhashed_count: number;
+  total: number;
+};
+
+export function fetchAuditChainStatus(): Promise<ApiAuditChainStatus> {
+  return getJson<ApiAuditChainStatus>("/audit/verify");
+}
+
 export function loginUser(payload: { email: string; password: string }): Promise<ApiAuthenticatedUser> {
   return postJson<ApiAuthenticatedUser, typeof payload>("/security/login", payload);
 }

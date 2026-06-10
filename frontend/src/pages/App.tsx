@@ -46,6 +46,7 @@ import {
   confirmDispatch,
   createShipment,
   evaluateImportChecklist,
+  fetchAuditChainStatus,
   fetchCorrectionSuggestion,
   fetchErpTemplates,
   fetchCustomers,
@@ -88,6 +89,7 @@ import type {
   ApiDispatch,
   ApiGoodsReceipt,
   ApiAuditEvent,
+  ApiAuditChainStatus,
   ApiAuthenticatedUser,
   ApiCorrectionSuggestion,
   ApiImportChecklistResponse,
@@ -6516,6 +6518,19 @@ function AuditEventList({ rows }: { rows: ApiAuditEvent[] }) {
 function AuditView({ auditEvents }: { auditEvents: ApiAuditEvent[] }) {
   const importEvents = auditEvents.filter((event) => event.module_name === "import").length;
   const learningEvents = auditEvents.filter((event) => event.module_name === "learning").length;
+  const [chainStatus, setChainStatus] = useState<ApiAuditChainStatus | null>(null);
+  const [isVerifying, setIsVerifying] = useState(false);
+
+  async function handleVerify() {
+    setIsVerifying(true);
+    try {
+      setChainStatus(await fetchAuditChainStatus());
+    } catch {
+      setChainStatus(null);
+    } finally {
+      setIsVerifying(false);
+    }
+  }
 
   return (
     <>
@@ -6529,6 +6544,32 @@ function AuditView({ auditEvents }: { auditEvents: ApiAuditEvent[] }) {
           detail={auditEvents[0]?.actor ?? "No actor yet"}
         />
       </section>
+
+      <Panel title="Audit integrity" meta="Tamper-evident hash chain">
+        <div className="validation-stack">
+          <p className="status-line">
+            Every change is recorded as an immutable, hash-chained event. Verify that the trail has
+            not been altered.
+          </p>
+          <button className="secondary-action" type="button" onClick={() => void handleVerify()} disabled={isVerifying}>
+            <ShieldCheck size={16} aria-hidden="true" />
+            {isVerifying ? "Verifying" : "Verify audit integrity"}
+          </button>
+          {chainStatus ? (
+            <div className={chainStatus.valid ? "validation-banner" : "validation-banner danger"}>
+              <strong>{chainStatus.valid ? "Audit trail intact" : "Audit trail tampered"}</strong>
+              <span>
+                {chainStatus.valid
+                  ? `${chainStatus.verified_count} hash-verified event(s)`
+                  : `Chain broken at event #${chainStatus.broken_at_id}`}
+                {chainStatus.legacy_unhashed_count > 0
+                  ? ` · ${chainStatus.legacy_unhashed_count} legacy event(s) predate hashing`
+                  : ""}
+              </span>
+            </div>
+          ) : null}
+        </div>
+      </Panel>
 
       <Panel title="Audit trail" meta="Newest first">
         <table>

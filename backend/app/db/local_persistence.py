@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sqlite3
@@ -8,7 +9,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable, Iterable, TypeVar
 
-from sqlalchemy import Column, Integer, MetaData, String, Table, Text, create_engine, delete, desc, select
+from sqlalchemy import Column, Integer, MetaData, String, Table, Text, create_engine, delete, desc, inspect as sqla_inspect, select, text
 from sqlalchemy.engine import Engine
 
 from app.core.config import settings
@@ -44,7 +45,47 @@ audit_events = Table(
     Column("old_value_json", Text, nullable=True),
     Column("new_value_json", Text, nullable=True),
     Column("created_at", String(60), nullable=False),
+    # Tamper-evident chain: sha256(previous_event_hash + "|" + this event's fields).
+    Column("event_hash", String(64), nullable=True),
 )
+
+
+AUDIT_GENESIS_HASH = "GENESIS"
+_audit_migration_done = False
+
+
+def _ensure_audit_columns() -> None:
+    """Add the event_hash column to pre-existing audit tables (SQLite/Postgres)."""
+    global _audit_migration_done
+    if _audit_migration_done:
+        return
+    engine = get_engine()
+    columns = {column["name"] for column in sqla_inspect(engine).get_columns("audit_events")}
+    if "event_hash" not in columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE audit_events ADD COLUMN event_hash VARCHAR(64)"))
+    _audit_migration_done = True
+
+
+def _audit_canonical(row: dict[str, Any]) -> str:
+    return "|".join(
+        str(row.get(field) or "")
+        for field in (
+            "action",
+            "module_name",
+            "entity_name",
+            "entity_id",
+            "actor",
+            "reason",
+            "old_value_json",
+            "new_value_json",
+            "created_at",
+        )
+    )
+
+
+def _audit_hash(previous_hash: str, row: dict[str, Any]) -> str:
+    return hashlib.sha256(f"{previous_hash}|{_audit_canonical(row)}".encode("utf-8")).hexdigest()
 
 
 def configured_database_url() -> str:
@@ -145,29 +186,75 @@ def record_audit_event(
     new_value: Any | None = None,
 ) -> None:
     init_database()
+    _ensure_audit_columns()
+    row = {
+        "action": action,
+        "module_name": module_name,
+        "entity_name": entity_name,
+        "entity_id": entity_id,
+        "actor": actor,
+        "reason": reason,
+        "old_value_json": json.dumps(to_json_payload(old_value), default=json_default)
+        if old_value is not None
+        else None,
+        "new_value_json": json.dumps(to_json_payload(new_value), default=json_default)
+        if new_value is not None
+        else None,
+        "created_at": datetime.now(UTC).isoformat(),
+    }
     with get_engine().begin() as connection:
-        connection.execute(
-            audit_events.insert(),
-            {
-                "action": action,
-                "module_name": module_name,
-                "entity_name": entity_name,
-                "entity_id": entity_id,
-                "actor": actor,
-                "reason": reason,
-                "old_value_json": json.dumps(to_json_payload(old_value), default=json_default)
-                if old_value is not None
-                else None,
-                "new_value_json": json.dumps(to_json_payload(new_value), default=json_default)
-                if new_value is not None
-                else None,
-                "created_at": datetime.now(UTC).isoformat(),
-            },
-        )
+        previous_hash = connection.execute(
+            select(audit_events.c.event_hash)
+            .where(audit_events.c.event_hash.is_not(None))
+            .order_by(desc(audit_events.c.id))
+            .limit(1)
+        ).scalar() or AUDIT_GENESIS_HASH
+        row["event_hash"] = _audit_hash(previous_hash, row)
+        connection.execute(audit_events.insert(), row)
+
+
+def verify_audit_chain() -> dict[str, Any]:
+    """Recompute the hash chain and report whether the audit trail is intact.
+    Any edit or deletion of a recorded event breaks the chain at that point."""
+    init_database()
+    _ensure_audit_columns()
+    with get_engine().begin() as connection:
+        rows = connection.execute(
+            select(audit_events).order_by(audit_events.c.id)
+        ).mappings().all()
+
+    previous_hash = AUDIT_GENESIS_HASH
+    verified = 0
+    legacy = 0
+    for row in rows:
+        stored = row["event_hash"]
+        if stored is None:
+            legacy += 1
+            continue
+        expected = _audit_hash(previous_hash, dict(row))
+        if expected != stored:
+            return {
+                "valid": False,
+                "broken_at_id": row["id"],
+                "verified_count": verified,
+                "legacy_unhashed_count": legacy,
+                "total": len(rows),
+            }
+        verified += 1
+        previous_hash = stored
+
+    return {
+        "valid": True,
+        "broken_at_id": None,
+        "verified_count": verified,
+        "legacy_unhashed_count": legacy,
+        "total": len(rows),
+    }
 
 
 def list_audit_events(limit: int = 100) -> list[dict[str, Any]]:
     init_database()
+    _ensure_audit_columns()
     safe_limit = max(1, min(limit, 500))
     with get_engine().begin() as connection:
         rows = connection.execute(
@@ -188,6 +275,7 @@ def list_audit_events(limit: int = 100) -> list[dict[str, Any]]:
             "old_value": parse_json_value(row["old_value_json"]),
             "new_value": parse_json_value(row["new_value_json"]),
             "created_at": row["created_at"],
+            "event_hash": row["event_hash"],
         }
         for row in rows
     ]
