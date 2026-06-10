@@ -8,6 +8,7 @@ from app.api.routes import (
     customers,
     dashboard,
     decisions,
+    demand,
     dispatches,
     documents,
     erp_uploads,
@@ -82,4 +83,14 @@ api_router.include_router(allocations.distributor_router, prefix="/distributor-i
 api_router.include_router(allocations.country_router, prefix="/country-intelligence", tags=["allocations"])
 api_router.include_router(allocations.recommendations_router, prefix="/allocation-recommendations", tags=["allocations"])
 api_router.include_router(allocations.allocation_dashboard_router, prefix="/allocation-dashboard", tags=["allocations"])
+api_router.include_router(demand.demand_router, prefix="/demand", tags=["demand"])
+api_router.include_router(demand.demand_intelligence_router, prefix="/demand-intelligence", tags=["demand"])
+api_router.include_router(demand.demand_gap_router, prefix="/demand-gap", tags=["demand"])
+api_router.include_router(demand.customer_v2_router, prefix="/customer-intelligence-v2", tags=["commercial-intelligence"])
+api_router.include_router(demand.distributor_performance_router, prefix="/distributor-performance", tags=["commercial-intelligence"])
+api_router.include_router(demand.distributor_health_router, prefix="/distributor-health", tags=["commercial-intelligence"])
+api_router.include_router(demand.country_performance_router, prefix="/country-performance", tags=["commercial-intelligence"])
+api_router.include_router(demand.product_intelligence_router, prefix="/product-intelligence", tags=["commercial-intelligence"])
+api_router.include_router(demand.inventory_efficiency_router, prefix="/inventory-efficiency", tags=["commercial-intelligence"])
+api_router.include_router(demand.executive_router, prefix="/executive-command-center", tags=["commercial-intelligence"])
 api_router.include_router(assistant.router, prefix="/assistant", tags=["assistant"])

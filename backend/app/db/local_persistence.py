@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import sqlite3
+import time
 from datetime import UTC, date, datetime
 from functools import lru_cache
 from pathlib import Path
@@ -135,9 +136,32 @@ def get_engine() -> Engine:
     return create_engine(database_url, future=True, pool_pre_ping=True)
 
 
+_schema_initialized = False
+
+# Short-TTL read cache. The JSON-blob store loads a whole collection per call,
+# and composed intelligence endpoints reload the same collections many times;
+# on a high-latency database that is the dominant cost. Caches are invalidated
+# immediately on our own writes, so staleness only ever reflects external writes
+# and is bounded by the TTL.
+_CACHE_TTL_SECONDS = 15.0
+_collection_cache: dict[str, tuple[float, list[str]]] = {}
+_audit_cache: dict[int, tuple[float, list[dict[str, Any]]]] = {}
+
+
+def _cache_fresh(entry: tuple[float, Any] | None) -> bool:
+    return entry is not None and (time.monotonic() - entry[0]) < _CACHE_TTL_SECONDS
+
+
 def init_database() -> None:
+    # Create the schema once per process. This is called on every persistence
+    # operation; on Postgres an unguarded create_all() runs catalog inspection
+    # each time, which made composed endpoints (hundreds of loads) crawl.
+    global _schema_initialized
     DATA_ROOT.mkdir(parents=True, exist_ok=True)
+    if _schema_initialized:
+        return
     metadata.create_all(get_engine())
+    _schema_initialized = True
 
 
 def connect() -> sqlite3.Connection:
@@ -152,14 +176,20 @@ def connect() -> sqlite3.Connection:
 
 def load_collection(collection: str, factory: Callable[[dict[str, Any]], T]) -> list[T]:
     init_database()
-    with get_engine().begin() as connection:
-        rows = connection.execute(
-            select(local_state_records.c.payload_json)
-            .where(local_state_records.c.collection == collection)
-            .order_by(local_state_records.c.sort_index, local_state_records.c.record_key)
-        ).mappings().all()
+    cached = _collection_cache.get(collection)
+    if _cache_fresh(cached):
+        payloads = cached[1]
+    else:
+        with get_engine().begin() as connection:
+            rows = connection.execute(
+                select(local_state_records.c.payload_json)
+                .where(local_state_records.c.collection == collection)
+                .order_by(local_state_records.c.sort_index, local_state_records.c.record_key)
+            ).mappings().all()
+        payloads = [row["payload_json"] for row in rows]
+        _collection_cache[collection] = (time.monotonic(), payloads)
 
-    return [factory(json.loads(row["payload_json"])) for row in rows]
+    return [factory(json.loads(payload)) for payload in payloads]
 
 
 def save_collection(
@@ -186,6 +216,7 @@ def save_collection(
         )
         if rows:
             connection.execute(local_state_records.insert(), rows)
+    _collection_cache.pop(collection, None)
 
 
 def record_audit_event(
@@ -229,6 +260,7 @@ def record_audit_event(
         ).scalar() or AUDIT_GENESIS_HASH
         row["event_hash"] = _audit_hash(previous_hash, row)
         connection.execute(audit_events.insert(), row)
+    _audit_cache.clear()
 
 
 def verify_audit_chain() -> dict[str, Any]:
@@ -274,6 +306,10 @@ def list_audit_events(limit: int = 100) -> list[dict[str, Any]]:
     init_database()
     _ensure_audit_columns()
     safe_limit = max(1, min(limit, 500))
+    cached = _audit_cache.get(safe_limit)
+    if _cache_fresh(cached):
+        return cached[1]
+
     with get_engine().begin() as connection:
         rows = connection.execute(
             select(audit_events)
@@ -281,7 +317,7 @@ def list_audit_events(limit: int = 100) -> list[dict[str, Any]]:
             .limit(safe_limit)
         ).mappings().all()
 
-    return [
+    events = [
         {
             "id": row["id"],
             "action": row["action"],
@@ -299,6 +335,8 @@ def list_audit_events(limit: int = 100) -> list[dict[str, Any]]:
         }
         for row in rows
     ]
+    _audit_cache[safe_limit] = (time.monotonic(), events)
+    return events
 
 
 def database_path() -> Path | str:
