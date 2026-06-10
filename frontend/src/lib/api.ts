@@ -792,6 +792,54 @@ export function fetchLearningInsights(): Promise<ApiLearningInsights> {
   return getJson<ApiLearningInsights>("/learning/insights");
 }
 
+export type ApiMovementEvent = {
+  event_id: string;
+  event_type: string;
+  item_code: string;
+  batch_number: string;
+  serial_number: string | null;
+  quantity: number;
+  warehouse: string | null;
+  counterparty: string | null;
+  reference: string | null;
+  actor: string | null;
+  occurred_at: string;
+  note: string | null;
+};
+
+export type ApiBatchTraceability = {
+  batch_number: string;
+  found: boolean;
+  item_codes: string[];
+  received_quantity: number;
+  dispatched_quantity: number;
+  allocated_quantity: number;
+  current_quantity: number;
+  remaining_quantity: number;
+  expiry_date: string | null;
+  warehouses: string[];
+  customers: string[];
+  events: ApiMovementEvent[];
+};
+
+export type ApiProductJourney = {
+  query: string;
+  found: boolean;
+  events: ApiMovementEvent[];
+};
+
+export function fetchMovements(): Promise<ApiMovementEvent[]> {
+  return getJson<ApiMovementEvent[]>("/movements");
+}
+
+export function fetchBatchTraceability(batchNumber: string): Promise<ApiBatchTraceability> {
+  return getJson<ApiBatchTraceability>(`/movements/traceability?batch_number=${encodeURIComponent(batchNumber)}`);
+}
+
+export function fetchProductJourney(query: string): Promise<ApiProductJourney> {
+  return getJson<ApiProductJourney>(`/movements/journey?query=${encodeURIComponent(query)}`);
+}
+
 export function evaluateImportChecklist(payload: {
   country: string;
   vertical: string;

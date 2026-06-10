@@ -53,10 +53,13 @@ import {
   fetchDashboardSummary,
   fetchDispatches,
   fetchGoodsReceipts,
+  fetchBatchTraceability,
   fetchImportCandidates,
   fetchInventoryBatches,
   fetchInventoryCounts,
   fetchLearningInsights,
+  fetchMovements,
+  fetchProductJourney,
   fetchProducts,
   fetchSecurityOverview,
   fetchShipments,
@@ -94,6 +97,9 @@ import type {
   ApiInventoryBatch,
   ApiInventoryCount,
   ApiLearningInsights,
+  ApiMovementEvent,
+  ApiBatchTraceability,
+  ApiProductJourney,
   ApiImportFileCandidate,
   ApiFieldCorrectionRequest,
   ApiSaveApprovalRuleRequest,
@@ -427,6 +433,7 @@ const fallbackSecurityOverview: ApiSecurityOverview = {
 const navItems = [
   { id: "dashboard", label: "Dashboard", icon: BarChart3 },
   { id: "goods-tracking", label: "Goods Tracking", icon: RadioTower },
+  { id: "traceability", label: "Traceability", icon: GitBranch },
   { id: "platform-progress", label: "Progress", icon: GitBranch },
   { id: "documents", label: "Documents", icon: FileUp },
   { id: "import-validation", label: "Import Validation", icon: ClipboardCheck },
@@ -1900,6 +1907,7 @@ export function App() {
             shipments={shipments}
           />
         ) : null}
+        {activeView === "traceability" ? <TraceabilityView /> : null}
         {activeView === "documents" ? (
           <DocumentsView
             documentMessage={documentMessage}
@@ -2028,6 +2036,181 @@ export function App() {
         ) : null}
       </section>
     </main>
+  );
+}
+
+function MovementRow({ event }: { event: ApiMovementEvent }) {
+  const inbound = event.quantity >= 0;
+  return (
+    <div className="movement-row">
+      <span className={`movement-dot ${inbound ? "movement-in" : "movement-out"}`} aria-hidden="true" />
+      <div className="movement-main">
+        <strong>
+          {toTitleCase(event.event_type)} · {event.item_code} / {event.batch_number}
+          {event.serial_number ? ` / ${event.serial_number}` : ""}
+        </strong>
+        <span>
+          {[event.warehouse, event.counterparty, event.reference].filter(Boolean).join(" · ") || "—"}
+        </span>
+      </div>
+      <div className="movement-meta">
+        <strong className={inbound ? "movement-qty-in" : "movement-qty-out"}>
+          {inbound ? "+" : ""}
+          {event.quantity}
+        </strong>
+        <span>{event.occurred_at}</span>
+      </div>
+    </div>
+  );
+}
+
+function TraceabilityView() {
+  const [query, setQuery] = useState("");
+  const [recent, setRecent] = useState<ApiMovementEvent[]>([]);
+  const [traceability, setTraceability] = useState<ApiBatchTraceability | null>(null);
+  const [journey, setJourney] = useState<ApiProductJourney | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    let mounted = true;
+    fetchMovements()
+      .then((events) => {
+        if (mounted) setRecent(events);
+      })
+      .catch(() => {
+        if (mounted) setRecent([]);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  async function handleSearch() {
+    const term = query.trim();
+    if (!term) {
+      setMessage("Enter a batch number, product code, or serial number.");
+      return;
+    }
+    setIsSearching(true);
+    setMessage("");
+    try {
+      const [trace, jrn] = await Promise.all([
+        fetchBatchTraceability(term),
+        fetchProductJourney(term),
+      ]);
+      setTraceability(trace.found ? trace : null);
+      setJourney(jrn);
+      if (!trace.found && !jrn.found) {
+        setMessage(`No movements found for "${term}" yet.`);
+      }
+    } catch {
+      setMessage("Could not search movements. Is the backend running?");
+    } finally {
+      setIsSearching(false);
+    }
+  }
+
+  return (
+    <>
+      <section className="learning-hero panel">
+        <div className="learning-hero-mark">
+          <GitBranch size={26} aria-hidden="true" />
+        </div>
+        <div>
+          <p className="eyebrow">Batch &amp; Product Traceability</p>
+          <h2>Follow any batch, product, or serial from receipt to customer</h2>
+          <p className="status-line">
+            Every goods movement is recorded as an event. Search a batch, product code, or serial
+            number to see its full journey and where the stock is now.
+          </p>
+        </div>
+      </section>
+
+      <Panel title="Search traceability" meta="Batch / product / serial">
+        <div className="search-box tracking-search">
+          <Search size={16} aria-hidden="true" />
+          <input
+            placeholder="Enter batch (e.g. MOZSAB24), product code, or serial number"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                void handleSearch();
+              }
+            }}
+          />
+          <button className="primary-action" type="button" onClick={() => void handleSearch()} disabled={isSearching}>
+            {isSearching ? "Searching" : "Trace"}
+          </button>
+        </div>
+        {message ? <p className="status-line">{message}</p> : null}
+      </Panel>
+
+      {traceability ? (
+        <>
+          <section className="kpi-grid" aria-label="Batch traceability">
+            <MetricCard label="Received" value={formatNumber(traceability.received_quantity)} detail={`Batch ${traceability.batch_number}`} />
+            <MetricCard label="Dispatched" value={formatNumber(traceability.dispatched_quantity)} detail="Sent to customers" />
+            <MetricCard label="Allocated" value={formatNumber(traceability.allocated_quantity)} detail="Reserved on shipments" />
+            <MetricCard label="Current Stock" value={formatNumber(traceability.current_quantity)} detail="On hand now" />
+            <MetricCard label="Batch Expiry" value={traceability.expiry_date ?? "-"} detail="Earliest expiry" />
+          </section>
+          <div className="learning-grid">
+            <Panel title="Warehouses visited" meta={String(traceability.warehouses.length)}>
+              {traceability.warehouses.length === 0 ? (
+                <p className="empty-state">No warehouse movements recorded.</p>
+              ) : (
+                <ul className="checklist-list">
+                  {traceability.warehouses.map((warehouse) => (
+                    <li className="checklist-row" key={warehouse}>
+                      <span>{warehouse}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Panel>
+            <Panel title="Customers served" meta={String(traceability.customers.length)}>
+              {traceability.customers.length === 0 ? (
+                <p className="empty-state">Not dispatched to any customer yet.</p>
+              ) : (
+                <ul className="checklist-list">
+                  {traceability.customers.map((customer) => (
+                    <li className="checklist-row" key={customer}>
+                      <span>{customer}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Panel>
+          </div>
+        </>
+      ) : null}
+
+      {journey && journey.found ? (
+        <Panel title="Product journey" meta={`${journey.events.length} event(s)`}>
+          <div className="movement-list">
+            {journey.events.map((event) => (
+              <MovementRow event={event} key={event.event_id} />
+            ))}
+          </div>
+        </Panel>
+      ) : null}
+
+      <Panel title="Recent movements" meta={`${recent.length} event(s)`}>
+        {recent.length === 0 ? (
+          <p className="empty-state">
+            No goods movements recorded yet. Post a Goods Receipt or confirm a dispatch to start the ledger.
+          </p>
+        ) : (
+          <div className="movement-list">
+            {recent.slice(0, 25).map((event) => (
+              <MovementRow event={event} key={event.event_id} />
+            ))}
+          </div>
+        )}
+      </Panel>
+    </>
   );
 }
 
@@ -4456,6 +4639,7 @@ function canAccessView(user: ApiAuthenticatedUser | null, viewId: string) {
     user.role_name === "Admin" ||
     viewId === "dashboard" ||
     viewId === "goods-tracking" ||
+    viewId === "traceability" ||
     viewId === "assistant" ||
     viewId === "platform-progress" ||
     viewId === "learning"
