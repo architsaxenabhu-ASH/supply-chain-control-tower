@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from app.api.routes import (
     audit,
+    allocations,
     assistant,
     business_intelligence,
     customers,
@@ -75,4 +76,10 @@ api_router.include_router(reservations.risk_router, prefix="/reservation-risk", 
 api_router.include_router(reservations.customer_consumption_router, prefix="/customer-consumption", tags=["reservations"])
 api_router.include_router(reservations.commitment_router, prefix="/commitment-dashboard", tags=["reservations"])
 api_router.include_router(reallocations.router, prefix="/reallocations", tags=["reallocations"])
+api_router.include_router(allocations.allocations_router, prefix="/allocations", tags=["allocations"])
+api_router.include_router(allocations.commitment_router, prefix="/inventory-commitment", tags=["allocations"])
+api_router.include_router(allocations.distributor_router, prefix="/distributor-intelligence", tags=["allocations"])
+api_router.include_router(allocations.country_router, prefix="/country-intelligence", tags=["allocations"])
+api_router.include_router(allocations.recommendations_router, prefix="/allocation-recommendations", tags=["allocations"])
+api_router.include_router(allocations.allocation_dashboard_router, prefix="/allocation-dashboard", tags=["allocations"])
 api_router.include_router(assistant.router, prefix="/assistant", tags=["assistant"])
