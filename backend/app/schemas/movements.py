@@ -39,6 +39,10 @@ class BatchTraceability(BaseModel):
     batch_number: str
     found: bool = False
     item_codes: list[str] = Field(default_factory=list)
+    supplier: str | None = None
+    invoice_number: str | None = None
+    awb_number: str | None = None
+    import_file_number: str | None = None
     received_quantity: float = 0
     dispatched_quantity: float = 0
     allocated_quantity: float = 0

@@ -164,10 +164,27 @@ def get_batch_traceability(batch_number: str) -> BatchTraceability:
             current_location = event.location or event.warehouse
             break
 
+    # Link the batch back to the import shipment that produced it, so the trace
+    # shows the supplier / invoice / AWB documents end-to-end.
+    supplier = invoice_number = awb_number = import_file_number = None
+    from app.services.import_repository import list_import_candidates
+
+    for candidate in list_import_candidates():
+        if any(line.batch_number.lower() == key for line in candidate.lines):
+            supplier = candidate.supplier_name
+            invoice_number = candidate.invoice_number
+            awb_number = candidate.awb_number
+            import_file_number = candidate.import_file_number
+            break
+
     return BatchTraceability(
         batch_number=batch_number,
         found=bool(events or inventory),
         item_codes=item_codes,
+        supplier=supplier,
+        invoice_number=invoice_number,
+        awb_number=awb_number,
+        import_file_number=import_file_number,
         received_quantity=received,
         dispatched_quantity=dispatched,
         allocated_quantity=allocated,

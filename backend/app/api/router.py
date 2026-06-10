@@ -13,6 +13,7 @@ from app.api.routes import (
     inventory,
     inventory_counts,
     imports,
+    intelligence,
     learning,
     master_data,
     movements,
@@ -46,4 +47,7 @@ api_router.include_router(movements.router, prefix="/movements", tags=["movement
 api_router.include_router(security.router, prefix="/security", tags=["security"])
 api_router.include_router(expiry.router, prefix="/expiry", tags=["expiry"])
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
+api_router.include_router(intelligence.inventory_health_router, prefix="/inventory-health", tags=["intelligence"])
+api_router.include_router(intelligence.expiry_router, prefix="/expiry-engine", tags=["intelligence"])
+api_router.include_router(intelligence.events_router, prefix="/events", tags=["intelligence"])
 api_router.include_router(assistant.router, prefix="/assistant", tags=["assistant"])

@@ -7,6 +7,7 @@ from app.schemas.dashboards import (
     InventoryDashboard,
     ShipmentDashboard,
 )
+from app.schemas.intelligence import SystemHealth
 from app.schemas.warehouse import DashboardSummary
 from app.services.dashboard_repository import (
     executive_dashboard,
@@ -15,6 +16,7 @@ from app.services.dashboard_repository import (
     inventory_dashboard,
     shipment_dashboard,
 )
+from app.services.intelligence_repository import system_health
 from app.services.warehouse_repository import dashboard_summary
 
 
@@ -49,3 +51,8 @@ def expiry() -> ExpiryDashboard:
 @router.get("/shipment", response_model=ShipmentDashboard)
 def shipment() -> ShipmentDashboard:
     return shipment_dashboard()
+
+
+@router.get("/system-health", response_model=SystemHealth)
+def system_health_dashboard() -> SystemHealth:
+    return system_health()
