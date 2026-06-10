@@ -14,6 +14,7 @@ from app.api.routes import (
     inventory_counts,
     imports,
     learning,
+    master_data,
     movements,
     masters,
     products,
@@ -40,6 +41,7 @@ api_router.include_router(goods_receipts.router, prefix="/goods-receipts", tags=
 api_router.include_router(inventory_counts.router, prefix="/inventory-counts", tags=["inventory-counts"])
 api_router.include_router(imports.router, prefix="/imports", tags=["imports"])
 api_router.include_router(learning.router, prefix="/learning", tags=["learning"])
+api_router.include_router(master_data.router, prefix="/master-data", tags=["master-data"])
 api_router.include_router(movements.router, prefix="/movements", tags=["movements"])
 api_router.include_router(security.router, prefix="/security", tags=["security"])
 api_router.include_router(expiry.router, prefix="/expiry", tags=["expiry"])
