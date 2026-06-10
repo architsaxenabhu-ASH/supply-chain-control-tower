@@ -7,6 +7,31 @@ const DEFAULT_API_BASE_URL =
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || DEFAULT_API_BASE_URL;
 
+// Attribution + auth: the logged-in session token and the current screen are
+// attached to every request so the backend can enforce auth and fully attribute
+// each action. Set from the app on login and on view changes.
+let authToken = "";
+let sourceScreen = "";
+
+export function setAuthToken(token: string): void {
+  authToken = token || "";
+}
+
+export function setSourceScreen(screen: string): void {
+  sourceScreen = screen || "";
+}
+
+function authHeaders(base: Record<string, string> = {}): Record<string, string> {
+  const headers: Record<string, string> = { ...base };
+  if (authToken) {
+    headers.Authorization = `Bearer ${authToken}`;
+  }
+  if (sourceScreen) {
+    headers["X-Source-Screen"] = sourceScreen;
+  }
+  return headers;
+}
+
 export async function getHealth(): Promise<Response> {
   return fetch(`${API_BASE_URL.replace("/api/v1", "")}/health`);
 }
@@ -21,6 +46,7 @@ export async function uploadDocument(
 
   const response = await fetch(`${API_BASE_URL}/documents/upload`, {
     method: "POST",
+    headers: authHeaders(),
     body: formData,
   });
 
@@ -56,7 +82,7 @@ export function rescanDocument(documentId: string): Promise<DocumentRecord> {
 }
 
 async function getJson<T>(path: string): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`);
+  const response = await fetch(`${API_BASE_URL}${path}`, { headers: authHeaders() });
   if (!response.ok) {
     throw new Error(`Could not load ${path}`);
   }
@@ -66,7 +92,7 @@ async function getJson<T>(path: string): Promise<T> {
 async function postJson<TResponse, TPayload>(path: string, payload: TPayload): Promise<TResponse> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(payload),
   });
 

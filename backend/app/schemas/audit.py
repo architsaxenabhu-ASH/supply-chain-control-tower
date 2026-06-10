@@ -15,3 +15,5 @@ class AuditEvent(BaseModel):
     new_value: Any | None = None
     created_at: str
     event_hash: str | None = None
+    actor_role: str | None = None
+    source_screen: str | None = None

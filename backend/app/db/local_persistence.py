@@ -47,7 +47,17 @@ audit_events = Table(
     Column("created_at", String(60), nullable=False),
     # Tamper-evident chain: sha256(previous_event_hash + "|" + this event's fields).
     Column("event_hash", String(64), nullable=True),
+    # Attribution: who (role) and from which screen the action originated.
+    Column("actor_role", String(120), nullable=True),
+    Column("source_screen", String(120), nullable=True),
 )
+
+
+_AUDIT_OPTIONAL_COLUMNS = {
+    "event_hash": "VARCHAR(64)",
+    "actor_role": "VARCHAR(120)",
+    "source_screen": "VARCHAR(120)",
+}
 
 
 AUDIT_GENESIS_HASH = "GENESIS"
@@ -55,15 +65,17 @@ _audit_migration_done = False
 
 
 def _ensure_audit_columns() -> None:
-    """Add the event_hash column to pre-existing audit tables (SQLite/Postgres)."""
+    """Add hash/attribution columns to pre-existing audit tables (SQLite/Postgres)."""
     global _audit_migration_done
     if _audit_migration_done:
         return
     engine = get_engine()
     columns = {column["name"] for column in sqla_inspect(engine).get_columns("audit_events")}
-    if "event_hash" not in columns:
+    missing = {name: ddl for name, ddl in _AUDIT_OPTIONAL_COLUMNS.items() if name not in columns}
+    if missing:
         with engine.begin() as connection:
-            connection.execute(text("ALTER TABLE audit_events ADD COLUMN event_hash VARCHAR(64)"))
+            for name, ddl in missing.items():
+                connection.execute(text(f"ALTER TABLE audit_events ADD COLUMN {name} {ddl}"))
     _audit_migration_done = True
 
 
@@ -80,6 +92,8 @@ def _audit_canonical(row: dict[str, Any]) -> str:
             "old_value_json",
             "new_value_json",
             "created_at",
+            "actor_role",
+            "source_screen",
         )
     )
 
@@ -187,12 +201,14 @@ def record_audit_event(
 ) -> None:
     init_database()
     _ensure_audit_columns()
+    from app.core.audit_context import current_actor_email, current_actor_role, current_source_screen
+
     row = {
         "action": action,
         "module_name": module_name,
         "entity_name": entity_name,
         "entity_id": entity_id,
-        "actor": actor,
+        "actor": actor or current_actor_email(),
         "reason": reason,
         "old_value_json": json.dumps(to_json_payload(old_value), default=json_default)
         if old_value is not None
@@ -201,6 +217,8 @@ def record_audit_event(
         if new_value is not None
         else None,
         "created_at": datetime.now(UTC).isoformat(),
+        "actor_role": current_actor_role(),
+        "source_screen": current_source_screen(),
     }
     with get_engine().begin() as connection:
         previous_hash = connection.execute(
@@ -276,6 +294,8 @@ def list_audit_events(limit: int = 100) -> list[dict[str, Any]]:
             "new_value": parse_json_value(row["new_value_json"]),
             "created_at": row["created_at"],
             "event_hash": row["event_hash"],
+            "actor_role": row["actor_role"],
+            "source_screen": row["source_screen"],
         }
         for row in rows
     ]

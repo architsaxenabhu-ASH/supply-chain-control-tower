@@ -74,6 +74,8 @@ import {
   markImportDelivered,
   postImportGoodsReceipt,
   recordMovement,
+  setAuthToken,
+  setSourceScreen,
   previewErpUpload,
   rescanDocument,
   saveFieldCorrection,
@@ -1175,6 +1177,14 @@ export function App() {
     document.documentElement.setAttribute("data-theme", theme);
     window.localStorage.setItem("ct-theme", theme);
   }, [theme]);
+
+  useEffect(() => {
+    setAuthToken(currentUser?.session_token ?? "");
+  }, [currentUser]);
+
+  useEffect(() => {
+    setSourceScreen(activeView);
+  }, [activeView]);
 
   useEffect(() => {
     let isMounted = true;
