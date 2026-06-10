@@ -690,6 +690,40 @@ def packing_line_key(item_code: str, batch_number: str, serial_number: str | Non
     return " / ".join(part for part in parts if part)
 
 
+# markitdown (Microsoft) renders each line item as a single horizontal row, which
+# is more robust than PyMuPDF's vertical tokens for multi-page / wrapped layouts.
+# These parsers read that horizontal form; the caller keeps whichever extractor
+# recovers MORE line items, so markitdown can only help, never regress.
+_INVOICE_MD_ROW = re.compile(
+    r"^\s*(\d{1,3})\s+(\d{6,10})\s+([A-Z0-9][A-Z0-9/-]{2,})\s+(.+?)\s+"
+    r"(\d+(?:\.\d+)?)\s+([A-Za-z]{1,5})\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s*$"
+)
+
+
+def parse_invoice_lines_markdown(text: str) -> dict[str, dict[str, object]]:
+    """Parse invoice line items from markitdown's clean horizontal rows. Invoices
+    have fixed columns (row, HS, item, description, qty, UOM, rate, amount), which
+    regex reliably; this helps multi-page invoices. Packing lists are NOT parsed
+    this way because their variable descriptions fool a horizontal regex - the
+    date-anchored vertical parser is more reliable there."""
+    parsed: dict[str, dict[str, object]] = {}
+    for raw in text.splitlines():
+        match = _INVOICE_MD_ROW.match(raw.strip())
+        if not match:
+            continue
+        row_number, hs_code, item_code, description, quantity, uom, unit_value, line_value = match.groups()
+        parsed[item_code] = {
+            "line_number": int(row_number),
+            "hs_code": hs_code,
+            "product_description": description.strip(),
+            "quantity": to_float(quantity),
+            "uom": uom,
+            "unit_value": to_float(unit_value),
+            "line_value": to_float(line_value),
+        }
+    return parsed
+
+
 def clean_lines(text: str) -> list[str]:
     return [line.strip() for line in text.splitlines() if line.strip()]
 

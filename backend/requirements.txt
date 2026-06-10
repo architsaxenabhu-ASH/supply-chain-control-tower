@@ -14,3 +14,4 @@ pypdf
 pdfplumber
 pytesseract
 pillow
+markitdown[pdf]

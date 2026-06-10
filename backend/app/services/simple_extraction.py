@@ -17,7 +17,7 @@ def extract_fields_from_file(
     expected_fields: list[str],
 ) -> list[ExtractedField]:
     text = extract_text(file_path)
-    structured_values = extract_structured_values(text, document_type)
+    structured_values = extract_structured_values(text, document_type, file_path)
     calculated_values = calculate_document_values(structured_values)
     all_values = {**structured_values, **calculated_values}
     field_names = [
@@ -48,12 +48,16 @@ def extract_fields_from_file(
     return extracted_fields
 
 
-def extract_structured_values(text: str, document_type: DocumentType) -> dict[str, object]:
+def extract_structured_values(
+    text: str,
+    document_type: DocumentType,
+    file_path: Path | None = None,
+) -> dict[str, object]:
     if not text.strip():
         return {}
 
     if document_type == DocumentType.COMMERCIAL_INVOICE:
-        return extract_invoice_values(text)
+        return extract_invoice_values(text, file_path)
     if document_type == DocumentType.PACKING_LIST:
         return extract_packing_list_values(text)
     if document_type == DocumentType.AIR_WAYBILL:
@@ -61,10 +65,19 @@ def extract_structured_values(text: str, document_type: DocumentType) -> dict[st
     return {}
 
 
-def extract_invoice_values(text: str) -> dict[str, object]:
+def extract_invoice_values(text: str, file_path: Path | None = None) -> dict[str, object]:
     parsers = load_import_parsers()
     header = parsers["parse_invoice_header"](text)
     lines = parsers["parse_invoice_lines"](text)
+    # markitdown renders invoice rows as clean horizontal lines, which parses more
+    # reliably across multiple pages. Keep whichever extractor found more lines so
+    # this can only add line items, never lose them.
+    if file_path is not None:
+        markdown_text = extract_markitdown_text(file_path)
+        if markdown_text:
+            markdown_lines = parsers["parse_invoice_lines_markdown"](markdown_text)
+            if len(markdown_lines) > len(lines):
+                lines = markdown_lines
     first_line = first_line_item(lines)
     line_summary = summarize_line_items(lines)
 
@@ -173,9 +186,25 @@ def load_import_parsers() -> dict[str, object]:
         "parse_awb_header": import_repository.parse_awb_header,
         "parse_invoice_header": import_repository.parse_invoice_header,
         "parse_invoice_lines": import_repository.parse_invoice_lines,
+        "parse_invoice_lines_markdown": import_repository.parse_invoice_lines_markdown,
         "parse_packing_header": import_repository.parse_packing_header,
         "parse_packing_lines": import_repository.parse_packing_lines,
     }
+
+
+def extract_markitdown_text(file_path: Path) -> str:
+    """Convert a document to Markdown with Microsoft markitdown. Returns "" if the
+    package is unavailable or the file has no extractable text (e.g. a scanned
+    image, which markitdown does not OCR - those keep using the PyMuPDF/Tesseract
+    path)."""
+    try:
+        from markitdown import MarkItDown
+    except ImportError:
+        return ""
+    try:
+        return MarkItDown().convert(str(file_path)).text_content or ""
+    except Exception:
+        return ""
 
 
 def first_line_item(lines: dict[str, dict[str, object]]) -> dict[str, object]:
