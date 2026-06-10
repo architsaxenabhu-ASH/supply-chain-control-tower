@@ -1128,6 +1128,40 @@ td {
   --tower-amber: #ffbd4a;
   --tower-crimson: #ff5d6c;
   --tower-shadow: 0 18px 46px rgba(0, 0, 0, 0.34);
+  /* Meril brand palette (blue + white MedTech identity). */
+  --meril-blue: #0a6cc4;
+  --meril-blue-deep: #024a93;
+  --meril-sky: #6fb7e8;
+}
+
+/* Meril brand mark: consistent blue identity across both themes. */
+.brand-mark {
+  background: linear-gradient(145deg, var(--meril-blue), var(--meril-blue-deep));
+  color: #ffffff;
+  box-shadow: 0 0 24px rgba(10, 108, 196, 0.35);
+}
+
+/* Meril-branded login hero. */
+.login-tagline {
+  color: var(--tower-muted);
+  max-width: 46ch;
+  margin: 4px 0 2px;
+}
+
+.login-areas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.login-area-chip {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--tower-border);
+  color: var(--meril-sky);
+  background: rgba(10, 108, 196, 0.12);
 }
 
 body {
@@ -3236,7 +3270,7 @@ td {
   --tower-border-strong: rgba(15, 60, 90, 0.32);
   --tower-text: #16313f;
   --tower-muted: #586b78;
-  --tower-cyan: #0a93c2;
+  --tower-cyan: #0a6cc4;
   --tower-emerald: #0e9e6e;
   --tower-amber: #c47b00;
   --tower-crimson: #d23b48;
@@ -3366,6 +3400,18 @@ td {
 [data-theme="light"] .validation-banner.danger,
 [data-theme="light"] .required-card.missing {
   background: rgba(255, 93, 108, 0.12);
+}
+
+/* Meril blue primary action in the light (brand) theme. */
+[data-theme="light"] .primary-action {
+  background: linear-gradient(135deg, var(--meril-blue), var(--meril-blue-deep));
+  color: #ffffff;
+  box-shadow: 0 0 22px rgba(10, 108, 196, 0.2);
+}
+
+[data-theme="light"] .login-area-chip {
+  color: var(--meril-blue-deep);
+  background: rgba(10, 108, 196, 0.1);
 }
 
 /* Smooth fade when switching between themes. */

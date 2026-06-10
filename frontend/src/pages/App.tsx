@@ -1823,10 +1823,10 @@ export function App() {
     <main className="app-shell">
       <aside className="sidebar">
         <div className="brand">
-          <div className="brand-mark">CT</div>
+          <div className="brand-mark">ML</div>
           <div>
-            <strong>Supply Chain Tower</strong>
-            <span>Healthcare logistics</span>
+            <strong>Meril</strong>
+            <span>Supply Chain Control Tower</span>
           </div>
         </div>
         <nav className="nav-list" aria-label="Primary navigation">
@@ -4857,11 +4857,23 @@ function LoginView({
     <main className="login-shell">
       <section className="login-panel">
         <div className="brand login-brand">
-          <div className="brand-mark">CT</div>
+          <div className="brand-mark">ML</div>
           <div>
-            <strong>Supply Chain Tower</strong>
-            <span>Healthcare logistics</span>
+            <strong>Meril</strong>
+            <span>Supply Chain Control Tower</span>
           </div>
+        </div>
+        <p className="login-tagline">
+          Innovating without limits — end-to-end visibility for medical-device operations.
+        </p>
+        <div className="login-areas">
+          {["Cardiovascular", "Structural Heart", "Orthopedics", "Robotics", "Oncology", "Diagnostics"].map(
+            (area) => (
+              <span className="login-area-chip" key={area}>
+                {area}
+              </span>
+            ),
+          )}
         </div>
         <div>
           <p className="eyebrow">Secure Access</p>
