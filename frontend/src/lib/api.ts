@@ -830,6 +830,114 @@ export function fetchLearningInsights(): Promise<ApiLearningInsights> {
   return getJson<ApiLearningInsights>("/learning/insights");
 }
 
+// --- Dashboard data layer (Phase 1 consumption) ---
+
+export type ApiExecutiveDashboard = {
+  total_inventory_value: number;
+  total_inventory_quantity: number;
+  open_import_shipments: number;
+  imports_in_transit: number;
+  imports_awaiting_receipt: number;
+  imports_received: number;
+  open_shipment_requests: number;
+  dispatched_shipments: number;
+  delivered_shipments: number;
+  expiry_risk_90: number;
+  expired_inventory: number;
+  active_warehouses: number;
+  active_countries: number;
+  learning_rules: number;
+  audit_events: number;
+};
+
+export type ApiInventoryDashboard = {
+  total_value: number;
+  total_quantity: number;
+  batch_count: number;
+  by_warehouse_value: Record<string, number>;
+  by_category_value: Record<string, number>;
+  expiring_30: number;
+  expiring_60: number;
+  expiring_90: number;
+  expired: number;
+};
+
+export type ApiImportDashboard = {
+  total: number;
+  by_status: Record<string, number>;
+  open_shipments: number;
+  awaiting_receipt: number;
+  received: number;
+  by_country: Record<string, number>;
+};
+
+export type ApiExpiryRiskBatch = {
+  item_code: string;
+  batch_number: string;
+  warehouse: string;
+  expiry_date: string;
+  days_to_expiry: number;
+  quantity: number;
+  value: number;
+};
+
+export type ApiExpiryDashboard = {
+  expiring_30: number;
+  expiring_60: number;
+  expiring_90: number;
+  expiring_180: number;
+  expired: number;
+  value_at_risk_90: number;
+  by_warehouse_90: Record<string, number>;
+  soonest: ApiExpiryRiskBatch[];
+};
+
+export type ApiShipmentDashboard = {
+  total: number;
+  by_status: Record<string, number>;
+  dispatched: number;
+  delivered: number;
+  by_country: Record<string, number>;
+};
+
+export type ApiSystemHealth = {
+  total_users: number;
+  total_products: number;
+  total_documents: number;
+  ocr_success_rate: number;
+  validation_queue_size: number;
+  open_shipments: number;
+  inventory_records: number;
+  learning_rules: number;
+  audit_events: number;
+  audit_chain_valid: boolean;
+  database_health: string;
+};
+
+export function fetchExecutiveDashboard(): Promise<ApiExecutiveDashboard> {
+  return getJson<ApiExecutiveDashboard>("/dashboard/executive");
+}
+
+export function fetchInventoryDashboard(): Promise<ApiInventoryDashboard> {
+  return getJson<ApiInventoryDashboard>("/dashboard/inventory");
+}
+
+export function fetchImportDashboard(): Promise<ApiImportDashboard> {
+  return getJson<ApiImportDashboard>("/dashboard/import");
+}
+
+export function fetchExpiryDashboard(): Promise<ApiExpiryDashboard> {
+  return getJson<ApiExpiryDashboard>("/dashboard/expiry");
+}
+
+export function fetchShipmentDashboard(): Promise<ApiShipmentDashboard> {
+  return getJson<ApiShipmentDashboard>("/dashboard/shipment");
+}
+
+export function fetchSystemHealth(): Promise<ApiSystemHealth> {
+  return getJson<ApiSystemHealth>("/dashboard/system-health");
+}
+
 export type ApiMovementEvent = {
   event_id: string;
   event_type: string;

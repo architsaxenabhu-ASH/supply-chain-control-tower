@@ -59,6 +59,12 @@ import {
   fetchInventoryBatches,
   fetchInventoryCounts,
   fetchLearningInsights,
+  fetchExecutiveDashboard,
+  fetchInventoryDashboard,
+  fetchImportDashboard,
+  fetchExpiryDashboard,
+  fetchShipmentDashboard,
+  fetchSystemHealth,
   fetchMovements,
   fetchProductJourney,
   fetchShipmentTimeline,
@@ -104,6 +110,12 @@ import type {
   ApiInventoryBatch,
   ApiInventoryCount,
   ApiLearningInsights,
+  ApiExecutiveDashboard,
+  ApiInventoryDashboard,
+  ApiImportDashboard,
+  ApiExpiryDashboard,
+  ApiShipmentDashboard,
+  ApiSystemHealth,
   ApiMovementEvent,
   ApiBatchTraceability,
   ApiProductJourney,
@@ -440,6 +452,7 @@ const fallbackSecurityOverview: ApiSecurityOverview = {
 
 const navItems = [
   { id: "dashboard", label: "Dashboard", icon: BarChart3 },
+  { id: "analytics", label: "Analytics", icon: Gauge },
   { id: "goods-tracking", label: "Goods Tracking", icon: RadioTower },
   { id: "traceability", label: "Traceability", icon: GitBranch },
   { id: "platform-progress", label: "Progress", icon: GitBranch },
@@ -1914,6 +1927,7 @@ export function App() {
             validationQueue={validationQueue}
           />
         ) : null}
+        {activeView === "analytics" ? <AnalyticsView currentUser={currentUser} /> : null}
         {activeView === "goods-tracking" ? (
           <GoodsTrackingView
             currentUser={currentUser}
@@ -2078,6 +2092,263 @@ function MovementRow({ event }: { event: ApiMovementEvent }) {
         <span>{event.occurred_at}</span>
       </div>
     </div>
+  );
+}
+
+function BreakdownList({ entries, empty }: { entries: Array<[string, number]>; empty: string }) {
+  if (entries.length === 0) {
+    return <p className="empty-state">{empty}</p>;
+  }
+  return (
+    <ul className="checklist-list">
+      {[...entries]
+        .sort((a, b) => b[1] - a[1])
+        .map(([label, count]) => (
+          <li className="checklist-row" key={label}>
+            <span>{label}</span>
+            <strong>{formatNumber(count)}</strong>
+          </li>
+        ))}
+    </ul>
+  );
+}
+
+type AnalyticsTab = "executive" | "inventory" | "import" | "expiry" | "shipment" | "system";
+
+function AnalyticsView({ currentUser }: { currentUser: ApiAuthenticatedUser }) {
+  const isAdmin = currentUser.role_name === "Admin";
+  const [tab, setTab] = useState<AnalyticsTab>("executive");
+  const [executive, setExecutive] = useState<ApiExecutiveDashboard | null>(null);
+  const [inventory, setInventory] = useState<ApiInventoryDashboard | null>(null);
+  const [imports, setImports] = useState<ApiImportDashboard | null>(null);
+  const [expiry, setExpiry] = useState<ApiExpiryDashboard | null>(null);
+  const [shipment, setShipment] = useState<ApiShipmentDashboard | null>(null);
+  const [system, setSystem] = useState<ApiSystemHealth | null>(null);
+  const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    setError("");
+    setIsLoading(true);
+    const loaders: Record<AnalyticsTab, () => Promise<unknown>> = {
+      executive: () => fetchExecutiveDashboard().then((data) => mounted && setExecutive(data)),
+      inventory: () => fetchInventoryDashboard().then((data) => mounted && setInventory(data)),
+      import: () => fetchImportDashboard().then((data) => mounted && setImports(data)),
+      expiry: () => fetchExpiryDashboard().then((data) => mounted && setExpiry(data)),
+      shipment: () => fetchShipmentDashboard().then((data) => mounted && setShipment(data)),
+      system: () => fetchSystemHealth().then((data) => mounted && setSystem(data)),
+    };
+    loaders[tab]()
+      .catch(() => mounted && setError("Could not load this dashboard. Is the backend running?"))
+      .finally(() => mounted && setIsLoading(false));
+    return () => {
+      mounted = false;
+    };
+  }, [tab]);
+
+  const tabs: Array<{ id: AnalyticsTab; label: string }> = [
+    { id: "executive", label: "Executive" },
+    { id: "inventory", label: "Inventory" },
+    { id: "import", label: "Import" },
+    { id: "expiry", label: "Expiry" },
+    { id: "shipment", label: "Shipment" },
+    ...(isAdmin ? [{ id: "system" as AnalyticsTab, label: "System Health" }] : []),
+  ];
+
+  return (
+    <>
+      <section className="learning-hero panel">
+        <div className="learning-hero-mark">
+          <Gauge size={26} aria-hidden="true" />
+        </div>
+        <div>
+          <p className="eyebrow">Analytics</p>
+          <h2>Operational dashboards</h2>
+          <p className="status-line">
+            Executive, inventory, import, expiry, and shipment metrics, served directly from the
+            platform&apos;s data layer so every number is live and traceable.
+          </p>
+        </div>
+      </section>
+
+      <div className="queue-filter-chips" role="group" aria-label="Choose a dashboard">
+        {tabs.map((option) => (
+          <button
+            key={option.id}
+            type="button"
+            className={tab === option.id ? "queue-chip active" : "queue-chip"}
+            onClick={() => setTab(option.id)}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+
+      {error ? <p className="status-line">{error}</p> : null}
+      {isLoading ? <p className="status-line">Loading…</p> : null}
+
+      {tab === "executive" && executive ? (
+        <section className="kpi-grid" aria-label="Executive dashboard">
+          <MetricCard label="Inventory Value" value={formatCurrency(executive.total_inventory_value)} detail="All warehouses" />
+          <MetricCard label="Inventory Quantity" value={formatNumber(executive.total_inventory_quantity)} detail="Units on hand" />
+          <MetricCard label="Open Imports" value={String(executive.open_import_shipments)} detail="Not yet received" />
+          <MetricCard label="Imports In Transit" value={String(executive.imports_in_transit)} detail="On the way" />
+          <MetricCard label="Awaiting Receipt" value={String(executive.imports_awaiting_receipt)} detail="Arrived, not posted" />
+          <MetricCard label="Imports Received" value={String(executive.imports_received)} detail="Posted to inventory" />
+          <MetricCard label="Open Shipments" value={String(executive.open_shipment_requests)} detail="Draft / submitted / approved" />
+          <MetricCard label="Dispatched" value={String(executive.dispatched_shipments)} detail="Out for delivery" />
+          <MetricCard label="Delivered" value={String(executive.delivered_shipments)} detail="Customer confirmed" />
+          <MetricCard label="Expiry Risk (90d)" value={String(executive.expiry_risk_90)} detail="Batches expiring soon" />
+          <MetricCard label="Expired Stock" value={String(executive.expired_inventory)} detail="Already past expiry" />
+          <MetricCard label="Active Warehouses" value={String(executive.active_warehouses)} detail="Holding stock" />
+          <MetricCard label="Active Countries" value={String(executive.active_countries)} detail="In import flow" />
+          <MetricCard label="Learning Rules" value={String(executive.learning_rules)} detail="Captured so far" />
+          <MetricCard label="Audit Events" value={String(executive.audit_events)} detail="Recent activity" />
+        </section>
+      ) : null}
+
+      {tab === "inventory" && inventory ? (
+        <>
+          <section className="kpi-grid" aria-label="Inventory dashboard">
+            <MetricCard label="Inventory Value" value={formatCurrency(inventory.total_value)} detail="All warehouses" />
+            <MetricCard label="Inventory Quantity" value={formatNumber(inventory.total_quantity)} detail="Units on hand" />
+            <MetricCard label="Batches" value={String(inventory.batch_count)} detail="Distinct batches" />
+            <MetricCard label="Expiring ≤30d" value={String(inventory.expiring_30)} detail="Soonest" />
+            <MetricCard label="Expiring ≤60d" value={String(inventory.expiring_60)} detail="Cumulative" />
+            <MetricCard label="Expiring ≤90d" value={String(inventory.expiring_90)} detail="Cumulative" />
+            <MetricCard label="Expired" value={String(inventory.expired)} detail="Past expiry" />
+          </section>
+          <div className="learning-grid">
+            <Panel title="Value by warehouse" meta={`${Object.keys(inventory.by_warehouse_value).length} sites`}>
+              {Object.entries(inventory.by_warehouse_value).length === 0 ? (
+                <p className="empty-state">No inventory recorded.</p>
+              ) : (
+                <div className="bar-list">
+                  {Object.entries(inventory.by_warehouse_value)
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([warehouse, value]) => (
+                      <BarRow key={warehouse} label={warehouse} value={value} max={Math.max(...Object.values(inventory.by_warehouse_value))} />
+                    ))}
+                </div>
+              )}
+            </Panel>
+            <Panel title="Value by category" meta={`${Object.keys(inventory.by_category_value).length} categories`}>
+              {Object.entries(inventory.by_category_value).length === 0 ? (
+                <p className="empty-state">No inventory recorded.</p>
+              ) : (
+                <div className="bar-list">
+                  {Object.entries(inventory.by_category_value)
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([category, value]) => (
+                      <BarRow key={category} label={category} value={value} max={Math.max(...Object.values(inventory.by_category_value))} />
+                    ))}
+                </div>
+              )}
+            </Panel>
+          </div>
+        </>
+      ) : null}
+
+      {tab === "import" && imports ? (
+        <>
+          <section className="kpi-grid" aria-label="Import dashboard">
+            <MetricCard label="Total Imports" value={String(imports.total)} detail="All shipments" />
+            <MetricCard label="Open" value={String(imports.open_shipments)} detail="Not yet received" />
+            <MetricCard label="Awaiting Receipt" value={String(imports.awaiting_receipt)} detail="Arrived, not posted" />
+            <MetricCard label="Received" value={String(imports.received)} detail="Posted to inventory" />
+          </section>
+          <div className="learning-grid">
+            <Panel title="By status" meta={`${Object.keys(imports.by_status).length} stages`}>
+              <BreakdownList entries={Object.entries(imports.by_status)} empty="No imports recorded." />
+            </Panel>
+            <Panel title="By destination country" meta={`${Object.keys(imports.by_country).length} countries`}>
+              <BreakdownList entries={Object.entries(imports.by_country)} empty="No imports recorded." />
+            </Panel>
+          </div>
+        </>
+      ) : null}
+
+      {tab === "expiry" && expiry ? (
+        <>
+          <section className="kpi-grid" aria-label="Expiry dashboard">
+            <MetricCard label="Expiring ≤30d" value={String(expiry.expiring_30)} detail="Most urgent" />
+            <MetricCard label="Expiring ≤60d" value={String(expiry.expiring_60)} detail="Cumulative" />
+            <MetricCard label="Expiring ≤90d" value={String(expiry.expiring_90)} detail="Cumulative" />
+            <MetricCard label="Expiring ≤180d" value={String(expiry.expiring_180)} detail="Cumulative" />
+            <MetricCard label="Expired" value={String(expiry.expired)} detail="Past expiry" />
+            <MetricCard label="Value at Risk (90d)" value={formatCurrency(expiry.value_at_risk_90)} detail="Stock value expiring" />
+          </section>
+          <div className="learning-grid">
+            <Panel title="Soonest expiring batches" meta={`${expiry.soonest.length} shown`}>
+              {expiry.soonest.length === 0 ? (
+                <p className="empty-state">No upcoming expiries.</p>
+              ) : (
+                <ul className="checklist-list">
+                  {expiry.soonest.map((batch) => (
+                    <li className="checklist-row" key={`${batch.item_code}-${batch.batch_number}`}>
+                      <span>
+                        {batch.item_code} · {batch.batch_number} · {batch.warehouse}
+                      </span>
+                      <strong>{batch.days_to_expiry}d</strong>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Panel>
+            <Panel title="At risk by warehouse (≤90d)" meta={`${Object.keys(expiry.by_warehouse_90).length} sites`}>
+              <BreakdownList entries={Object.entries(expiry.by_warehouse_90)} empty="No stock at risk." />
+            </Panel>
+          </div>
+        </>
+      ) : null}
+
+      {tab === "shipment" && shipment ? (
+        <>
+          <section className="kpi-grid" aria-label="Shipment dashboard">
+            <MetricCard label="Total Shipments" value={String(shipment.total)} detail="All requests" />
+            <MetricCard label="Dispatched" value={String(shipment.dispatched)} detail="Out for delivery" />
+            <MetricCard label="Delivered" value={String(shipment.delivered)} detail="Customer confirmed" />
+          </section>
+          <div className="learning-grid">
+            <Panel title="By status" meta={`${Object.keys(shipment.by_status).length} stages`}>
+              <BreakdownList entries={Object.entries(shipment.by_status)} empty="No shipments recorded." />
+            </Panel>
+            <Panel title="By destination country" meta={`${Object.keys(shipment.by_country).length} countries`}>
+              <BreakdownList entries={Object.entries(shipment.by_country)} empty="No shipments recorded." />
+            </Panel>
+          </div>
+        </>
+      ) : null}
+
+      {tab === "system" && system ? (
+        <>
+          <section className="kpi-grid" aria-label="System health">
+            <MetricCard label="Total Users" value={String(system.total_users)} detail="Registered" />
+            <MetricCard label="Total Products" value={String(system.total_products)} detail="Master data" />
+            <MetricCard label="Total Documents" value={String(system.total_documents)} detail="Uploaded" />
+            <MetricCard label="OCR Success Rate" value={`${system.ocr_success_rate}%`} detail="Fields extracted" />
+            <MetricCard label="Validation Queue" value={String(system.validation_queue_size)} detail="Lines pending" />
+            <MetricCard label="Open Shipments" value={String(system.open_shipments)} detail="In progress" />
+            <MetricCard label="Inventory Records" value={String(system.inventory_records)} detail="Batches" />
+            <MetricCard label="Learning Rules" value={String(system.learning_rules)} detail="Captured" />
+            <MetricCard label="Audit Events" value={String(system.audit_events)} detail="Total recorded" />
+          </section>
+          <div className="learning-grid">
+            <Panel title="Audit chain integrity" meta="Tamper-evident">
+              <p className="status-line">
+                {system.audit_chain_valid
+                  ? "✅ Audit chain verified — no tampering detected."
+                  : "⚠️ Audit chain broken — investigate immediately."}
+              </p>
+            </Panel>
+            <Panel title="Database" meta="Persistence">
+              <p className="status-line">Status: {system.database_health}</p>
+            </Panel>
+          </div>
+        </>
+      ) : null}
+    </>
   );
 }
 
@@ -4889,6 +5160,7 @@ function canAccessView(user: ApiAuthenticatedUser | null, viewId: string) {
   if (
     user.role_name === "Admin" ||
     viewId === "dashboard" ||
+    viewId === "analytics" ||
     viewId === "goods-tracking" ||
     viewId === "traceability" ||
     viewId === "assistant" ||
