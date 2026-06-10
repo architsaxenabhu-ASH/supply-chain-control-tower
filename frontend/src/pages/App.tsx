@@ -2076,6 +2076,8 @@ function TraceabilityView({ currentUser }: { currentUser: ApiAuthenticatedUser }
   const [locationValue, setLocationValue] = useState("");
   const [locationItem, setLocationItem] = useState("");
   const [locationMessage, setLocationMessage] = useState("");
+  const [movementFilter, setMovementFilter] = useState<"all" | "receipt" | "dispatch" | "location">("all");
+  const [movementSearch, setMovementSearch] = useState("");
 
   function loadRecent() {
     fetchMovements()
@@ -2256,17 +2258,69 @@ function TraceabilityView({ currentUser }: { currentUser: ApiAuthenticatedUser }
         </Panel>
       ) : null}
 
-      <Panel title="Recent movements" meta={`${recent.length} event(s)`}>
+      <Panel title="Warehouse movement ledger" meta={`${recent.length} event(s)`}>
         {recent.length === 0 ? (
           <p className="empty-state">
             No goods movements recorded yet. Post a Goods Receipt or confirm a dispatch to start the ledger.
           </p>
         ) : (
-          <div className="movement-list">
-            {recent.slice(0, 25).map((event) => (
-              <MovementRow event={event} key={event.event_id} />
-            ))}
-          </div>
+          (() => {
+            const term = movementSearch.trim().toLowerCase();
+            const filtered = recent.filter((event) => {
+              if (movementFilter !== "all" && event.event_type !== movementFilter) {
+                return false;
+              }
+              if (!term) {
+                return true;
+              }
+              return [event.item_code, event.batch_number, event.warehouse, event.location, event.counterparty, event.reference]
+                .filter(Boolean)
+                .join(" ")
+                .toLowerCase()
+                .includes(term);
+            });
+            return (
+              <>
+                <div className="queue-filter-chips" role="group" aria-label="Filter movements">
+                  {([
+                    { key: "all", label: "All" },
+                    { key: "receipt", label: "Receipts" },
+                    { key: "dispatch", label: "Dispatches" },
+                    { key: "location", label: "Locations" },
+                  ] as const).map((chip) => (
+                    <button
+                      key={chip.key}
+                      type="button"
+                      className={movementFilter === chip.key ? "queue-chip active" : "queue-chip"}
+                      onClick={() => setMovementFilter(chip.key)}
+                    >
+                      {chip.label}{" "}
+                      <span className="queue-chip-count">
+                        {chip.key === "all" ? recent.length : recent.filter((event) => event.event_type === chip.key).length}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                <div className="search-box tracking-search">
+                  <Search size={16} aria-hidden="true" />
+                  <input
+                    placeholder="Filter by warehouse, item, batch, customer, or reference"
+                    value={movementSearch}
+                    onChange={(event) => setMovementSearch(event.target.value)}
+                  />
+                </div>
+                {filtered.length === 0 ? (
+                  <p className="empty-state">No movements match this filter.</p>
+                ) : (
+                  <div className="movement-list">
+                    {filtered.slice(0, 40).map((event) => (
+                      <MovementRow event={event} key={event.event_id} />
+                    ))}
+                  </div>
+                )}
+              </>
+            );
+          })()
         )}
       </Panel>
     </>
