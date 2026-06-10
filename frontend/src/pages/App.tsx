@@ -60,6 +60,8 @@ import {
   fetchLearningInsights,
   fetchMovements,
   fetchProductJourney,
+  fetchShipmentTimeline,
+  saveShipmentPlan,
   fetchProducts,
   fetchSecurityOverview,
   fetchShipments,
@@ -101,6 +103,7 @@ import type {
   ApiMovementEvent,
   ApiBatchTraceability,
   ApiProductJourney,
+  ApiShipmentTimeline,
   ApiImportFileCandidate,
   ApiFieldCorrectionRequest,
   ApiSaveApprovalRuleRequest,
@@ -1901,6 +1904,7 @@ export function App() {
         ) : null}
         {activeView === "goods-tracking" ? (
           <GoodsTrackingView
+            currentUser={currentUser}
             documents={documents}
             importQueue={importQueue}
             inventory={inventory}
@@ -2369,12 +2373,14 @@ function trackingLocationLabel(status: string): string {
 // what stage are they in, what risks exist, and what action is required". Every
 // number is derived from data the platform already holds (no hardcoded values).
 function GoodsTrackingView({
+  currentUser,
   documents,
   importQueue,
   inventory,
   onNavigate,
   shipments,
 }: {
+  currentUser: ApiAuthenticatedUser;
   documents: DocumentRecord[];
   importQueue: ApiImportFileCandidate[];
   inventory: InventoryBatch[];
@@ -2383,6 +2389,51 @@ function GoodsTrackingView({
 }) {
   const [search, setSearch] = useState("");
   const [revealed, setRevealed] = useState(false);
+  const [timelineShipment, setTimelineShipment] = useState("");
+  const [timeline, setTimeline] = useState<ApiShipmentTimeline | null>(null);
+  const [planArrival, setPlanArrival] = useState("");
+  const [planDelivery, setPlanDelivery] = useState("");
+  const [planMessage, setPlanMessage] = useState("");
+
+  const selectedTimelineId = timelineShipment || importQueue[0]?.import_file_number || "";
+
+  useEffect(() => {
+    if (!selectedTimelineId) {
+      setTimeline(null);
+      return;
+    }
+    let mounted = true;
+    fetchShipmentTimeline(selectedTimelineId)
+      .then((result) => {
+        if (mounted) setTimeline(result);
+      })
+      .catch(() => {
+        if (mounted) setTimeline(null);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [selectedTimelineId]);
+
+  async function handleSavePlan() {
+    if (!selectedTimelineId) {
+      return;
+    }
+    setPlanMessage("Saving plan...");
+    try {
+      await saveShipmentPlan({
+        import_file_number: selectedTimelineId,
+        planned_arrival_date: planArrival || null,
+        planned_delivery_date: planDelivery || null,
+        actor: currentUser.email,
+      });
+      const refreshed = await fetchShipmentTimeline(selectedTimelineId);
+      setTimeline(refreshed);
+      setPlanMessage("Planned dates saved.");
+    } catch {
+      setPlanMessage("Could not save planned dates.");
+    }
+  }
   useEffect(() => {
     const frame = requestAnimationFrame(() => setRevealed(true));
     return () => cancelAnimationFrame(frame);
@@ -2589,6 +2640,60 @@ function GoodsTrackingView({
             </tbody>
           </table>
         )}
+      </Panel>
+
+      <Panel
+        title="Shipment timeline — planned vs actual"
+        meta={timeline ? `${timeline.on_time_count} on time · ${timeline.late_count} late · ${timeline.pending_count} pending` : "Planned vs actual"}
+      >
+        <label className="field-control">
+          <span>Shipment</span>
+          <select value={selectedTimelineId} onChange={(event) => setTimelineShipment(event.target.value)}>
+            {importQueue.length === 0 ? <option value="">No shipments yet</option> : null}
+            {importQueue.map((candidate) => (
+              <option key={candidate.import_file_number} value={candidate.import_file_number}>
+                {candidate.shipment_name ?? candidate.import_file_number}
+              </option>
+            ))}
+          </select>
+        </label>
+        {timeline && timeline.milestones.length > 0 ? (
+          <ol className="timeline">
+            {timeline.milestones.map((milestone) => (
+              <li className={`timeline-step timeline-${milestone.status}`} key={milestone.stage}>
+                <span className="timeline-marker" aria-hidden="true" />
+                <div className="timeline-body">
+                  <strong>{milestone.stage}</strong>
+                  <span>
+                    {milestone.actual_date ? `Actual ${milestone.actual_date}` : "Pending"}
+                    {milestone.planned_date ? ` · Planned ${milestone.planned_date}` : ""}
+                    {milestone.status === "late"
+                      ? " · Late"
+                      : milestone.status === "on_time"
+                        ? " · On time"
+                        : ""}
+                  </span>
+                </div>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p className="empty-state">Select a shipment to see its planned-vs-actual timeline.</p>
+        )}
+        <div className="learning-form-grid">
+          <label className="field-control">
+            <span>Planned arrival date</span>
+            <input type="date" value={planArrival} onChange={(event) => setPlanArrival(event.target.value)} />
+          </label>
+          <label className="field-control">
+            <span>Planned delivery date</span>
+            <input type="date" value={planDelivery} onChange={(event) => setPlanDelivery(event.target.value)} />
+          </label>
+        </div>
+        <button className="secondary-action" type="button" onClick={() => void handleSavePlan()} disabled={!selectedTimelineId}>
+          Save planned dates
+        </button>
+        {planMessage ? <p className="status-line">{planMessage}</p> : null}
       </Panel>
     </>
   );

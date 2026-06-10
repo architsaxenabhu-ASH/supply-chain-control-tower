@@ -842,6 +842,35 @@ export function fetchProductJourney(query: string): Promise<ApiProductJourney> {
   return getJson<ApiProductJourney>(`/movements/journey?query=${encodeURIComponent(query)}`);
 }
 
+export type ApiShipmentMilestone = {
+  stage: string;
+  planned_date: string | null;
+  actual_date: string | null;
+  status: string;
+};
+
+export type ApiShipmentTimeline = {
+  import_file_number: string;
+  shipment_name: string | null;
+  milestones: ApiShipmentMilestone[];
+  on_time_count: number;
+  late_count: number;
+  pending_count: number;
+};
+
+export function fetchShipmentTimeline(importFileNumber: string): Promise<ApiShipmentTimeline> {
+  return getJson<ApiShipmentTimeline>(`/imports/timeline?import_file_number=${encodeURIComponent(importFileNumber)}`);
+}
+
+export function saveShipmentPlan(payload: {
+  import_file_number: string;
+  planned_arrival_date?: string | null;
+  planned_delivery_date?: string | null;
+  actor: string;
+}): Promise<Record<string, unknown>> {
+  return postJson<Record<string, unknown>, typeof payload>("/imports/plan", payload);
+}
+
 export function recordMovement(payload: {
   event_type: string;
   item_code: string;

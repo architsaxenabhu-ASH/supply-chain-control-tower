@@ -91,3 +91,32 @@ class ImportGoodsReceiptPostRequest(BaseModel):
     posted_by: str
     auth_token: str
     supplier_name: str | None = None
+
+
+class ShipmentPlanRequest(BaseModel):
+    import_file_number: str
+    planned_arrival_date: str | None = None
+    planned_delivery_date: str | None = None
+    actor: str
+
+
+class ShipmentPlan(BaseModel):
+    import_file_number: str
+    planned_arrival_date: str | None = None
+    planned_delivery_date: str | None = None
+
+
+class ShipmentMilestone(BaseModel):
+    stage: str
+    planned_date: str | None = None
+    actual_date: str | None = None
+    status: str  # done | pending | on_time | late
+
+
+class ShipmentTimeline(BaseModel):
+    import_file_number: str
+    shipment_name: str | None = None
+    milestones: list[ShipmentMilestone] = Field(default_factory=list)
+    on_time_count: int = 0
+    late_count: int = 0
+    pending_count: int = 0

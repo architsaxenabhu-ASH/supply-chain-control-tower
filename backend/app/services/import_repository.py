@@ -11,10 +11,14 @@ from app.schemas.imports import (
     ImportGoodsReceiptPostRequest,
     ImportLineCandidate,
     ImportStatus,
+    ShipmentMilestone,
+    ShipmentPlan,
+    ShipmentPlanRequest,
+    ShipmentTimeline,
 )
 from app.schemas.security import ApprovalResolutionRequest
 from app.schemas.warehouse import CreateGoodsReceiptLineRequest, CreateGoodsReceiptRequest, CreateProductRequest, WorkflowResult
-from app.db.local_persistence import load_collection, record_audit_event, save_collection
+from app.db.local_persistence import list_audit_events, load_collection, record_audit_event, save_collection
 from app.services.learning_repository import get_product_learning_profile
 from app.services.local_document_store import get_saved_document
 from app.services.security_repository import (
@@ -411,6 +415,99 @@ def mark_import_delivered(request: ImportDeliveryRequest) -> ImportFileCandidate
         new_value={"status": delivered_candidate.status.value},
     )
     return delivered_candidate
+
+
+def save_shipment_plan(request: ShipmentPlanRequest) -> ShipmentPlan:
+    """Capture the planned arrival / delivery dates for an import shipment so the
+    timeline can compare planned vs actual."""
+    plans = load_collection("shipment_plans", lambda payload: ShipmentPlan(**payload))
+    plan = ShipmentPlan(
+        import_file_number=request.import_file_number,
+        planned_arrival_date=request.planned_arrival_date,
+        planned_delivery_date=request.planned_delivery_date,
+    )
+    save_collection(
+        "shipment_plans",
+        [plan, *[saved for saved in plans if saved.import_file_number != plan.import_file_number]],
+        lambda saved: saved.import_file_number,
+    )
+    record_audit_event(
+        action="plan",
+        module_name="import",
+        entity_name="shipment_plan",
+        entity_id=plan.import_file_number,
+        actor=request.actor,
+        new_value=plan,
+    )
+    return plan
+
+
+def get_shipment_plan(import_file_number: str) -> ShipmentPlan | None:
+    plans = load_collection("shipment_plans", lambda payload: ShipmentPlan(**payload))
+    return next((plan for plan in plans if plan.import_file_number == import_file_number), None)
+
+
+def _audit_date_for(events: list[dict], import_file_number: str, action: str) -> str | None:
+    # events are newest-first; take the most recent matching action for this import.
+    for event in events:
+        if event.get("entity_id") == import_file_number and event.get("action") == action:
+            created_at = event.get("created_at") or ""
+            return created_at[:10] or None
+    return None
+
+
+def get_shipment_timeline(import_file_number: str) -> ShipmentTimeline:
+    """Assemble the planned-vs-actual lifecycle timeline. Actual dates come from the
+    documents (invoice/flight) and the audit log (approve/deliver/receive); planned
+    dates come from the saved shipment plan."""
+    candidate = get_import_candidate(import_file_number)
+    plan = get_shipment_plan(import_file_number)
+    events = list_audit_events(limit=500)
+
+    invoice_date = candidate.invoice_date.isoformat() if candidate and candidate.invoice_date else None
+    flight_date = candidate.flight_date.isoformat() if candidate and candidate.flight_date else None
+    approved = _audit_date_for(events, import_file_number, "approve")
+    delivered = _audit_date_for(events, import_file_number, "mark_delivered")
+    received = _audit_date_for(events, import_file_number, "post_goods_receipt")
+
+    planned_arrival = plan.planned_arrival_date if plan else None
+    planned_delivery = plan.planned_delivery_date if plan else None
+
+    raw_milestones = [
+        ("Invoice created", None, invoice_date),
+        ("AWB / flight", None, flight_date),
+        ("Approved", None, approved),
+        ("Delivered", planned_arrival, delivered),
+        ("Goods received", planned_delivery, received),
+    ]
+
+    milestones: list[ShipmentMilestone] = []
+    on_time = late = pending = 0
+    for stage, planned, actual in raw_milestones:
+        if actual and planned:
+            status = "on_time" if actual <= planned else "late"
+        elif actual:
+            status = "done"
+        else:
+            status = "pending"
+        if status == "on_time":
+            on_time += 1
+        elif status == "late":
+            late += 1
+        elif status == "pending":
+            pending += 1
+        milestones.append(
+            ShipmentMilestone(stage=stage, planned_date=planned, actual_date=actual, status=status)
+        )
+
+    return ShipmentTimeline(
+        import_file_number=import_file_number,
+        shipment_name=candidate.shipment_name if candidate else None,
+        milestones=milestones,
+        on_time_count=on_time,
+        late_count=late,
+        pending_count=pending,
+    )
 
 
 def ensure_pending_product_master(line: ImportLineCandidate) -> None:
