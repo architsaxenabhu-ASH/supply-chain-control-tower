@@ -70,6 +70,7 @@ import {
   loginUser,
   markImportDelivered,
   postImportGoodsReceipt,
+  recordMovement,
   previewErpUpload,
   rescanDocument,
   saveFieldCorrection,
@@ -1907,7 +1908,7 @@ export function App() {
             shipments={shipments}
           />
         ) : null}
-        {activeView === "traceability" ? <TraceabilityView /> : null}
+        {activeView === "traceability" ? <TraceabilityView currentUser={currentUser} /> : null}
         {activeView === "documents" ? (
           <DocumentsView
             documentMessage={documentMessage}
@@ -2064,13 +2065,23 @@ function MovementRow({ event }: { event: ApiMovementEvent }) {
   );
 }
 
-function TraceabilityView() {
+function TraceabilityView({ currentUser }: { currentUser: ApiAuthenticatedUser }) {
   const [query, setQuery] = useState("");
   const [recent, setRecent] = useState<ApiMovementEvent[]>([]);
   const [traceability, setTraceability] = useState<ApiBatchTraceability | null>(null);
   const [journey, setJourney] = useState<ApiProductJourney | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [message, setMessage] = useState("");
+  const [locationBatch, setLocationBatch] = useState("");
+  const [locationValue, setLocationValue] = useState("");
+  const [locationItem, setLocationItem] = useState("");
+  const [locationMessage, setLocationMessage] = useState("");
+
+  function loadRecent() {
+    fetchMovements()
+      .then((events) => setRecent(events))
+      .catch(() => setRecent([]));
+  }
 
   useEffect(() => {
     let mounted = true;
@@ -2085,6 +2096,31 @@ function TraceabilityView() {
       mounted = false;
     };
   }, []);
+
+  async function handleRecordLocation() {
+    if (!locationBatch.trim() || !locationValue.trim()) {
+      setLocationMessage("Enter a batch number and a location.");
+      return;
+    }
+    try {
+      await recordMovement({
+        event_type: "location",
+        item_code: locationItem.trim() || locationBatch.trim(),
+        batch_number: locationBatch.trim(),
+        location: locationValue.trim(),
+        actor: currentUser.email,
+        note: "Location update",
+      });
+      setLocationMessage(`Recorded location "${locationValue.trim()}" for batch ${locationBatch.trim()}.`);
+      setLocationValue("");
+      loadRecent();
+      if (traceability && traceability.batch_number.toLowerCase() === locationBatch.trim().toLowerCase()) {
+        fetchBatchTraceability(locationBatch.trim()).then((trace) => setTraceability(trace.found ? trace : null));
+      }
+    } catch {
+      setLocationMessage("Could not record the location update.");
+    }
+  }
 
   async function handleSearch() {
     const term = query.trim();
@@ -2147,6 +2183,28 @@ function TraceabilityView() {
         {message ? <p className="status-line">{message}</p> : null}
       </Panel>
 
+      <Panel title="Record a location update" meta="Customs, transit, dock, etc.">
+        <div className="learning-form-grid">
+          <label className="field-control">
+            <span>Batch number</span>
+            <input value={locationBatch} onChange={(event) => setLocationBatch(event.target.value)} placeholder="e.g. MOZSAB24" />
+          </label>
+          <label className="field-control">
+            <span>Item code (optional)</span>
+            <input value={locationItem} onChange={(event) => setLocationItem(event.target.value)} placeholder="e.g. MOZS20030" />
+          </label>
+          <label className="field-control">
+            <span>Location</span>
+            <input value={locationValue} onChange={(event) => setLocationValue(event.target.value)} placeholder="e.g. Customs - Milan" />
+          </label>
+        </div>
+        <button className="secondary-action" type="button" onClick={() => void handleRecordLocation()}>
+          <RadioTower size={16} aria-hidden="true" />
+          Record location
+        </button>
+        {locationMessage ? <p className="status-line">{locationMessage}</p> : null}
+      </Panel>
+
       {traceability ? (
         <>
           <section className="kpi-grid" aria-label="Batch traceability">
@@ -2154,6 +2212,7 @@ function TraceabilityView() {
             <MetricCard label="Dispatched" value={formatNumber(traceability.dispatched_quantity)} detail="Sent to customers" />
             <MetricCard label="Allocated" value={formatNumber(traceability.allocated_quantity)} detail="Reserved on shipments" />
             <MetricCard label="Current Stock" value={formatNumber(traceability.current_quantity)} detail="On hand now" />
+            <MetricCard label="Latest Location" value={traceability.current_location ?? "-"} detail="Where it is now" />
             <MetricCard label="Batch Expiry" value={traceability.expiry_date ?? "-"} detail="Earliest expiry" />
           </section>
           <div className="learning-grid">
@@ -2231,6 +2290,25 @@ const TRACKING_STATUS_LABELS: Record<string, string> = {
 
 function trackingStatusLabel(status: string): string {
   return TRACKING_STATUS_LABELS[status] ?? toTitleCase(status.replace(/_/g, " "));
+}
+
+function trackingLocationLabel(status: string): string {
+  switch (status) {
+    case "received":
+    case "closed":
+      return "Destination warehouse";
+    case "arrived":
+    case "goods_receipt_pending":
+      return "Customs / receiving dock";
+    case "in_transit":
+    case "customs_in_progress":
+    case "country_documents_pending":
+      return "In transit";
+    case "validated":
+      return "Origin airport";
+    default:
+      return "Supplier / documentation";
+  }
 }
 
 // The Goods Tracking Control Tower: one screen answering "where are my goods,
@@ -2424,6 +2502,7 @@ function GoodsTrackingView({
               <tr>
                 <th>Shipment</th>
                 <th>Status</th>
+                <th>Current Location</th>
                 <th>AWB</th>
                 <th>Invoice</th>
                 <th>Supplier</th>
@@ -2439,6 +2518,7 @@ function GoodsTrackingView({
                 <tr key={candidate.import_file_number}>
                   <td>{candidate.shipment_name ?? candidate.import_file_number}</td>
                   <td><StatusTag label={trackingStatusLabel(candidate.status)} /></td>
+                  <td><span className="muted-cell">{trackingLocationLabel(candidate.status)}</span></td>
                   <td><span className="muted-cell">{candidate.awb_number ?? "-"}</span></td>
                   <td><span className="muted-cell">{candidate.invoice_number ?? "-"}</span></td>
                   <td>{candidate.supplier_name ?? "-"}</td>

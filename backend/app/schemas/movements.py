@@ -12,6 +12,7 @@ class MovementEvent(BaseModel):
     serial_number: str | None = None
     quantity: float
     warehouse: str | None = None
+    location: str | None = None
     counterparty: str | None = None
     reference: str | None = None
     actor: str | None = None
@@ -24,8 +25,9 @@ class RecordMovementRequest(BaseModel):
     item_code: str
     batch_number: str
     serial_number: str | None = None
-    quantity: float
+    quantity: float = 0
     warehouse: str | None = None
+    location: str | None = None
     counterparty: str | None = None
     reference: str | None = None
     actor: str
@@ -43,6 +45,7 @@ class BatchTraceability(BaseModel):
     current_quantity: float = 0
     remaining_quantity: float = 0
     expiry_date: str | None = None
+    current_location: str | None = None
     warehouses: list[str] = Field(default_factory=list)
     customers: list[str] = Field(default_factory=list)
     events: list[MovementEvent] = Field(default_factory=list)

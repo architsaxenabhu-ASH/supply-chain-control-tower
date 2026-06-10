@@ -33,6 +33,7 @@ def record_movement_event(request: RecordMovementRequest) -> MovementEvent:
         serial_number=request.serial_number,
         quantity=request.quantity,
         warehouse=request.warehouse,
+        location=request.location or request.warehouse,
         counterparty=request.counterparty,
         reference=request.reference,
         actor=request.actor,
@@ -72,6 +73,7 @@ def _derive_events() -> list[MovementEvent]:
                     batch_number=line.batch_number,
                     quantity=float(line.quantity_received),
                     warehouse=grn.warehouse,
+                    location=grn.warehouse,
                     counterparty=grn.supplier,
                     reference=grn.grn_number,
                     occurred_at=grn.receipt_date.isoformat(),
@@ -95,6 +97,7 @@ def _derive_events() -> list[MovementEvent]:
                     batch_number=line.batch_number,
                     quantity=-quantity,
                     warehouse=line.warehouse_location,
+                    location=f"Dispatched to {shipment.customer_name}",
                     counterparty=shipment.customer_name,
                     reference=dispatch.dispatch_number,
                     actor=dispatch.dispatched_by,
@@ -154,6 +157,13 @@ def get_batch_traceability(batch_number: str) -> BatchTraceability:
     )
     item_codes = sorted({event.item_code for event in events})
 
+    ordered_events = sorted(events, key=lambda event: event.occurred_at)
+    current_location = None
+    for event in reversed(ordered_events):
+        if event.location or event.warehouse:
+            current_location = event.location or event.warehouse
+            break
+
     return BatchTraceability(
         batch_number=batch_number,
         found=bool(events or inventory),
@@ -164,9 +174,10 @@ def get_batch_traceability(batch_number: str) -> BatchTraceability:
         current_quantity=current,
         remaining_quantity=received - dispatched,
         expiry_date=expiry,
+        current_location=current_location,
         warehouses=warehouses,
         customers=customers,
-        events=sorted(events, key=lambda event: event.occurred_at),
+        events=ordered_events,
     )
 
 

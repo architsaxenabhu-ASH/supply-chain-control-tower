@@ -800,6 +800,7 @@ export type ApiMovementEvent = {
   serial_number: string | null;
   quantity: number;
   warehouse: string | null;
+  location: string | null;
   counterparty: string | null;
   reference: string | null;
   actor: string | null;
@@ -817,6 +818,7 @@ export type ApiBatchTraceability = {
   current_quantity: number;
   remaining_quantity: number;
   expiry_date: string | null;
+  current_location: string | null;
   warehouses: string[];
   customers: string[];
   events: ApiMovementEvent[];
@@ -838,6 +840,21 @@ export function fetchBatchTraceability(batchNumber: string): Promise<ApiBatchTra
 
 export function fetchProductJourney(query: string): Promise<ApiProductJourney> {
   return getJson<ApiProductJourney>(`/movements/journey?query=${encodeURIComponent(query)}`);
+}
+
+export function recordMovement(payload: {
+  event_type: string;
+  item_code: string;
+  batch_number: string;
+  serial_number?: string | null;
+  quantity?: number;
+  location?: string | null;
+  counterparty?: string | null;
+  reference?: string | null;
+  actor: string;
+  note?: string | null;
+}): Promise<ApiMovementEvent> {
+  return postJson<ApiMovementEvent, typeof payload>("/movements", payload);
 }
 
 export function evaluateImportChecklist(payload: {
