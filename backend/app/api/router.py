@@ -3,8 +3,10 @@ from fastapi import APIRouter
 from app.api.routes import (
     audit,
     assistant,
+    business_intelligence,
     customers,
     dashboard,
+    decisions,
     dispatches,
     documents,
     erp_uploads,
@@ -50,4 +52,10 @@ api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboar
 api_router.include_router(intelligence.inventory_health_router, prefix="/inventory-health", tags=["intelligence"])
 api_router.include_router(intelligence.expiry_router, prefix="/expiry-engine", tags=["intelligence"])
 api_router.include_router(intelligence.events_router, prefix="/events", tags=["intelligence"])
+api_router.include_router(decisions.router, prefix="/decisions", tags=["decisions"])
+api_router.include_router(business_intelligence.supplier_router, prefix="/supplier-intelligence", tags=["business-intelligence"])
+api_router.include_router(business_intelligence.carrier_router, prefix="/carrier-intelligence", tags=["business-intelligence"])
+api_router.include_router(business_intelligence.customer_router, prefix="/customer-intelligence", tags=["business-intelligence"])
+api_router.include_router(business_intelligence.document_router, prefix="/document-intelligence", tags=["business-intelligence"])
+api_router.include_router(business_intelligence.relationships_router, prefix="/relationships", tags=["relationships"])
 api_router.include_router(assistant.router, prefix="/assistant", tags=["assistant"])
