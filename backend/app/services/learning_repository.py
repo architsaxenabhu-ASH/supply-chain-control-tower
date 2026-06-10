@@ -8,6 +8,8 @@ from app.schemas.learning import (
     CountryDocumentRequirementRequest,
     CountryDocumentRequirementRule,
     CorrectionEventRequest,
+    DocumentTemplate,
+    DocumentTemplateRequest,
     EntityAliasRequest,
     ImportChecklistItem,
     ImportChecklistResponse,
@@ -32,6 +34,7 @@ ENTITY_ALIASES: list[EntityAliasRequest] = []
 PRODUCT_PROFILE_EDIT_EVENTS: list[ProductProfileEditEvent] = []
 COUNTRY_DOCUMENT_REQUIREMENT_RULES: list[CountryDocumentRequirementRule] = []
 WAREHOUSE_CANDIDATES: list[WarehouseCandidate] = []
+DOCUMENT_TEMPLATES: list[DocumentTemplate] = []
 
 PRODUCT_PROFILES: dict[str, ProductLearningProfile] = {}
 
@@ -51,6 +54,10 @@ def _load_learning_state() -> None:
     WAREHOUSE_CANDIDATES[:] = load_collection(
         "warehouse_candidates",
         lambda payload: WarehouseCandidate(**payload),
+    )
+    DOCUMENT_TEMPLATES[:] = load_collection(
+        "document_templates",
+        lambda payload: DocumentTemplate(**payload),
     )
     saved_profiles = load_collection(
         "product_learning_profiles",
@@ -460,12 +467,62 @@ def get_learning_insights() -> LearningInsights:
         average_rule_confidence=average_confidence,
         top_corrected_fields=_top_stats(field_counter),
         corrections_by_document_type=_top_stats(document_counter),
+        total_document_templates=len(DOCUMENT_TEMPLATES),
         top_learned_rules=top_rules,
         country_document_rules=COUNTRY_DOCUMENT_REQUIREMENT_RULES[:12],
         recent_corrections=recent_corrections,
         recent_entity_aliases=list(reversed(ENTITY_ALIASES))[:8],
         recent_warehouse_candidates=list(reversed(WAREHOUSE_CANDIDATES))[:8],
     )
+
+
+def _save_document_templates() -> None:
+    save_collection("document_templates", DOCUMENT_TEMPLATES, lambda template: template.template_id)
+
+
+def record_document_template(request: DocumentTemplateRequest) -> DocumentTemplate:
+    """Collect a learned document template (recognised field labels per supplier +
+    document type). Foundation for layout learning - not AI yet, just data."""
+    template_id = f"{request.supplier_name.strip().lower()}|{request.document_type.strip().lower()}"
+    now = datetime.now()
+    existing = next((template for template in DOCUMENT_TEMPLATES if template.template_id == template_id), None)
+    if existing:
+        existing.field_labels = list(dict.fromkeys([*existing.field_labels, *request.field_labels]))
+        existing.sample_count += 1
+        existing.updated_at = now
+        template = existing
+    else:
+        template = DocumentTemplate(
+            template_id=template_id,
+            supplier_name=request.supplier_name,
+            document_type=request.document_type,
+            field_labels=list(dict.fromkeys(request.field_labels)),
+            sample_count=1,
+            created_by=request.recorded_by,
+            created_at=now,
+            updated_at=now,
+        )
+        DOCUMENT_TEMPLATES.append(template)
+    _save_document_templates()
+    record_audit_event(
+        action="learn",
+        module_name="learning",
+        entity_name="document_template",
+        entity_id=template_id,
+        actor=request.recorded_by,
+        new_value=template,
+    )
+    return template
+
+
+def list_document_templates() -> list[DocumentTemplate]:
+    return DOCUMENT_TEMPLATES
+
+
+def list_field_mapping_history() -> list[CorrectionEventRequest]:
+    """Field-mapping history = the corrections that taught the platform how a
+    document field maps to a master field. Newest first."""
+    return list(reversed(CORRECTION_EVENTS))
 
 
 def learn_country_document_requirement(

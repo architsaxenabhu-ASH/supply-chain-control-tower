@@ -5,6 +5,8 @@ from app.schemas.learning import (
     CountryDocumentRequirementRequest,
     CountryDocumentRequirementRule,
     CorrectionEventRequest,
+    DocumentTemplate,
+    DocumentTemplateRequest,
     EntityAliasRequest,
     ImportChecklistRequest,
     ImportChecklistResponse,
@@ -22,6 +24,9 @@ from app.services.learning_repository import (
     create_warehouse_candidate,
     evaluate_import_checklist,
     get_learning_insights,
+    list_document_templates,
+    list_field_mapping_history,
+    record_document_template,
     get_product_learning_profile,
     get_country_document_requirements,
     learn_country_document_requirement,
@@ -46,6 +51,21 @@ def rules() -> list[LearningRule]:
 @router.get("/insights", response_model=LearningInsights)
 def insights() -> LearningInsights:
     return get_learning_insights()
+
+
+@router.get("/document-templates", response_model=list[DocumentTemplate])
+def document_templates() -> list[DocumentTemplate]:
+    return list_document_templates()
+
+
+@router.post("/document-templates", response_model=DocumentTemplate)
+def add_document_template(request: DocumentTemplateRequest) -> DocumentTemplate:
+    return record_document_template(request)
+
+
+@router.get("/field-mapping-history", response_model=list[CorrectionEventRequest])
+def field_mapping_history() -> list[CorrectionEventRequest]:
+    return list_field_mapping_history()
 
 
 @router.get("/suggest-correction", response_model=CorrectionSuggestionResponse)

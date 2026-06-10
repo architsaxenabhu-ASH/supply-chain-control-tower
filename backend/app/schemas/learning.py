@@ -136,6 +136,24 @@ class WarehouseCandidate(BaseModel):
     created_at: datetime = Field(default_factory=datetime.now)
 
 
+class DocumentTemplateRequest(BaseModel):
+    supplier_name: str
+    document_type: str
+    field_labels: list[str] = Field(default_factory=list)
+    recorded_by: str
+
+
+class DocumentTemplate(BaseModel):
+    template_id: str
+    supplier_name: str
+    document_type: str
+    field_labels: list[str] = Field(default_factory=list)
+    sample_count: int = 0
+    created_by: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
 class LearningStat(BaseModel):
     """A simple label/count pair used for the Learning Center charts."""
 
@@ -192,6 +210,7 @@ class LearningInsights(BaseModel):
     total_country_document_rules: int = 0
     total_entity_aliases: int = 0
     total_warehouse_candidates: int = 0
+    total_document_templates: int = 0
     average_rule_confidence: float = 0
     top_corrected_fields: list[LearningStat] = Field(default_factory=list)
     corrections_by_document_type: list[LearningStat] = Field(default_factory=list)
