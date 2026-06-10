@@ -21,7 +21,9 @@ from app.api.routes import (
     master_data,
     movements,
     operational_intelligence,
+    reallocations,
     release,
+    reservations,
     masters,
     products,
     security,
@@ -67,4 +69,10 @@ api_router.include_router(operational_intelligence.shipment_router, prefix="/shi
 api_router.include_router(operational_intelligence.expiry_prevention_router, prefix="/expiry-prevention", tags=["operational-intelligence"])
 api_router.include_router(release.router, prefix="/releases", tags=["release"])
 api_router.include_router(exceptions.router, prefix="/exceptions", tags=["exceptions"])
+api_router.include_router(reservations.reservations_router, prefix="/reservations", tags=["reservations"])
+api_router.include_router(reservations.consumption_router, prefix="/reservation-consumption", tags=["reservations"])
+api_router.include_router(reservations.risk_router, prefix="/reservation-risk", tags=["reservations"])
+api_router.include_router(reservations.customer_consumption_router, prefix="/customer-consumption", tags=["reservations"])
+api_router.include_router(reservations.commitment_router, prefix="/commitment-dashboard", tags=["reservations"])
+api_router.include_router(reallocations.router, prefix="/reallocations", tags=["reallocations"])
 api_router.include_router(assistant.router, prefix="/assistant", tags=["assistant"])
