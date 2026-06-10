@@ -10,6 +10,7 @@ from app.api.routes import (
     dispatches,
     documents,
     erp_uploads,
+    exceptions,
     expiry,
     goods_receipts,
     inventory,
@@ -19,6 +20,8 @@ from app.api.routes import (
     learning,
     master_data,
     movements,
+    operational_intelligence,
+    release,
     masters,
     products,
     security,
@@ -58,4 +61,10 @@ api_router.include_router(business_intelligence.carrier_router, prefix="/carrier
 api_router.include_router(business_intelligence.customer_router, prefix="/customer-intelligence", tags=["business-intelligence"])
 api_router.include_router(business_intelligence.document_router, prefix="/document-intelligence", tags=["business-intelligence"])
 api_router.include_router(business_intelligence.relationships_router, prefix="/relationships", tags=["relationships"])
+api_router.include_router(operational_intelligence.readiness_router, prefix="/document-readiness", tags=["operational-intelligence"])
+api_router.include_router(operational_intelligence.control_tower_router, prefix="/document-control-tower", tags=["operational-intelligence"])
+api_router.include_router(operational_intelligence.shipment_router, prefix="/shipment-intelligence", tags=["operational-intelligence"])
+api_router.include_router(operational_intelligence.expiry_prevention_router, prefix="/expiry-prevention", tags=["operational-intelligence"])
+api_router.include_router(release.router, prefix="/releases", tags=["release"])
+api_router.include_router(exceptions.router, prefix="/exceptions", tags=["exceptions"])
 api_router.include_router(assistant.router, prefix="/assistant", tags=["assistant"])
