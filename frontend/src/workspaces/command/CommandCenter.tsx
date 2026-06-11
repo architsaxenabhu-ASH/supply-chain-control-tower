@@ -1,16 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
-import { motion } from "framer-motion";
-import {
-  AlertTriangle,
-  ArrowRight,
-  CheckCircle2,
-  ClipboardList,
-  Gauge,
-  GitBranch,
-  Globe2,
-  ScrollText,
-  TrendingUp,
-} from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { motion, useAnimationFrame } from "framer-motion";
+import { ArrowUpRight, CheckCircle2, GitBranch, Globe2, Radar, ScrollText } from "lucide-react";
 
 import {
   fetchApprovals,
@@ -26,14 +16,22 @@ import {
   type ApiExecutiveAction,
   type ApiExecutiveCommandCenterV3,
 } from "../../lib/api";
-import { useCountry } from "../../context/CountryContext";
-import { itemVariants, listVariants, transition, workspaceVariants, prefersReducedMotion } from "../../motion/motion";
+import { CountryEnvironment, useCountry, type EnvironmentVital } from "../../context/CountryContext";
+import { itemVariants, listVariants, prefersReducedMotion } from "../../motion/motion";
 
-const currency = (value: number) =>
-  new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(value || 0);
+const inr = (value: number) =>
+  new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0, notation: value >= 1_00_00_000 ? "compact" : "standard" }).format(value || 0);
 const num = (value: number) => new Intl.NumberFormat("en-IN").format(Math.round(value || 0));
 
 const REVIEWS = ["inventory", "expiry", "open-orders", "receivables", "distributor", "country", "vertical"] as const;
+
+type LensId = "country_manager" | "general_manager" | "supply_chain" | "finance";
+const LENSES: { id: LensId; label: string; tagline: string; perms: string[] }[] = [
+  { id: "country_manager", label: "Country Manager", tagline: "My station", perms: ["country_dashboard", "import_approval", "shipment_approval"] },
+  { id: "general_manager", label: "General Manager", tagline: "The map", perms: ["audit", "reports_export"] },
+  { id: "supply_chain", label: "Supply Chain", tagline: "The flow", perms: ["goods_receipt", "dispatch", "inventory_approval", "inventory_value"] },
+  { id: "finance", label: "Finance", tagline: "The ledger", perms: ["reports_export", "audit"] },
+];
 
 function severityClass(severity: string): string {
   const key = severity.toLowerCase();
@@ -43,10 +41,50 @@ function severityClass(severity: string): string {
   return "risk-low";
 }
 
-function reveal(reduced: boolean) {
-  return reduced
-    ? { initial: { opacity: 1 }, animate: { opacity: 1 } }
-    : { variants: workspaceVariants, initial: "hidden" as const, animate: "visible" as const };
+// Count-up for the calm hero vitals (respects reduced motion).
+function useCountUp(target: number, enabled: boolean): number {
+  const [value, setValue] = useState(enabled ? 0 : target);
+  const start = useRef<number | null>(null);
+  const done = useRef(!enabled);
+  useEffect(() => {
+    if (!enabled) {
+      setValue(target);
+      done.current = true;
+      return;
+    }
+    start.current = null;
+    done.current = false; // restart when the target changes (e.g. lens switch)
+  }, [target, enabled]);
+  useAnimationFrame((t) => {
+    if (done.current) return;
+    if (start.current === null) start.current = t;
+    const progress = Math.min((t - start.current) / 900, 1);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    setValue(target * eased);
+    if (progress >= 1) {
+      setValue(target);
+      done.current = true;
+    }
+  });
+  return value;
+}
+
+type Vital = { label: string; value: number; kind: "currency" | "number" | "percent"; tone?: string };
+
+function formatVital(v: Vital, animated: number): string {
+  if (v.kind === "currency") return inr(animated);
+  if (v.kind === "percent") return `${Math.round(animated)}%`;
+  return num(animated);
+}
+
+function VitalReadout({ vital, animate }: { vital: Vital; animate: boolean }) {
+  const animated = useCountUp(vital.value, animate);
+  return (
+    <div className={`vital tone-${vital.tone ?? "neutral"}`}>
+      <strong>{formatVital(vital, animate ? animated : vital.value)}</strong>
+      <span>{vital.label}</span>
+    </div>
+  );
 }
 
 export function CommandCenter({
@@ -58,8 +96,14 @@ export function CommandCenter({
 }) {
   const { country } = useCountry();
   const reduced = prefersReducedMotion();
-  const can = (permission: string) => currentUser.role_name === "Admin" || currentUser.permissions.includes(permission);
-  const seesFinance = can("reports_export") || can("audit") || currentUser.role_name === "Admin";
+  const isAdmin = currentUser.role_name === "Admin";
+  const can = (permission: string) => isAdmin || currentUser.permissions.includes(permission);
+
+  const availableLenses = useMemo(
+    () => LENSES.filter((lens) => isAdmin || lens.perms.some((p) => currentUser.permissions.includes(p))),
+    [currentUser, isAdmin],
+  );
+  const [lens, setLens] = useState<LensId>(availableLenses[0]?.id ?? "general_manager");
 
   const [summary, setSummary] = useState<ApiExecutiveCommandCenterV3 | null>(null);
   const [actions, setActions] = useState<ApiExecutiveAction[]>([]);
@@ -95,168 +139,207 @@ export function CommandCenter({
   }, []);
 
   const cc = summary?.command_center_v2;
-  const myActions = useMemo(() => {
-    const owned = actions.filter((a) => (country ? true : true));
-    return owned.slice(0, 8);
-  }, [actions, country]);
-  const visiblePerformance = useMemo(
-    () => (country ? performance.filter((p) => p.name.toLowerCase() === country.toLowerCase()) : performance).slice(0, 6),
-    [performance, country],
-  );
+  const critical = actions.filter((a) => a.severity.toLowerCase() === "critical").length;
+  const signals = actions.slice(0, 7);
+  const countryRow = country ? performance.find((p) => p.name.toLowerCase() === country.toLowerCase()) : undefined;
+
+  const vitals: Vital[] = useMemo(() => {
+    if (!cc || !summary) return [];
+    const seesFinance = can("reports_export") || can("audit") || isAdmin;
+    if (lens === "finance" && seesFinance) {
+      return [
+        { label: "Net exposure", value: summary.net_exposure, kind: "currency", tone: summary.net_exposure < 0 ? "warn" : "good" },
+        { label: "Receivables", value: summary.receivables_outstanding, kind: "currency" },
+        { label: "Payables", value: summary.payables_outstanding, kind: "currency" },
+        { label: "Payment risks", value: summary.payment_risk_count, kind: "number", tone: summary.payment_risk_count ? "bad" : "good" },
+      ];
+    }
+    if (lens === "supply_chain") {
+      const expiryRisk = cc.highest_expiry_risk_products?.length ?? 0;
+      return [
+        { label: "Available inventory", value: cc.available_inventory ?? 0, kind: "number" },
+        { label: "Inventory value", value: cc.total_inventory_value ?? 0, kind: "currency" },
+        { label: "Shipments delayed", value: cc.shipments_delayed ?? 0, kind: "number", tone: cc.shipments_delayed ? "warn" : "good" },
+        { label: "Expiry-risk products", value: expiryRisk, kind: "number", tone: expiryRisk ? "warn" : "good" },
+      ];
+    }
+    // country_manager / general_manager
+    return [
+      { label: "Inventory value", value: cc.total_inventory_value, kind: "currency" },
+      { label: "Open signals", value: actions.length, kind: "number", tone: critical ? "bad" : actions.length ? "warn" : "good" },
+      { label: "Net exposure", value: summary.net_exposure, kind: "currency", tone: summary.net_exposure < 0 ? "warn" : "good" },
+      { label: "Demand coverage", value: cc.demand_coverage_pct ?? 0, kind: "percent" },
+    ];
+  }, [cc, summary, lens, actions.length, critical, can, isAdmin]);
+
+  const environmentVitals: EnvironmentVital[] = useMemo(() => {
+    if (countryRow) {
+      return [
+        { label: "Achievement", value: countryRow.value_achievement_pct == null ? "—" : `${countryRow.value_achievement_pct}%`, tone: achievementTone(countryRow.value_achievement_pct) },
+        { label: "Actual", value: inr(countryRow.actual_value) },
+        { label: "Open signals", value: String(actions.length), tone: critical ? "bad" : "neutral" },
+      ];
+    }
+    if (cc) {
+      return [
+        { label: "Inventory value", value: inr(cc.total_inventory_value) },
+        { label: "Open signals", value: String(actions.length), tone: critical ? "bad" : actions.length ? "warn" : "good" },
+        { label: "Shipments in motion", value: String(cc.shipments_delayed + cc.shipments_missing_documents) },
+      ];
+    }
+    return [];
+  }, [countryRow, cc, actions.length, critical]);
 
   if (loading) {
     return (
       <div className="cc-loading" aria-busy="true">
-        <div className="skeleton-row" />
+        <div className="skeleton-row tall" />
         <div className="skeleton-row" />
         <div className="skeleton-row" />
       </div>
     );
   }
 
+  const situational =
+    critical > 0
+      ? `${actions.length} signals need you · ${critical} critical`
+      : actions.length > 0
+        ? `${actions.length} signals need you · none critical`
+        : "All clear — no open signals";
+
   return (
-    <motion.div className="command-center" {...reveal(reduced)}>
-      <section className="cc-hero panel">
-        <div className="cc-hero-mark">
-          <Gauge size={26} aria-hidden="true" />
-        </div>
-        <div className="cc-hero-copy">
-          <p className="eyebrow">Executive Command Center</p>
-          <h2>Good {greeting()}, {currentUser.full_name?.split(" ")[0] || "there"}</h2>
-          <p className="status-line">
-            {country ? `Scoped to ${country}. ` : "All countries. "}
-            Detect risk, review transactions, and capture decisions — the system recommends, you decide.
-          </p>
-        </div>
-        {seesFinance && summary ? (
-          <div className="cc-hero-exposure">
-            <span>Net exposure</span>
-            <strong className={summary.net_exposure < 0 ? "negative" : "positive"}>{currency(summary.net_exposure)}</strong>
-            <small>{currency(summary.receivables_outstanding)} in · {currency(summary.payables_outstanding)} out</small>
+    <div className="cockpit">
+      {/* Immersive country station */}
+      <CountryEnvironment vitals={environmentVitals} />
+
+      {/* Mission-status hero */}
+      <section className="cockpit-hero">
+        <div className="cockpit-current" aria-hidden="true" />
+        <div className="cockpit-hero-top">
+          <div>
+            <p className="eyebrow">Mission status · {greeting()}</p>
+            <h2>{currentUser.full_name?.split(" ")[0] || "Welcome"} — {situational}</h2>
           </div>
-        ) : null}
+          {availableLenses.length > 1 ? (
+            <div className="lens-switch" role="tablist" aria-label="Executive lens">
+              {availableLenses.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={lens === option.id}
+                  className={lens === option.id ? "lens-chip active" : "lens-chip"}
+                  onClick={() => setLens(option.id)}
+                >
+                  <span>{option.label}</span>
+                  <small>{option.tagline}</small>
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+        <div className="vitals-row">
+          {vitals.map((vital) => (
+            <VitalReadout key={vital.label} vital={vital} animate={!reduced} />
+          ))}
+        </div>
       </section>
 
-      {/* 1 — Sales performance */}
-      <Panel title="Sales performance" meta={country || "All countries"} onMore={() => onNavigate("analytics")}>
-        {visiblePerformance.length === 0 ? (
-          <p className="empty-state">No commercial targets or realised sales recorded yet.</p>
+      {/* Signal board — risk as living signals */}
+      <section className="signal-board">
+        <div className="signal-head">
+          <div className="signal-title">
+            <Radar size={17} aria-hidden="true" />
+            <h3>Signal board</h3>
+          </div>
+          <span className="signal-meta">{actions.length} open · {critical} critical</span>
+        </div>
+        {signals.length === 0 ? (
+          <div className="signal-empty">
+            <CheckCircle2 size={20} aria-hidden="true" />
+            <p>No open signals. The board is calm — exactly where you want it.</p>
+          </div>
         ) : (
-          <div className="cc-perf-grid">
-            {visiblePerformance.map((row) => (
-              <div className="cc-perf-row" key={row.name}>
-                <div className="cc-perf-head">
-                  <span>{row.name}</span>
-                  <strong>{row.value_achievement_pct == null ? "—" : `${row.value_achievement_pct}%`}</strong>
-                </div>
-                <div className="cc-perf-bar">
+          <motion.ul className="signal-list" variants={reduced ? undefined : listVariants} initial={reduced ? undefined : "hidden"} animate={reduced ? undefined : "visible"}>
+            {signals.map((signal, index) => {
+              const sev = severityClass(signal.severity);
+              return (
+                <motion.li
+                  key={`${signal.action_type}-${signal.reference}-${index}`}
+                  className={`signal ${sev} ${signal.severity.toLowerCase() === "critical" ? "is-critical" : ""}`}
+                  variants={reduced ? undefined : itemVariants}
+                >
+                  <span className={`signal-pulse ${sev}`} aria-hidden="true" />
+                  <div className="signal-body">
+                    <strong>{signal.title}</strong>
+                    {signal.detail ? <small>{signal.detail}</small> : null}
+                    <span className="signal-source">{signal.source.replace(/_/g, " ")}</span>
+                  </div>
+                  <button type="button" className="signal-act" onClick={() => onNavigate(routeFor(signal.source))}>
+                    Review <ArrowUpRight size={14} aria-hidden="true" />
+                  </button>
+                </motion.li>
+              );
+            })}
+          </motion.ul>
+        )}
+      </section>
+
+      {/* Country league (general manager / country) */}
+      {(lens === "general_manager" || lens === "country_manager") && performance.length > 0 ? (
+        <section className="panel cockpit-panel">
+          <div className="panel-heading">
+            <h2>{country ? `${country} performance` : "Country performance"}</h2>
+            <span>{country ? "your station" : "the map"}</span>
+          </div>
+          <div className="league">
+            {(country ? performance.filter((p) => p.name.toLowerCase() === country.toLowerCase()) : performance).slice(0, 6).map((row) => (
+              <div className="league-row" key={row.name}>
+                <span className="league-name">{row.name}</span>
+                <div className="league-bar">
                   <span style={{ width: `${Math.min(row.value_achievement_pct ?? 0, 100)}%` }} data-state={achievementState(row.value_achievement_pct)} />
                 </div>
-                <small>{currency(row.actual_value)} of {currency(row.target_value)} · {row.diagnostics.sales_performance?.replace(/_/g, " ") ?? ""}</small>
+                <strong className="league-pct">{row.value_achievement_pct == null ? "—" : `${row.value_achievement_pct}%`}</strong>
               </div>
             ))}
           </div>
-        )}
-        {cc ? (
-          <div className="cc-sales-stats">
-            <Stat label="Confirmed demand" value={num(cc.confirmed_demand)} />
-            <Stat label="Forecast demand" value={num(cc.forecast_demand)} />
-            <Stat label="Demand coverage" value={cc.demand_coverage_pct == null ? "—" : `${cc.demand_coverage_pct}%`} />
-            <Stat label="Inventory value" value={currency(cc.total_inventory_value)} />
-          </div>
-        ) : null}
-      </Panel>
-
-      {/* 2 — Management attention required */}
-      {cc ? (
-        <Panel title="Management attention required" meta={`${attentionTotal(cc, summary)} signals`}>
-          <motion.div className="cc-attention" variants={reduced ? undefined : listVariants} initial={reduced ? undefined : "hidden"} animate={reduced ? undefined : "visible"}>
-            <AttentionTile icon={ClipboardList} label="Open order risks" value={cc.reservations_expiring_soon + (summary?.command_center_v2 ? 0 : 0)} tone="amber" onClick={() => onNavigate("analytics")} subtitle={`${cc.shipments_missing_documents} missing docs`} />
-            <AttentionTile icon={AlertTriangle} label="Expiry risks" value={cc.highest_expiry_risk_products.length} tone="crimson" onClick={() => onNavigate("expiry")} subtitle="batches near expiry" />
-            {seesFinance ? <AttentionTile icon={TrendingUp} label="Receivable risks" value={summary?.payment_risk_count ?? 0} tone="amber" onClick={() => onNavigate("analytics")} subtitle="distributors" /> : null}
-            {seesFinance ? <AttentionTile icon={TrendingUp} label="Payable risks" value={summary?.payables_risk_count ?? 0} tone="amber" onClick={() => onNavigate("analytics")} subtitle="partners" /> : null}
-            <AttentionTile icon={ArrowRight} label="Shipment delays" value={cc.shipments_delayed} tone="crimson" onClick={() => onNavigate("goods-tracking")} subtitle="in transit" />
-          </motion.div>
-        </Panel>
+        </section>
       ) : null}
 
-      <div className="cc-columns">
-        {/* 3 — My actions */}
-        <Panel title="My actions" meta={`${actions.length} open`}>
-          {myActions.length === 0 ? (
-            <p className="empty-state">No open actions. You are clear.</p>
-          ) : (
-            <motion.ul className="cc-queue" variants={reduced ? undefined : listVariants} initial={reduced ? undefined : "hidden"} animate={reduced ? undefined : "visible"}>
-              {myActions.map((action, index) => (
-                <motion.li className="cc-queue-row" key={`${action.action_type}-${action.reference}-${index}`} variants={reduced ? undefined : itemVariants}>
-                  <span className={`risk-dot ${severityClass(action.severity)}`} aria-hidden="true" />
-                  <div>
-                    <strong>{action.title}</strong>
-                    {action.detail ? <small>{action.detail}</small> : null}
-                  </div>
-                  <span className={`risk-pill ${severityClass(action.severity)}`}>{action.severity}</span>
-                </motion.li>
-              ))}
-            </motion.ul>
-          )}
-        </Panel>
-
-        {/* 4 — My approvals */}
-        <Panel title="My approvals" meta={`${approvals.length} pending`} onMore={() => onNavigate("security")}>
+      {/* Worklists */}
+      <div className="cockpit-columns">
+        <Worklist title="My approvals" meta={`${approvals.length} pending`} icon={CheckCircle2} onMore={() => onNavigate("security")}>
           {approvals.length === 0 ? (
             <p className="empty-state">No approvals waiting on you.</p>
           ) : (
-            <ul className="cc-queue">
-              {approvals.slice(0, 6).map((approval) => (
-                <li className="cc-queue-row" key={approval.approval_id}>
-                  <CheckCircle2 size={16} aria-hidden="true" />
-                  <div>
-                    <strong>{approval.approval_type.replace(/_/g, " ")}</strong>
-                    <small>{approval.reason ?? approval.reference ?? approval.requestor}</small>
-                  </div>
-                  <span className="tag">{approval.request_date}</span>
-                </li>
-              ))}
-            </ul>
+            approvals.slice(0, 5).map((a) => (
+              <WorklistRow key={a.approval_id} title={a.approval_type.replace(/_/g, " ")} detail={a.reason ?? a.reference ?? a.requestor} tag={a.request_date} />
+            ))
           )}
-        </Panel>
-      </div>
+        </Worklist>
 
-      <div className="cc-columns">
-        {/* 5 — Open decisions */}
-        <Panel title="Open decisions" meta={`${decisions.length} open`}>
+        <Worklist title="Open decisions" meta={`${decisions.length} open`} icon={GitBranch}>
           {decisions.length === 0 ? (
             <p className="empty-state">No open decisions logged.</p>
           ) : (
-            <ul className="cc-queue">
-              {decisions.slice(0, 6).map((decision) => (
-                <li className="cc-queue-row" key={decision.decision_id}>
-                  <GitBranch size={16} aria-hidden="true" />
-                  <div>
-                    <strong>{decision.decision_type}</strong>
-                    <small>{decision.problem_type?.replace(/_/g, " ") ?? decision.reason}</small>
-                  </div>
-                  {decision.owner ? <span className="tag">{decision.owner.replace(/_/g, " ")}</span> : null}
-                </li>
-              ))}
-            </ul>
+            decisions.slice(0, 5).map((d) => (
+              <WorklistRow key={d.decision_id} title={d.decision_type} detail={d.problem_type?.replace(/_/g, " ") ?? d.reason} tag={d.owner?.replace(/_/g, " ")} />
+            ))
           )}
-        </Panel>
+        </Worklist>
 
-        {/* 6 — Recent reviews */}
-        <Panel title="Reviews to run" meta="this week">
+        <Worklist title="Reviews to run" meta="this week" icon={ScrollText}>
           <div className="cc-reviews">
             {REVIEWS.map((name) => (
               <button className="cc-review-chip" key={name} type="button" onClick={() => onNavigate("analytics")}>
-                <ScrollText size={15} aria-hidden="true" />
                 <span>{name.replace(/-/g, " ")}</span>
                 <strong>{reviewCounts[name] ?? 0}</strong>
               </button>
             ))}
           </div>
-        </Panel>
+        </Worklist>
       </div>
-    </motion.div>
+    </div>
   );
 }
 
@@ -274,65 +357,71 @@ function achievementState(pct: number | null): string {
   return "low";
 }
 
-function attentionTotal(cc: NonNullable<ApiExecutiveCommandCenterV3["command_center_v2"]>, summary: ApiExecutiveCommandCenterV3 | null): number {
-  return (
-    cc.shipments_delayed +
-    cc.shipments_missing_documents +
-    cc.highest_expiry_risk_products.length +
-    (summary?.payment_risk_count ?? 0) +
-    (summary?.payables_risk_count ?? 0)
-  );
+function achievementTone(pct: number | null): EnvironmentVital["tone"] {
+  if (pct == null) return "neutral";
+  if (pct >= 100) return "good";
+  if (pct >= 70) return "warn";
+  return "bad";
 }
 
-function Panel({ title, meta, children, onMore }: { title: string; meta: string; children: React.ReactNode; onMore?: () => void }) {
+function routeFor(source: string): string {
+  switch (source) {
+    case "inventory":
+    case "release":
+      return "inventory";
+    case "shipments":
+      return "goods-tracking";
+    case "demand":
+    case "receivables":
+    case "credit_control":
+      return "analytics";
+    default:
+      return "analytics";
+  }
+}
+
+function Worklist({
+  title,
+  meta,
+  icon: Icon,
+  children,
+  onMore,
+}: {
+  title: string;
+  meta: string;
+  icon: typeof Globe2;
+  children: React.ReactNode;
+  onMore?: () => void;
+}) {
   return (
-    <motion.section className="panel cc-panel" transition={transition}>
+    <section className="panel cockpit-panel worklist">
       <div className="panel-heading">
-        <h2>{title}</h2>
+        <div className="worklist-title">
+          <Icon size={16} aria-hidden="true" />
+          <h2>{title}</h2>
+        </div>
         <div className="cc-panel-meta">
           <span>{meta}</span>
           {onMore ? (
             <button type="button" className="cc-more" onClick={onMore} aria-label={`Open ${title}`}>
-              <ArrowRight size={15} aria-hidden="true" />
+              <ArrowUpRight size={15} aria-hidden="true" />
             </button>
           ) : null}
         </div>
       </div>
-      {children}
-    </motion.section>
+      <div className="worklist-body">{children}</div>
+    </section>
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function WorklistRow({ title, detail, tag }: { title: string; detail?: string | null; tag?: string | null }) {
   return (
-    <div className="cc-stat">
-      <span>{label}</span>
-      <strong>{value}</strong>
+    <div className="worklist-row">
+      <div>
+        <strong>{title}</strong>
+        {detail ? <small>{detail}</small> : null}
+      </div>
+      {tag ? <span className="tag">{tag}</span> : null}
     </div>
-  );
-}
-
-function AttentionTile({
-  icon: Icon,
-  label,
-  value,
-  tone,
-  subtitle,
-  onClick,
-}: {
-  icon: typeof Globe2;
-  label: string;
-  value: number;
-  tone: string;
-  subtitle: string;
-  onClick: () => void;
-}) {
-  return (
-    <motion.button type="button" className={`cc-attention-tile tone-${tone}`} variants={itemVariants} onClick={onClick}>
-      <Icon size={18} aria-hidden="true" />
-      <strong>{value}</strong>
-      <span>{label}</span>
-      <small>{subtitle}</small>
-    </motion.button>
   );
 }

@@ -1085,11 +1085,11 @@ export type ApiExecutiveCommandCenterV3 = {
     tender_demand: number;
     opportunity_demand: number;
     demand_coverage_pct: number | null;
-    top_distributors: string[];
-    underperforming_distributors: string[];
-    high_expiry_risk_distributors: string[];
-    highest_demand_products: string[];
-    highest_expiry_risk_products: string[];
+    top_distributors: string[] | null;
+    underperforming_distributors: string[] | null;
+    high_expiry_risk_distributors: string[] | null;
+    highest_demand_products: string[] | null;
+    highest_expiry_risk_products: string[] | null;
     reservation_value_at_risk: number;
     reservations_expiring_soon: number;
     shipments_ready: number;
