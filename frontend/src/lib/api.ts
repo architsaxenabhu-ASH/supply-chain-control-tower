@@ -1055,3 +1055,155 @@ export function fetchCorrectionSuggestion(
   }
   return getJson<ApiCorrectionSuggestionResponse>(`/learning/suggest-correction?${params.toString()}`);
 }
+
+// --- Phase 5A: Management OS fetchers (Phase 2-4 backend endpoints) ---
+
+export type ApiDistributorScoreRow = {
+  distributor: string;
+  financial_score: number | null;
+  sales_score: number | null;
+  expiry_score: number | null;
+  health_score: number | null;
+};
+
+export type ApiExecutiveCommandCenterV3 = {
+  receivables_outstanding: number;
+  payables_outstanding: number;
+  net_exposure: number;
+  payment_risk_count: number;
+  payables_risk_count: number;
+  partner_risk_count: number;
+  command_center_v2: {
+    total_inventory_value: number;
+    inventory_at_risk_value: number;
+    available_inventory: number;
+    reserved_inventory: number;
+    allocated_inventory: number;
+    not_sellable_inventory: number;
+    confirmed_demand: number;
+    forecast_demand: number;
+    tender_demand: number;
+    opportunity_demand: number;
+    demand_coverage_pct: number | null;
+    top_distributors: string[];
+    underperforming_distributors: string[];
+    high_expiry_risk_distributors: string[];
+    highest_demand_products: string[];
+    highest_expiry_risk_products: string[];
+    reservation_value_at_risk: number;
+    reservations_expiring_soon: number;
+    shipments_ready: number;
+    shipments_delayed: number;
+    shipments_missing_documents: number;
+    distributor_scores: ApiDistributorScoreRow[];
+  };
+};
+
+export type ApiExecutiveAction = {
+  action_type: string;
+  severity: string;
+  reference: string | null;
+  title: string;
+  detail: string | null;
+  source: string;
+};
+
+export type ApiApproval = {
+  approval_id: string;
+  approval_type: string;
+  reference: string | null;
+  requestor: string;
+  request_date: string;
+  approver: string | null;
+  approval_date: string | null;
+  reason: string | null;
+  outcome: string;
+  note: string | null;
+};
+
+export type ApiDecision = {
+  decision_id: string;
+  decision_type: string;
+  reason: string;
+  user: string;
+  problem_type: string | null;
+  owner: string | null;
+  context: string | null;
+  options_considered: string[];
+  decided_at: string;
+  expected_outcome: string | null;
+  actual_outcome: string | null;
+  effectiveness: string | null;
+  status: string;
+};
+
+export type ApiCountryPerformance = {
+  scope: string;
+  name: string;
+  target_value: number;
+  actual_value: number;
+  value_achievement_pct: number | null;
+  quantity_achievement_pct: number | null;
+  growth_pct: number | null;
+  diagnostics: Record<string, string>;
+};
+
+export type ApiCommitmentDashboard = {
+  total_commitments: number;
+  open_commitments: number;
+  fulfilled_commitments: number;
+  delayed_commitments: number;
+  backordered_commitments: number;
+  average_fill_rate_pct: number | null;
+  otif_pct: number | null;
+  total_backorder_value: number;
+  high_risk_commitments: number;
+};
+
+export type ApiReviewItem = { reference: string; source: string; detail: Record<string, unknown> };
+export type ApiReview = { review_type: string; summary: Record<string, number | string | null>; items: ApiReviewItem[] };
+
+export type ApiDecisionLearningInsights = {
+  total_decisions: number;
+  decisions_with_outcome: number;
+  overall_success_rate_pct: number | null;
+  most_common_decisions: { key: string; count: number; effective: number; success_rate_pct: number | null }[];
+  most_successful_decisions: { key: string; count: number; effective: number; success_rate_pct: number | null }[];
+  by_owner: { key: string; count: number; effective: number; success_rate_pct: number | null }[];
+  by_problem_type: { key: string; count: number; effective: number; success_rate_pct: number | null }[];
+};
+
+export function fetchExecutiveCommandCenterV3(): Promise<ApiExecutiveCommandCenterV3> {
+  return getJson<ApiExecutiveCommandCenterV3>("/executive-command-center-v3");
+}
+
+export function fetchExecutiveActions(severity?: string): Promise<ApiExecutiveAction[]> {
+  const query = severity ? `?severity=${encodeURIComponent(severity)}` : "";
+  return getJson<ApiExecutiveAction[]>(`/executive-actions${query}`);
+}
+
+export function fetchApprovals(outcome?: string): Promise<ApiApproval[]> {
+  const query = outcome ? `?outcome=${encodeURIComponent(outcome)}` : "";
+  return getJson<ApiApproval[]>(`/approvals${query}`);
+}
+
+export function fetchDecisions(status?: string): Promise<ApiDecision[]> {
+  const query = status ? `?status=${encodeURIComponent(status)}` : "";
+  return getJson<ApiDecision[]>(`/decisions${query}`);
+}
+
+export function fetchCountryPerformanceV2(): Promise<ApiCountryPerformance[]> {
+  return getJson<ApiCountryPerformance[]>("/country-performance-v2");
+}
+
+export function fetchCommitmentDashboard(): Promise<ApiCommitmentDashboard> {
+  return getJson<ApiCommitmentDashboard>("/customer-commitment-dashboard");
+}
+
+export function fetchReview(name: string): Promise<ApiReview> {
+  return getJson<ApiReview>(`/${name}-review`);
+}
+
+export function fetchDecisionLearningInsights(): Promise<ApiDecisionLearningInsights> {
+  return getJson<ApiDecisionLearningInsights>("/learning-insights");
+}

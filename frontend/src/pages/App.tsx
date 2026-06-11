@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ComponentType, ReactNode } from "react";
+import { CommandCenter } from "../workspaces/command/CommandCenter";
+import { CountryProvider, CountrySelector } from "../context/CountryContext";
 import {
   Activity,
   BarChart3,
@@ -59,6 +61,7 @@ import {
   fetchInventoryBatches,
   fetchInventoryCounts,
   fetchLearningInsights,
+  fetchCountryPerformanceV2,
   fetchExecutiveDashboard,
   fetchInventoryDashboard,
   fetchImportDashboard,
@@ -451,6 +454,7 @@ const fallbackSecurityOverview: ApiSecurityOverview = {
 };
 
 const navItems = [
+  { id: "command-center", label: "Command Center", icon: Gauge },
   { id: "dashboard", label: "Dashboard", icon: BarChart3 },
   { id: "analytics", label: "Analytics", icon: Gauge },
   { id: "goods-tracking", label: "Goods Tracking", icon: RadioTower },
@@ -1123,9 +1127,9 @@ function loadStoredCurrentUser(): ApiAuthenticatedUser | null {
 function getInitialViewId() {
   try {
     const hashView = window.location.hash.replace("#", "");
-    return navItems.some((item) => item.id === hashView) ? hashView : "dashboard";
+    return navItems.some((item) => item.id === hashView) ? hashView : "command-center";
   } catch {
-    return "dashboard";
+    return "command-center";
   }
 }
 
@@ -1134,6 +1138,7 @@ export function App() {
   const [loginMessage, setLoginMessage] = useState("Sign in with a configured Security User email.");
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [activeView, setActiveView] = useState(() => getInitialViewId());
+  const [countryOptions, setCountryOptions] = useState<string[]>([]);
   const [theme, setTheme] = useState<"dark" | "light">(() => {
     if (typeof window === "undefined") {
       return "dark";
@@ -1193,6 +1198,20 @@ export function App() {
 
   useEffect(() => {
     setAuthToken(currentUser?.session_token ?? "");
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (!currentUser) {
+      setCountryOptions([]);
+      return;
+    }
+    const scope = currentUser.country_scope ?? [];
+    fetchCountryPerformanceV2()
+      .then((rows) => {
+        const names = rows.map((row) => row.name).filter(Boolean);
+        setCountryOptions(scope.length ? names.filter((name) => scope.includes(name)) : names);
+      })
+      .catch(() => setCountryOptions(scope));
   }, [currentUser]);
 
   useEffect(() => {
@@ -1848,6 +1867,7 @@ export function App() {
   }
 
   return (
+    <CountryProvider scope={countryOptions}>
     <main className="app-shell">
       <aside className="sidebar">
         <div className="brand">
@@ -1878,6 +1898,7 @@ export function App() {
             <h1>{activeNav.label}</h1>
           </div>
           <div className="topbar-actions">
+            <CountrySelector />
             <span className="connection-status">{apiStatus}</span>
             <span className="connection-status">{currentUser.email} / {currentUser.role_name}</span>
             <button className="secondary-action" onClick={handleLogout}>
@@ -1907,6 +1928,9 @@ export function App() {
         </header>
 
         <div className="view-stage" key={activeView}>
+        {activeView === "command-center" ? (
+          <CommandCenter currentUser={currentUser} onNavigate={setActiveView} />
+        ) : null}
         {activeView === "dashboard" ? (
           <DashboardView
             expiredInventoryCount={expiredInventoryCount}
@@ -2067,6 +2091,7 @@ export function App() {
         ) : null}
       </section>
     </main>
+    </CountryProvider>
   );
 }
 
@@ -5159,6 +5184,7 @@ function canAccessView(user: ApiAuthenticatedUser | null, viewId: string) {
   }
   if (
     user.role_name === "Admin" ||
+    viewId === "command-center" ||
     viewId === "dashboard" ||
     viewId === "analytics" ||
     viewId === "goods-tracking" ||
