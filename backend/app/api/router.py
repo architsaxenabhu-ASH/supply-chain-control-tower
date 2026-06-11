@@ -25,6 +25,7 @@ from app.api.routes import (
     master_data,
     movements,
     operational_intelligence,
+    payables,
     reallocations,
     receivables,
     release,
@@ -107,4 +108,11 @@ api_router.include_router(executive.approvals_router, prefix="/approvals", tags=
 api_router.include_router(executive.actions_router, prefix="/executive-actions", tags=["executive"])
 api_router.include_router(executive.decisions_router, prefix="/executive-decisions", tags=["executive"])
 api_router.include_router(executive.command_center_v2_router, prefix="/executive-command-center-v2", tags=["executive"])
+api_router.include_router(payables.payables_router, prefix="/payables", tags=["payables"])
+api_router.include_router(payables.partner_financial_router, prefix="/partner-financial-intelligence", tags=["payables"])
+api_router.include_router(payables.payables_risk_router, prefix="/payables-risk", tags=["payables"])
+api_router.include_router(payables.logistics_router, prefix="/logistics-partner-intelligence", tags=["partners"])
+api_router.include_router(payables.customs_router, prefix="/customs-partner-intelligence", tags=["partners"])
+api_router.include_router(payables.warehouse_partner_router, prefix="/warehouse-partner-intelligence", tags=["partners"])
+api_router.include_router(payables.command_center_v3_router, prefix="/executive-command-center-v3", tags=["executive"])
 api_router.include_router(assistant.router, prefix="/assistant", tags=["assistant"])
