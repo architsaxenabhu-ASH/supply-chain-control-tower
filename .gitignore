@@ -5,6 +5,10 @@ data/documents.json
 data/*.db
 data/*.sqlite
 data/*.sqlite3
+# Never commit databases anywhere (incl. root-level smoke/test DBs)
+*.db
+*.sqlite
+*.sqlite3
 backend/.env
 frontend/.env
 deployment/.env
