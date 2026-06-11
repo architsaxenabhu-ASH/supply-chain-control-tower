@@ -24,6 +24,7 @@ from app.api.routes import (
     movements,
     operational_intelligence,
     reallocations,
+    receivables,
     release,
     reservations,
     masters,
@@ -93,4 +94,8 @@ api_router.include_router(demand.country_performance_router, prefix="/country-pe
 api_router.include_router(demand.product_intelligence_router, prefix="/product-intelligence", tags=["commercial-intelligence"])
 api_router.include_router(demand.inventory_efficiency_router, prefix="/inventory-efficiency", tags=["commercial-intelligence"])
 api_router.include_router(demand.executive_router, prefix="/executive-command-center", tags=["commercial-intelligence"])
+api_router.include_router(receivables.receivables_router, prefix="/receivables", tags=["financial"])
+api_router.include_router(receivables.financial_router, prefix="/financial-intelligence", tags=["financial"])
+api_router.include_router(receivables.payment_risk_router, prefix="/payment-risk", tags=["financial"])
+api_router.include_router(receivables.credit_router, prefix="/credit-control", tags=["financial"])
 api_router.include_router(assistant.router, prefix="/assistant", tags=["assistant"])
