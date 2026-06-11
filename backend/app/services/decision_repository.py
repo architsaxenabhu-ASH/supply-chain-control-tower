@@ -42,6 +42,10 @@ def record_decision(request: DecisionRequest) -> Decision:
         reason=request.reason.strip(),
         user=request.user,
         role=request.role,
+        problem_type=request.problem_type,
+        owner=request.owner,
+        context=request.context,
+        options_considered=request.options_considered,
         decided_at=datetime.now().isoformat(),
         related_product=request.related_product,
         related_batch=request.related_batch,
@@ -91,6 +95,8 @@ def update_decision_outcome(decision_id: str, request: DecisionOutcomeRequest) -
 
     old_value = decision.model_copy()
     decision.actual_outcome = request.actual_outcome
+    if request.effectiveness is not None:
+        decision.effectiveness = request.effectiveness
     decision.status = request.status
     _save(decisions)
     record_audit_event(

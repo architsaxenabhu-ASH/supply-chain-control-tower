@@ -5,6 +5,9 @@ from app.api.routes import (
     allocations,
     assistant,
     business_intelligence,
+    commercial,
+    commitments,
+    consignment,
     customers,
     dashboard,
     decisions,
@@ -30,6 +33,7 @@ from app.api.routes import (
     receivables,
     release,
     reservations,
+    returns,
     masters,
     products,
     security,
@@ -115,4 +119,25 @@ api_router.include_router(payables.logistics_router, prefix="/logistics-partner-
 api_router.include_router(payables.customs_router, prefix="/customs-partner-intelligence", tags=["partners"])
 api_router.include_router(payables.warehouse_partner_router, prefix="/warehouse-partner-intelligence", tags=["partners"])
 api_router.include_router(payables.command_center_v3_router, prefix="/executive-command-center-v3", tags=["executive"])
+# Phase 4 — commitment, commercial, consignment, returns, decision & learning intelligence
+api_router.include_router(commitments.commitments_router, prefix="/customer-commitments", tags=["commitments"])
+api_router.include_router(commitments.risk_router, prefix="/customer-commitment-risk", tags=["commitments"])
+api_router.include_router(commitments.dashboard_router, prefix="/customer-commitment-dashboard", tags=["commitments"])
+api_router.include_router(commercial.country_router, prefix="/country-performance-v2", tags=["commercial"])
+api_router.include_router(commercial.vertical_router, prefix="/vertical-performance", tags=["commercial"])
+api_router.include_router(commercial.distributor_router, prefix="/distributor-performance-v2", tags=["commercial"])
+api_router.include_router(commercial.customer_router, prefix="/customer-performance", tags=["commercial"])
+api_router.include_router(commercial.targets_router, prefix="/commercial-targets", tags=["commercial"])
+api_router.include_router(commercial.review_router, prefix="", tags=["review"])
+api_router.include_router(consignment.inventory_router, prefix="/consignment-inventory", tags=["consignment"])
+api_router.include_router(consignment.reconciliation_router, prefix="/consignment-reconciliation", tags=["consignment"])
+api_router.include_router(consignment.risk_router, prefix="/consignment-risk", tags=["consignment"])
+api_router.include_router(consignment.dashboard_router, prefix="/consignment-dashboard", tags=["consignment"])
+api_router.include_router(returns.returns_router, prefix="/returns", tags=["returns"])
+api_router.include_router(returns.inspection_router, prefix="/return-inspection", tags=["returns"])
+api_router.include_router(returns.dashboard_router, prefix="/return-dashboard", tags=["returns"])
+api_router.include_router(decisions.effectiveness_router, prefix="/decision-effectiveness", tags=["decisions"])
+api_router.include_router(decisions.history_router, prefix="/decision-history", tags=["decisions"])
+api_router.include_router(decisions.similarity_router, prefix="/decision-similarity", tags=["decisions"])
+api_router.include_router(decisions.learning_router, prefix="/learning-insights", tags=["learning"])
 api_router.include_router(assistant.router, prefix="/assistant", tags=["assistant"])
