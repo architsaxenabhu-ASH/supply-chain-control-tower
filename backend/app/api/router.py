@@ -13,7 +13,9 @@ from app.api.routes import (
     documents,
     erp_uploads,
     exceptions,
+    executive,
     expiry,
+    fulfillment,
     goods_receipts,
     inventory,
     inventory_counts,
@@ -98,4 +100,11 @@ api_router.include_router(receivables.receivables_router, prefix="/receivables",
 api_router.include_router(receivables.financial_router, prefix="/financial-intelligence", tags=["financial"])
 api_router.include_router(receivables.payment_risk_router, prefix="/payment-risk", tags=["financial"])
 api_router.include_router(receivables.credit_router, prefix="/credit-control", tags=["financial"])
+api_router.include_router(fulfillment.commercial_readiness_router, prefix="/commercial-readiness", tags=["fulfillment"])
+api_router.include_router(fulfillment.order_fulfillment_router, prefix="/order-fulfillment", tags=["fulfillment"])
+api_router.include_router(fulfillment.allocation_priority_router, prefix="/allocation-priority", tags=["fulfillment"])
+api_router.include_router(executive.approvals_router, prefix="/approvals", tags=["executive"])
+api_router.include_router(executive.actions_router, prefix="/executive-actions", tags=["executive"])
+api_router.include_router(executive.decisions_router, prefix="/executive-decisions", tags=["executive"])
+api_router.include_router(executive.command_center_v2_router, prefix="/executive-command-center-v2", tags=["executive"])
 api_router.include_router(assistant.router, prefix="/assistant", tags=["assistant"])
