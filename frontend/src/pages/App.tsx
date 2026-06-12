@@ -1135,7 +1135,11 @@ function loadStoredCurrentUser(): ApiAuthenticatedUser | null {
 // across the canvas when switching tabs — the page's motion identity plays
 // while the content settles underneath. Pointer-transparent so fast users are
 // never blocked, and skipped entirely under reduced motion.
-const STINGER_HOLD_MS = 420;
+// The overlay holds until the incoming view stops reporting aria-busy
+// (its data has loaded), with a minimum so the entry reads and a hard cap
+// so a stuck request can never trap the screen.
+const STINGER_MIN_MS = 450;
+const STINGER_MAX_MS = 4000;
 
 function stingerVariants(signature: Signature): Variants {
   const enter = { duration: 0.2, ease: EASE_OUT_QUINT };
@@ -1196,6 +1200,38 @@ function stingerVariants(signature: Signature): Variants {
         exit: { opacity: 0, transition: leave },
       };
   }
+}
+
+// The icon + title inside the stinger arrive from the same direction as the
+// wipe, slightly delayed, so the entry reads as one continuous movement.
+function stingerInnerVariants(signature: Signature): Variants {
+  const offset = (() => {
+    switch (signature) {
+      case "glide":
+      case "loop":
+        return { x: 30, y: 0 };
+      case "flow":
+      case "sweep":
+        return { x: -30, y: 0 };
+      case "rise":
+        return { x: 0, y: 30 };
+      case "path":
+        return { x: 0, y: -30 };
+      default:
+        return { x: 0, y: 12 };
+    }
+  })();
+  return {
+    initial: { ...offset, opacity: 0, scale: 0.92 },
+    animate: {
+      x: 0,
+      y: 0,
+      opacity: 1,
+      scale: 1,
+      transition: { duration: 0.36, ease: EASE_OUT_QUINT, delay: 0.07 },
+    },
+    exit: { opacity: 0, scale: 0.96, transition: { duration: 0.18, ease: EASE_OUT_QUINT } },
+  };
 }
 
 function getInitialViewId() {
@@ -1870,7 +1906,7 @@ export function App() {
     icon: NavIcon;
     signature: Signature;
   } | null>(null);
-  const stingerTimer = useRef<number | null>(null);
+  const viewCanvasRef = useRef<HTMLDivElement | null>(null);
   const stingerPreviousView = useRef(activeView);
   useEffect(() => {
     if (stingerPreviousView.current === activeView) return;
@@ -1885,15 +1921,22 @@ export function App() {
       icon: tab.icon,
       signature: tab.signature,
     });
-    if (stingerTimer.current !== null) window.clearTimeout(stingerTimer.current);
-    stingerTimer.current = window.setTimeout(() => setStinger(null), STINGER_HOLD_MS);
   }, [activeView, reducedMotion]);
-  useEffect(
-    () => () => {
-      if (stingerTimer.current !== null) window.clearTimeout(stingerTimer.current);
-    },
-    [],
-  );
+  // Hold the stinger while the incoming view is still loading (it renders
+  // skeletons marked aria-busy); release as soon as the tab is ready.
+  useEffect(() => {
+    if (!stinger) return;
+    const startedAt = performance.now();
+    const interval = window.setInterval(() => {
+      const elapsed = performance.now() - startedAt;
+      const stillLoading = Boolean(viewCanvasRef.current?.querySelector('[aria-busy="true"]'));
+      if ((elapsed >= STINGER_MIN_MS && !stillLoading) || elapsed >= STINGER_MAX_MS) {
+        window.clearInterval(interval);
+        setStinger(null);
+      }
+    }, 110);
+    return () => window.clearInterval(interval);
+  }, [stinger]);
 
   const visibleWalkthroughSteps = useMemo(
     () => buildVisibleWalkthroughSteps(visibleNavItems),
@@ -2092,7 +2135,7 @@ export function App() {
           </nav>
         ) : null}
 
-        <div className="view-canvas">
+        <div className="view-canvas" ref={viewCanvasRef}>
         <AnimatePresence>
           {stinger ? (
             <motion.div
@@ -2105,13 +2148,14 @@ export function App() {
               exit="exit"
               aria-hidden="true"
             >
-              <div className="view-stinger-inner">
+              <motion.div className="view-stinger-inner" variants={stingerInnerVariants(stinger.signature)}>
                 <span className="view-stinger-icon">
                   <stinger.icon size={34} aria-hidden="true" />
                 </span>
                 <strong className="view-stinger-label">{stinger.label}</strong>
                 {stinger.workspaceLabel ? <span className="view-stinger-sub">{stinger.workspaceLabel}</span> : null}
-              </div>
+              </motion.div>
+              <span className="view-stinger-progress" aria-hidden="true" />
             </motion.div>
           ) : null}
         </AnimatePresence>

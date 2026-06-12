@@ -137,10 +137,12 @@ disabled under `prefers-reduced-motion`.
 
 ## Tab-entry stinger (Phase 5F)
 
-Switching tabs plays a brief signature-themed overlay (`.view-stinger` in
-App.tsx): a glass panel with the tab's icon and name wipes across the canvas
-in the signature's direction (glide arrives from the right, rise from below,
-stamp presses in, network blooms radially…), holds ~0.4s, then clears while
-the page settles underneath. Pointer-transparent so fast users are never
-blocked; skipped entirely under reduced motion. Total ≈0.7s — an entry
-moment, never a loading gate.
+Switching tabs plays a signature-themed overlay (`.view-stinger` in App.tsx):
+a glass panel with the tab's icon and name wipes across the canvas in the
+signature's direction (glide arrives from the right, rise from below, stamp
+presses in, network blooms radially…); the icon + title slide in from the
+same direction. The overlay holds while the incoming view still reports
+`aria-busy` (data loading), showing a sweeping accent progress line and a
+drifting light sheen, then clears the moment the tab is ready. Minimum hold
+450ms so the entry reads; hard cap 4s so it can never trap the screen.
+Pointer-transparent; skipped entirely under reduced motion.
