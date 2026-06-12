@@ -1203,3 +1203,58 @@
 @media (prefers-reduced-motion: reduce) {
   .ws-tab svg, .ws-item svg { animation: none !important; }
 }
+
+/* ---- Tab-entry stinger (Phase 5F) ----
+   A brief signature-themed overlay that wipes across the canvas on tab
+   switch: the page's motion identity (glide, rise, stamp…) plays while the
+   content settles underneath. Pointer-transparent; removed by JS under
+   reduced motion. */
+.view-canvas { position: relative; min-width: 0; }
+.view-stinger {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  border-radius: 16px;
+  overflow: hidden;
+  background:
+    radial-gradient(80% 90% at 50% 18%, var(--country-accent-soft), transparent 62%),
+    color-mix(in srgb, var(--tower-bg, #07111d) 96%, transparent);
+  backdrop-filter: blur(9px);
+  pointer-events: none;
+}
+.view-stinger-inner { display: grid; gap: 10px; justify-items: center; padding: 28px; }
+.view-stinger-icon {
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  border-radius: 22px;
+  background: var(--country-accent-soft);
+  color: var(--country-accent);
+  box-shadow: 0 0 44px var(--country-accent-glow), inset 0 0 0 1px var(--country-accent-soft);
+}
+.view-stinger-label {
+  font-size: 15.5px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--tower-text, #e6edf3);
+}
+.view-stinger-sub {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--tower-muted, #93a3b4);
+}
+/* The icon inside the stinger moves in its own signature while it plays. */
+.view-stinger[data-signature="rise"] .view-stinger-icon svg { animation: icon-rise 1.1s ease-in-out infinite; }
+.view-stinger[data-signature="glide"] .view-stinger-icon svg { animation: icon-glide 1.2s ease-in-out infinite; }
+.view-stinger[data-signature="sweep"] .view-stinger-icon svg { animation: icon-sweep 1.2s ease-in-out infinite; }
+.view-stinger[data-signature="flow"] .view-stinger-icon svg { animation: icon-flow 1.2s ease-in-out infinite; }
+.view-stinger[data-signature="network"] .view-stinger-icon svg { animation: icon-network 1.1s ease-in-out infinite; }
+.view-stinger[data-signature="loop"] .view-stinger-icon svg { animation: icon-loop 1.4s linear infinite; }
+.view-stinger[data-signature="path"] .view-stinger-icon svg { animation: icon-path 1.2s ease-in-out infinite; }
+.view-stinger[data-signature="stamp"] .view-stinger-icon svg { animation: icon-stamp 1.2s ease-in-out infinite; }
+.view-stinger[data-signature="fade"] .view-stinger-icon svg { animation: icon-fade 1.3s ease-in-out infinite; }

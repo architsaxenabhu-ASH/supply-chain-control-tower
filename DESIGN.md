@@ -134,3 +134,13 @@ hovered, its icon animates in that signature's meaning (glide travels, rise
 settles, sweep tilts, loop turns back, stamp presses, network breathes, flow
 drifts, path descends, fade breathes). 1-3px amplitudes, 2.4-3.4s cycles,
 disabled under `prefers-reduced-motion`.
+
+## Tab-entry stinger (Phase 5F)
+
+Switching tabs plays a brief signature-themed overlay (`.view-stinger` in
+App.tsx): a glass panel with the tab's icon and name wipes across the canvas
+in the signature's direction (glide arrives from the right, rise from below,
+stamp presses in, network blooms radially…), holds ~0.4s, then clears while
+the page settles underneath. Pointer-transparent so fast users are never
+blocked; skipped entirely under reduced motion. Total ≈0.7s — an entry
+moment, never a loading gate.

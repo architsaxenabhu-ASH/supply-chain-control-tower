@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ComponentType, ReactNode } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, type Variants } from "framer-motion";
 import { CommandCenter } from "../workspaces/command/CommandCenter";
 import { MyWork } from "../workspaces/queues/MyWork";
 import { ApprovalCenter } from "../workspaces/approvals/ApprovalCenter";
@@ -27,9 +27,10 @@ import {
   visibleTabs,
   visibleWorkspaces,
   workspaceOfView,
+  type NavIcon,
   type WorkspaceDef,
 } from "../app/nav";
-import { prefersReducedMotion, signatureVariants } from "../motion/motion";
+import { EASE_OUT_QUINT, prefersReducedMotion, signatureVariants, type Signature } from "../motion/motion";
 import {
   Activity,
   BarChart3,
@@ -1130,6 +1131,73 @@ function loadStoredCurrentUser(): ApiAuthenticatedUser | null {
   }
 }
 
+// Tab-entry stinger (Phase 5F): a brief, signature-themed overlay that wipes
+// across the canvas when switching tabs — the page's motion identity plays
+// while the content settles underneath. Pointer-transparent so fast users are
+// never blocked, and skipped entirely under reduced motion.
+const STINGER_HOLD_MS = 420;
+
+function stingerVariants(signature: Signature): Variants {
+  const enter = { duration: 0.2, ease: EASE_OUT_QUINT };
+  const leave = { duration: 0.3, ease: EASE_OUT_QUINT };
+  switch (signature) {
+    case "glide": // arrives from the right, departs left — goods in motion
+      return {
+        initial: { clipPath: "inset(0 0 0 100%)" },
+        animate: { clipPath: "inset(0 0 0 0%)", transition: enter },
+        exit: { clipPath: "inset(0 100% 0 0)", transition: leave },
+      };
+    case "sweep": // timeline wipe left → right
+      return {
+        initial: { clipPath: "inset(0 100% 0 0)" },
+        animate: { clipPath: "inset(0 0% 0 0)", transition: { duration: 0.26, ease: EASE_OUT_QUINT } },
+        exit: { clipPath: "inset(0 0 0 100%)", transition: leave },
+      };
+    case "flow": // ledger flow in from the left, returns the same way
+      return {
+        initial: { clipPath: "inset(0 100% 0 0)" },
+        animate: { clipPath: "inset(0 0% 0 0)", transition: enter },
+        exit: { clipPath: "inset(0 100% 0 0)", transition: leave },
+      };
+    case "rise": // container set-down from below
+      return {
+        initial: { clipPath: "inset(100% 0 0 0)" },
+        animate: { clipPath: "inset(0% 0 0 0)", transition: enter },
+        exit: { clipPath: "inset(0 0 100% 0)", transition: leave },
+      };
+    case "path": // decision path draws top → bottom
+      return {
+        initial: { clipPath: "inset(0 0 100% 0)" },
+        animate: { clipPath: "inset(0 0 0% 0)", transition: enter },
+        exit: { clipPath: "inset(100% 0 0 0)", transition: leave },
+      };
+    case "network": // radial bloom from the centre
+      return {
+        initial: { clipPath: "circle(0% at 50% 42%)" },
+        animate: { clipPath: "circle(120% at 50% 42%)", transition: { duration: 0.28, ease: EASE_OUT_QUINT } },
+        exit: { opacity: 0, transition: leave },
+      };
+    case "loop": // returns loop in from one side, out the other
+      return {
+        initial: { clipPath: "circle(0% at 78% 50%)" },
+        animate: { clipPath: "circle(130% at 78% 50%)", transition: { duration: 0.28, ease: EASE_OUT_QUINT } },
+        exit: { clipPath: "circle(0% at 22% 50%)", transition: leave },
+      };
+    case "stamp": // approval stamp presses down
+      return {
+        initial: { opacity: 0, scale: 1.12 },
+        animate: { opacity: 1, scale: 1, transition: enter },
+        exit: { opacity: 0, scale: 0.94, transition: leave },
+      };
+    default:
+      return {
+        initial: { opacity: 0 },
+        animate: { opacity: 1, transition: enter },
+        exit: { opacity: 0, transition: leave },
+      };
+  }
+}
+
 function getInitialViewId() {
   try {
     const hashView = window.location.hash.replace("#", "");
@@ -1793,6 +1861,40 @@ export function App() {
     setActiveView(target.id);
   };
   const reducedMotion = prefersReducedMotion();
+
+  // Signature stinger on tab switch — see stingerVariants above.
+  const [stinger, setStinger] = useState<{
+    key: number;
+    label: string;
+    workspaceLabel: string;
+    icon: NavIcon;
+    signature: Signature;
+  } | null>(null);
+  const stingerTimer = useRef<number | null>(null);
+  const stingerPreviousView = useRef(activeView);
+  useEffect(() => {
+    if (stingerPreviousView.current === activeView) return;
+    stingerPreviousView.current = activeView;
+    if (reducedMotion) return;
+    const tab = tabOfView(activeView);
+    if (!tab) return;
+    setStinger({
+      key: Date.now(),
+      label: tab.label,
+      workspaceLabel: workspaceOfView(activeView)?.label ?? "",
+      icon: tab.icon,
+      signature: tab.signature,
+    });
+    if (stingerTimer.current !== null) window.clearTimeout(stingerTimer.current);
+    stingerTimer.current = window.setTimeout(() => setStinger(null), STINGER_HOLD_MS);
+  }, [activeView, reducedMotion]);
+  useEffect(
+    () => () => {
+      if (stingerTimer.current !== null) window.clearTimeout(stingerTimer.current);
+    },
+    [],
+  );
+
   const visibleWalkthroughSteps = useMemo(
     () => buildVisibleWalkthroughSteps(visibleNavItems),
     [visibleNavItems],
@@ -1990,6 +2092,29 @@ export function App() {
           </nav>
         ) : null}
 
+        <div className="view-canvas">
+        <AnimatePresence>
+          {stinger ? (
+            <motion.div
+              className="view-stinger"
+              key={stinger.key}
+              data-signature={stinger.signature}
+              variants={stingerVariants(stinger.signature)}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+              aria-hidden="true"
+            >
+              <div className="view-stinger-inner">
+                <span className="view-stinger-icon">
+                  <stinger.icon size={34} aria-hidden="true" />
+                </span>
+                <strong className="view-stinger-label">{stinger.label}</strong>
+                {stinger.workspaceLabel ? <span className="view-stinger-sub">{stinger.workspaceLabel}</span> : null}
+              </div>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
         <AnimatePresence mode="wait" initial={false}>
         <motion.div
           className="view-stage"
@@ -2159,6 +2284,7 @@ export function App() {
         ) : null}
         </motion.div>
         </AnimatePresence>
+        </div>
         {isWalkthroughOpen ? (
           <GuidedWalkthrough
             onClose={handleCloseWalkthrough}
