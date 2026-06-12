@@ -6047,122 +6047,361 @@ function DispatchesView({
 }
 
 function ReceiptsView({ receipts }: { receipts: Receipt[] }) {
+  const totalUnits = receipts.reduce((sum, receipt) => sum + receipt.quantity, 0);
+  const grnCount = new Set(receipts.map((receipt) => receipt.grnNo)).size;
+  const supplierCount = new Set(receipts.map((receipt) => receipt.supplier)).size;
+  const warehouseCount = new Set(receipts.map((receipt) => receipt.warehouse)).size;
   return (
-    <Panel title="Goods receipts" meta="Inventory increasing transaction">
-      <table>
-        <thead>
-          <tr>
-            <th>GRN No</th>
-            <th>Receipt Date</th>
-            <th>Warehouse</th>
-            <th>Supplier</th>
-            <th>Item Code</th>
-            <th>Batch</th>
-            <th>Quantity</th>
-            <th>Expiry</th>
-          </tr>
-        </thead>
-        <tbody>
-          {receipts.map((receipt) => (
-            <tr key={receipt.grnNo}>
-              <td>{receipt.grnNo}</td>
-              <td>{receipt.receiptDate}</td>
-              <td>{receipt.warehouse}</td>
-              <td>{receipt.supplier}</td>
-              <td>{receipt.itemCode}</td>
-              <td>{receipt.batch}</td>
-              <td>{receipt.quantity}</td>
-              <td>{receipt.expiryDate}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </Panel>
+    <div className="ops-stage">
+      <section className="cockpit-hero">
+        <div className="cockpit-hero-top">
+          <div>
+            <p className="eyebrow">Operations · Goods receipts</p>
+            <h2>
+              {receipts.length === 0
+                ? "No goods receipts posted yet"
+                : `${formatNumber(totalUnits)} units received across ${grnCount} GRN${grnCount === 1 ? "" : "s"}`}
+            </h2>
+          </div>
+        </div>
+        <div className="vitals-row">
+          <div className="vital">
+            <strong>{receipts.length}</strong>
+            <span>Receipt lines</span>
+          </div>
+          <div className="vital">
+            <strong>{grnCount}</strong>
+            <span>GRNs</span>
+          </div>
+          <div className="vital">
+            <strong>{supplierCount}</strong>
+            <span>Suppliers</span>
+          </div>
+          <div className="vital">
+            <strong>{warehouseCount}</strong>
+            <span>Warehouses</span>
+          </div>
+        </div>
+      </section>
+      <section className="panel cockpit-panel">
+        <div className="panel-heading">
+          <div className="worklist-title">
+            <FileSpreadsheet size={16} aria-hidden="true" />
+            <h2>Receipt lines</h2>
+          </div>
+          <span className="cc-panel-meta">{receipts.length}</span>
+        </div>
+        {receipts.length === 0 ? (
+          <p className="empty-state">
+            Goods receipts appear here after an approved import is posted into stock. Approve an
+            import in Import Validation to create the first one.
+          </p>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>GRN No</th>
+                <th>Receipt Date</th>
+                <th>Warehouse</th>
+                <th>Supplier</th>
+                <th>Item Code</th>
+                <th>Batch</th>
+                <th>Quantity</th>
+                <th>Expiry</th>
+              </tr>
+            </thead>
+            <tbody>
+              {receipts.map((receipt) => (
+                <tr key={receipt.grnNo}>
+                  <td>{receipt.grnNo}</td>
+                  <td>{receipt.receiptDate}</td>
+                  <td>{receipt.warehouse}</td>
+                  <td>{receipt.supplier}</td>
+                  <td>{receipt.itemCode}</td>
+                  <td>{receipt.batch}</td>
+                  <td>{formatNumber(receipt.quantity)}</td>
+                  <td>{receipt.expiryDate}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+    </div>
   );
 }
 
 function CountsView({ counts }: { counts: CountLine[] }) {
+  const matched = counts.filter((count) => count.physicalQty === count.systemQty).length;
+  const excess = counts.filter((count) => count.physicalQty > count.systemQty).length;
+  const deficit = counts.filter((count) => count.physicalQty < count.systemQty).length;
+  const varianceLines = counts.length - matched;
   return (
-    <Panel title="Physical inventory counts" meta="Variance control">
-      <table>
-        <thead>
-          <tr>
-            <th>Count ID</th>
-            <th>Warehouse</th>
-            <th>Item Code</th>
-            <th>Batch</th>
-            <th>System Qty</th>
-            <th>Physical Qty</th>
-            <th>Variance</th>
-            <th>Type</th>
-          </tr>
-        </thead>
-        <tbody>
-          {counts.map((count) => {
-            const variance = count.physicalQty - count.systemQty;
-            return (
-              <tr key={`${count.countId}-${count.itemCode}`}>
-                <td>{count.countId}</td>
-                <td>{count.warehouse}</td>
-                <td>{count.itemCode}</td>
-                <td>{count.batch}</td>
-                <td>{count.systemQty}</td>
-                <td>{count.physicalQty}</td>
-                <td>{variance}</td>
-                <td><StatusTag label={variance > 0 ? "Excess" : variance < 0 ? "Deficit" : "Matched"} /></td>
+    <div className="ops-stage">
+      <section className="cockpit-hero">
+        <div className="cockpit-hero-top">
+          <div>
+            <p className="eyebrow">Operations · Physical counts</p>
+            <h2>
+              {counts.length === 0
+                ? "No count lines recorded yet"
+                : varianceLines === 0
+                  ? "Every counted line matches the system"
+                  : `${varianceLines} of ${counts.length} count lines show variance`}
+            </h2>
+          </div>
+        </div>
+        {counts.length > 0 ? (
+          <>
+            <div
+              className="seg-bar"
+              role="img"
+              aria-label={`${matched} matched, ${excess} excess, ${deficit} deficit`}
+            >
+              {matched > 0 ? <span className="seg-good" style={{ flexGrow: matched }} /> : null}
+              {excess > 0 ? <span className="seg-warn" style={{ flexGrow: excess }} /> : null}
+              {deficit > 0 ? <span className="seg-bad" style={{ flexGrow: deficit }} /> : null}
+            </div>
+            <ul className="seg-legend">
+              <li>
+                <span className="seg-dot seg-good" aria-hidden="true" /> Matched <strong>{matched}</strong>
+              </li>
+              <li>
+                <span className="seg-dot seg-warn" aria-hidden="true" /> Excess <strong>{excess}</strong>
+              </li>
+              <li>
+                <span className="seg-dot seg-bad" aria-hidden="true" /> Deficit <strong>{deficit}</strong>
+              </li>
+            </ul>
+          </>
+        ) : null}
+      </section>
+      <section className="panel cockpit-panel">
+        <div className="panel-heading">
+          <div className="worklist-title">
+            <ClipboardCheck size={16} aria-hidden="true" />
+            <h2>Count lines</h2>
+          </div>
+          <span className="cc-panel-meta">{counts.length}</span>
+        </div>
+        {counts.length === 0 ? (
+          <p className="empty-state">
+            Physical count results appear here once a warehouse count is recorded. Variances are
+            highlighted so reconciliation can start immediately.
+          </p>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>Count ID</th>
+                <th>Warehouse</th>
+                <th>Item Code</th>
+                <th>Batch</th>
+                <th>System Qty</th>
+                <th>Physical Qty</th>
+                <th>Variance</th>
+                <th>Type</th>
               </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </Panel>
+            </thead>
+            <tbody>
+              {counts.map((count) => {
+                const variance = count.physicalQty - count.systemQty;
+                return (
+                  <tr key={`${count.countId}-${count.itemCode}`}>
+                    <td>{count.countId}</td>
+                    <td>{count.warehouse}</td>
+                    <td>{count.itemCode}</td>
+                    <td>{count.batch}</td>
+                    <td>{count.systemQty}</td>
+                    <td>{count.physicalQty}</td>
+                    <td>{variance > 0 ? `+${variance}` : variance}</td>
+                    <td>
+                      <span
+                        className={`dot-pill ${
+                          variance > 0 ? "tone-warn" : variance < 0 ? "tone-bad" : "tone-good"
+                        }`}
+                      >
+                        <span className="seg-dot" aria-hidden="true" />
+                        {variance > 0 ? "Excess" : variance < 0 ? "Deficit" : "Matched"}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </section>
+    </div>
   );
 }
 
 function ExpiryView({ inventory }: { inventory: InventoryBatch[] }) {
+  const bands = [
+    { label: "0-90 Days", tone: "bad" },
+    { label: "91-180 Days", tone: "warn" },
+    { label: "181-365 Days", tone: "info" },
+    { label: "Above 365 Days", tone: "good" },
+  ] as const;
+  const bandCounts = bands.map((band) => ({
+    ...band,
+    count: inventory.filter((batch) => batch.expiryBucket === band.label).length,
+  }));
+  const urgent = bandCounts[0].count;
   return (
-    <section className="content-grid wide-left">
-      <Panel title="Expiry management" meta="Days to expiry">
-        <InventoryTable rows={inventory} />
-      </Panel>
-      <Panel title="Expiry buckets" meta="Alert bands">
-        {["0-90 Days", "91-180 Days", "181-365 Days", "Above 365 Days"].map((bucket) => (
-          <div className="bucket-row" key={bucket}>
-            <span>{bucket}</span>
-            <strong>{inventory.filter((batch) => batch.expiryBucket === bucket).length}</strong>
+    <div className="ops-stage">
+      <section className="cockpit-hero">
+        <div className="cockpit-hero-top">
+          <div>
+            <p className="eyebrow">Operations · Expiry watch</p>
+            <h2>
+              {inventory.length === 0
+                ? "No batches under expiry watch"
+                : urgent > 0
+                  ? `${urgent} batch${urgent === 1 ? "" : "es"} inside the 90-day window`
+                  : "No batches inside the 90-day window"}
+            </h2>
           </div>
-        ))}
-      </Panel>
-    </section>
+        </div>
+        {inventory.length > 0 ? (
+          <>
+            <div
+              className="seg-bar"
+              role="img"
+              aria-label={bandCounts.map((band) => `${band.label}: ${band.count}`).join(", ")}
+            >
+              {bandCounts
+                .filter((band) => band.count > 0)
+                .map((band) => (
+                  <span key={band.label} className={`seg-${band.tone}`} style={{ flexGrow: band.count }} />
+                ))}
+            </div>
+            <ul className="seg-legend">
+              {bandCounts.map((band) => (
+                <li key={band.label}>
+                  <span className={`seg-dot seg-${band.tone}`} aria-hidden="true" /> {band.label}{" "}
+                  <strong>{band.count}</strong>
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : null}
+      </section>
+      <section className="content-grid wide-left">
+        <Panel title="Expiry management" meta="Days to expiry">
+          {inventory.length === 0 ? (
+            <p className="empty-state">
+              Batches join the expiry watch as soon as goods are received with an expiry date. The
+              nearest-dated stock always sorts to the top.
+            </p>
+          ) : (
+            <InventoryTable rows={inventory} />
+          )}
+        </Panel>
+        <Panel title="Expiry pressure" meta="Share of batches per band">
+          {inventory.length === 0 ? (
+            <p className="empty-state">No expiry bands to show yet.</p>
+          ) : (
+            <div className="score-stack">
+              {bandCounts.map((band) => {
+                const pct = Math.round((band.count / inventory.length) * 100);
+                return (
+                  <div className="score-row" key={band.label}>
+                    <div className="score-row-head">
+                      <span>{band.label}</span>
+                      <strong>
+                        {band.count} · {pct}%
+                      </strong>
+                    </div>
+                    <div className="score-row-track">
+                      <div
+                        className={`score-row-fill${band.tone === "info" ? "" : ` tone-${band.tone}`}`}
+                        style={{ width: `${band.count > 0 ? Math.max(pct, 4) : 0}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Panel>
+      </section>
+    </div>
   );
 }
 
 function CustomersView({ customers }: { customers: Customer[] }) {
+  const markets = new Set(customers.map((customer) => customer.country)).size;
+  const typeCount = new Set(customers.map((customer) => customer.type)).size;
   return (
-    <Panel title="Customer master" meta="Linked to shipments">
-      <table>
-        <thead>
-          <tr>
-            <th>Customer Code</th>
-            <th>Name</th>
-            <th>Country</th>
-            <th>Type</th>
-            <th>Contact</th>
-          </tr>
-        </thead>
-        <tbody>
-          {customers.map((customer) => (
-            <tr key={customer.code}>
-              <td>{customer.code}</td>
-              <td>{customer.name}</td>
-              <td>{customer.country}</td>
-              <td>{customer.type}</td>
-              <td>{customer.contact}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </Panel>
+    <div className="ops-stage">
+      <section className="cockpit-hero">
+        <div className="cockpit-hero-top">
+          <div>
+            <p className="eyebrow">Commercial · Customer master</p>
+            <h2>
+              {customers.length === 0
+                ? "No customers on file yet"
+                : `${customers.length} customer${customers.length === 1 ? "" : "s"} across ${markets} market${
+                    markets === 1 ? "" : "s"
+                  }`}
+            </h2>
+          </div>
+        </div>
+        <div className="vitals-row">
+          <div className="vital">
+            <strong>{customers.length}</strong>
+            <span>Customers</span>
+          </div>
+          <div className="vital">
+            <strong>{markets}</strong>
+            <span>Markets</span>
+          </div>
+          <div className="vital">
+            <strong>{typeCount}</strong>
+            <span>Customer types</span>
+          </div>
+        </div>
+      </section>
+      <section className="panel cockpit-panel">
+        <div className="panel-heading">
+          <div className="worklist-title">
+            <Users size={16} aria-hidden="true" />
+            <h2>Customer master</h2>
+          </div>
+          <span className="cc-panel-meta">{customers.length}</span>
+        </div>
+        {customers.length === 0 ? (
+          <p className="empty-state">
+            Customers are learned from your own documents — create a shipment request or approve an
+            import and the customer is remembered here for reuse.
+          </p>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>Customer Code</th>
+                <th>Name</th>
+                <th>Country</th>
+                <th>Type</th>
+                <th>Contact</th>
+              </tr>
+            </thead>
+            <tbody>
+              {customers.map((customer) => (
+                <tr key={customer.code}>
+                  <td>{customer.code}</td>
+                  <td>{customer.name}</td>
+                  <td>{customer.country}</td>
+                  <td>{customer.type}</td>
+                  <td>{customer.contact}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+    </div>
   );
 }
 

@@ -726,3 +726,155 @@
   .league-bar span,
   .country-selector { transition: none; }
 }
+
+/* ============================================================
+   Phase 5B — reference-informed patterns
+   Control-tower glass: big figures with delta chips, stacked
+   segment bars, labeled score bars, numbered shipment rows,
+   status dot-pills, and dense grids with hover tint + tabular
+   figures. Everything reads from --tower-* / --country-accent*
+   so both themes work without per-component overrides.
+   ============================================================ */
+
+.ops-stage { display: grid; gap: 18px; }
+
+/* ---- Delta chip: "+2.1% from last hour" ---- */
+.delta-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.delta-chip.delta-up { background: color-mix(in srgb, var(--tower-emerald, #34d399) 16%, transparent); color: var(--tower-emerald, #34d399); }
+.delta-chip.delta-down { background: color-mix(in srgb, var(--tower-crimson, #f87171) 16%, transparent); color: var(--tower-crimson, #f87171); }
+.delta-chip.delta-flat { background: color-mix(in srgb, var(--tower-muted, #93a3b4) 16%, transparent); color: var(--tower-muted, #93a3b4); }
+
+/* ---- Stacked segment bar + dot legend (status distribution) ---- */
+.seg-bar {
+  display: flex;
+  gap: 3px;
+  height: 10px;
+  border-radius: 999px;
+  overflow: hidden;
+}
+.seg-bar span {
+  display: block;
+  height: 100%;
+  min-width: 6px;
+  border-radius: 999px;
+  transition: flex-grow 0.4s var(--ease-out);
+}
+.seg-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  color: var(--tower-muted, #93a3b4);
+}
+.seg-legend li { display: inline-flex; align-items: center; gap: 7px; }
+.seg-legend strong { color: var(--tower-text, #e6edf3); font-variant-numeric: tabular-nums; font-size: 12.5px; }
+.seg-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
+.seg-good { background: var(--tower-emerald, #34d399); }
+.seg-warn { background: var(--tower-amber, #fbbf24); }
+.seg-bad { background: var(--tower-crimson, #f87171); }
+.seg-info { background: var(--country-accent); }
+.seg-neutral { background: color-mix(in srgb, var(--tower-muted, #93a3b4) 38%, transparent); }
+
+/* ---- Labeled score bar (system health / capacity) ---- */
+.score-stack { display: grid; gap: 13px; }
+.score-row { display: grid; gap: 6px; }
+.score-row-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12.5px;
+}
+.score-row-head span { color: var(--tower-muted, #93a3b4); }
+.score-row-head strong { font-variant-numeric: tabular-nums; font-size: 13px; }
+.score-row-track {
+  height: 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--tower-muted, #93a3b4) 16%, transparent);
+  overflow: hidden;
+}
+.score-row-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--country-accent) 55%, transparent), var(--country-accent));
+  box-shadow: 0 0 12px var(--country-accent-glow);
+  transition: width 0.4s var(--ease-out);
+}
+.score-row-fill.tone-good { background: linear-gradient(90deg, color-mix(in srgb, var(--tower-emerald, #34d399) 55%, transparent), var(--tower-emerald, #34d399)); box-shadow: 0 0 12px color-mix(in srgb, var(--tower-emerald, #34d399) 30%, transparent); }
+.score-row-fill.tone-warn { background: linear-gradient(90deg, color-mix(in srgb, var(--tower-amber, #fbbf24) 55%, transparent), var(--tower-amber, #fbbf24)); box-shadow: 0 0 12px color-mix(in srgb, var(--tower-amber, #fbbf24) 30%, transparent); }
+.score-row-fill.tone-bad { background: linear-gradient(90deg, color-mix(in srgb, var(--tower-crimson, #f87171) 55%, transparent), var(--tower-crimson, #f87171)); box-shadow: 0 0 12px color-mix(in srgb, var(--tower-crimson, #f87171) 30%, transparent); }
+
+/* ---- Numbered rows (realtime shipping pattern) ---- */
+.num-rows { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.num-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  border-radius: 12px;
+  background: var(--tower-bg-2, #0e151d);
+  transition: background 0.18s var(--ease-out);
+}
+.num-row:hover { background: color-mix(in srgb, var(--country-accent) 9%, var(--tower-bg-2, #0e151d)); }
+.num-row-index {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  border-radius: 8px;
+  background: var(--tower-panel-strong, #1b2530);
+  color: var(--tower-muted, #93a3b4);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.num-row-main { display: grid; gap: 2px; min-width: 0; flex: 1; }
+.num-row-main strong { font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.num-row-main small { color: var(--tower-muted, #93a3b4); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.num-row-route { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
+.num-row-route svg { flex: 0 0 auto; color: var(--tower-muted, #93a3b4); }
+
+/* ---- Status dot-pill (coloured dot + label) ---- */
+.dot-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  background: color-mix(in srgb, var(--tower-muted, #93a3b4) 14%, transparent);
+  color: var(--tower-muted, #93a3b4);
+}
+.dot-pill .seg-dot { background: currentColor; width: 7px; height: 7px; }
+.dot-pill.tone-good { background: color-mix(in srgb, var(--tower-emerald, #34d399) 14%, transparent); color: var(--tower-emerald, #34d399); }
+.dot-pill.tone-warn { background: color-mix(in srgb, var(--tower-amber, #fbbf24) 14%, transparent); color: var(--tower-amber, #fbbf24); }
+.dot-pill.tone-bad { background: color-mix(in srgb, var(--tower-crimson, #f87171) 14%, transparent); color: var(--tower-crimson, #f87171); }
+.dot-pill.tone-info { background: color-mix(in srgb, var(--country-accent) 14%, transparent); color: var(--country-accent); }
+
+/* ---- Dense grid polish: hover tint + tabular figures ---- */
+.panel table { font-variant-numeric: tabular-nums; }
+.panel tbody tr { transition: background 0.18s var(--ease-out); }
+.panel tbody tr:hover { background: color-mix(in srgb, var(--country-accent) 7%, transparent); }
+
+@media (prefers-reduced-motion: reduce) {
+  .score-row-fill,
+  .seg-bar span,
+  .num-row,
+  .panel tbody tr { transition: none; }
+}

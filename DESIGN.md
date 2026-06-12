@@ -82,3 +82,28 @@ Tokens in `frontend/src/motion/motion.ts`. Fast 0.18s · base 0.24s · slow 0.4s
   (re-mount keyed by country).
 - Lists stagger at 0.04s per item. Never gate visibility on animation.
 - Every animation has a `prefers-reduced-motion` fallback (crossfade or none).
+
+## Reference patterns (Phase 5B)
+
+Adopted from the user's SCM reference set (VeloHub-style control tower, dark
+navy glass explorer, GreenStory/HexaSupply dashboards, fleet tracking). CSS in
+`styles.phase5a.css` under "Phase 5B". All read `--tower-*`/`--country-accent*`
+so they work in both themes.
+
+- **Delta chip** `.delta-chip.delta-up|down|flat` — "+2.1% from last hour"
+  pill next to a big figure. Green up, crimson down, muted flat.
+- **Stacked segment bar** `.seg-bar` + `.seg-legend` — one horizontal bar
+  showing a status distribution (good/warn/bad/info/neutral segments), dot
+  legend with counts underneath. Use for queue mix, expiry buckets, variance.
+- **Score bar** `.score-row` — labeled progress with value on the right and
+  a glowing tonal fill. Use for capacity, health, utilisation.
+- **Numbered rows** `.num-rows > .num-row` — index chip, primary line,
+  muted route line (`origin → destination`), status dot-pill on the right.
+  Use for realtime shipments, queues, top-N lists.
+- **Status dot-pill** `.dot-pill.tone-*` — coloured dot + label in a tinted
+  pill; replaces bare text status where a grid cell is too heavy.
+- **Dense grids** — every `.panel table` gets tabular figures and an
+  accent-tinted row hover. Zero-row tables must render a `.empty-state`
+  paragraph instead of a bare header row.
+- **Hero vitals** — big `clamp()` figures (`.vitals-row .vital`) with tone
+  colours, optionally paired with a delta chip, inside `.cockpit-hero`.
