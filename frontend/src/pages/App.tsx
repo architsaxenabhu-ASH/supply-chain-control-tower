@@ -1,7 +1,30 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ComponentType, ReactNode } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { CommandCenter } from "../workspaces/command/CommandCenter";
+import { MyWork } from "../workspaces/queues/MyWork";
+import { ApprovalCenter } from "../workspaces/approvals/ApprovalCenter";
+import { ReviewCenter } from "../workspaces/reviews/ReviewCenter";
+import { DecisionCenter } from "../workspaces/decisions/DecisionCenter";
+import { CommercialPerformance } from "../workspaces/commercial/CommercialPerformance";
+import { Receivables } from "../workspaces/commercial/Receivables";
+import { Payables } from "../workspaces/commercial/Payables";
+import { Consignment } from "../workspaces/operations/Consignment";
+import { Returns } from "../workspaces/operations/Returns";
+import { Commitments } from "../workspaces/operations/Commitments";
+import { AccessCenter } from "../workspaces/access/AccessCenter";
 import { CountryProvider, CountrySelector } from "../context/CountryContext";
+import {
+  ALL_TABS,
+  canAccessView,
+  hasPermission,
+  tabOfView,
+  visibleTabs,
+  visibleWorkspaces,
+  workspaceOfView,
+  type WorkspaceDef,
+} from "../app/nav";
+import { prefersReducedMotion, signatureVariants } from "../motion/motion";
 import {
   Activity,
   BarChart3,
@@ -453,29 +476,9 @@ const fallbackSecurityOverview: ApiSecurityOverview = {
   approval_rules: [],
 };
 
-const navItems = [
-  { id: "command-center", label: "Command Center", icon: Gauge },
-  { id: "dashboard", label: "Dashboard", icon: BarChart3 },
-  { id: "analytics", label: "Analytics", icon: Gauge },
-  { id: "goods-tracking", label: "Goods Tracking", icon: RadioTower },
-  { id: "traceability", label: "Traceability", icon: GitBranch },
-  { id: "platform-progress", label: "Progress", icon: GitBranch },
-  { id: "documents", label: "Documents", icon: FileUp },
-  { id: "import-validation", label: "Import Validation", icon: ClipboardCheck },
-  { id: "erp-uploads", label: "ERP Upload", icon: Upload },
-  { id: "products", label: "Products", icon: Package },
-  { id: "inventory", label: "Inventory", icon: Boxes },
-  { id: "shipments", label: "Shipments", icon: Ship },
-  { id: "dispatches", label: "Dispatches", icon: Truck },
-  { id: "receipts", label: "Receipts", icon: FileSpreadsheet },
-  { id: "counts", label: "Counts", icon: ClipboardCheck },
-  { id: "expiry", label: "Expiry", icon: ClipboardList },
-  { id: "customers", label: "Customers", icon: Users },
-  { id: "security", label: "Security", icon: ShieldCheck },
-  { id: "audit", label: "Audit", icon: History },
-  { id: "learning", label: "Learning", icon: BrainCircuit },
-  { id: "assistant", label: "Assistant", icon: Bot },
-];
+// Flat tab list derived from the workspace registry (app/nav.ts) — keeps
+// hash routing, walkthrough, and view lookups working unchanged.
+const navItems = ALL_TABS;
 
 const platformCapabilities: PlatformCapability[] = [
   {
@@ -1764,6 +1767,29 @@ export function App() {
     () => navItems.filter((item) => canAccessView(currentUser, item.id)),
     [currentUser],
   );
+  // Workspace shell (Phase 5A): rail shows workspaces; tabs show the active
+  // workspace's screens. activeView stays the single source of truth.
+  const activeWorkspace = workspaceOfView(activeView);
+  const activeTab = tabOfView(activeView);
+  const workspaceRail = useMemo(() => visibleWorkspaces(currentUser), [currentUser]);
+  const activeWorkspaceTabs = useMemo(
+    () => (activeWorkspace ? visibleTabs(currentUser, activeWorkspace) : []),
+    [currentUser, activeWorkspace],
+  );
+  const lastTabByWorkspace = useRef<Record<string, string>>({});
+  useEffect(() => {
+    if (activeWorkspace) {
+      lastTabByWorkspace.current[activeWorkspace.id] = activeView;
+    }
+  }, [activeView, activeWorkspace]);
+  const openWorkspace = (workspace: WorkspaceDef) => {
+    const tabs = visibleTabs(currentUser, workspace);
+    if (tabs.length === 0) return;
+    const remembered = lastTabByWorkspace.current[workspace.id];
+    const target = tabs.find((tab) => tab.id === remembered) ?? tabs[0];
+    setActiveView(target.id);
+  };
+  const reducedMotion = prefersReducedMotion();
   const visibleWalkthroughSteps = useMemo(
     () => buildVisibleWalkthroughSteps(visibleNavItems),
     [visibleNavItems],
@@ -1877,24 +1903,34 @@ export function App() {
             <span>Supply Chain Control Tower</span>
           </div>
         </div>
-        <nav className="nav-list" aria-label="Primary navigation">
-          {visibleNavItems.map((item) => (
-            <button
-              className={activeView === item.id ? "nav-item active" : "nav-item"}
-              key={item.id}
-              onClick={() => setActiveView(item.id)}
-            >
-              <item.icon size={18} aria-hidden="true" />
-              <span>{item.label}</span>
-            </button>
-          ))}
+        <nav className="ws-rail" aria-label="Workspaces">
+          {workspaceRail.map((workspace) => {
+            const isActive = workspace.id === activeWorkspace?.id;
+            return (
+              <button
+                className={isActive ? "ws-item active" : "ws-item"}
+                key={workspace.id}
+                onClick={() => openWorkspace(workspace)}
+                aria-current={isActive ? "page" : undefined}
+                title={workspace.label}
+              >
+                <workspace.icon size={18} aria-hidden="true" />
+                <span className="ws-item-label">{workspace.label}</span>
+                {isActive && !reducedMotion ? (
+                  <motion.span className="ws-item-pip" layoutId="ws-item-pip" aria-hidden="true" />
+                ) : isActive ? (
+                  <span className="ws-item-pip" aria-hidden="true" />
+                ) : null}
+              </button>
+            );
+          })}
         </nav>
       </aside>
 
       <section className="workspace">
         <header className="topbar">
           <div>
-            <p className="eyebrow">Medical Device Supply Chain</p>
+            <p className="eyebrow">{activeWorkspace?.label ?? "Medical Device Supply Chain"}</p>
             <h1>{activeNav.label}</h1>
           </div>
           <div className="topbar-actions">
@@ -1927,10 +1963,49 @@ export function App() {
           </div>
         </header>
 
-        <div className="view-stage" key={activeView}>
+        {activeWorkspaceTabs.length > 1 ? (
+          <nav className="ws-tabs" aria-label={`${activeWorkspace?.label ?? "Workspace"} sections`}>
+            {activeWorkspaceTabs.map((tab) => {
+              const isActive = tab.id === activeView;
+              return (
+                <button
+                  className={isActive ? "ws-tab active" : "ws-tab"}
+                  key={tab.id}
+                  onClick={() => setActiveView(tab.id)}
+                  aria-current={isActive ? "page" : undefined}
+                >
+                  <tab.icon size={15} aria-hidden="true" />
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+          </nav>
+        ) : null}
+
+        <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          className="view-stage"
+          key={activeView}
+          variants={signatureVariants(activeTab?.signature ?? "fade", reducedMotion)}
+          initial="initial"
+          animate="animate"
+          exit="exit"
+        >
         {activeView === "command-center" ? (
           <CommandCenter currentUser={currentUser} onNavigate={setActiveView} />
         ) : null}
+        {activeView === "my-work" ? (
+          <MyWork currentUser={currentUser} onNavigate={setActiveView} />
+        ) : null}
+        {activeView === "approvals" ? <ApprovalCenter currentUser={currentUser} /> : null}
+        {activeView === "reviews" ? <ReviewCenter currentUser={currentUser} /> : null}
+        {activeView === "decision-center" ? <DecisionCenter currentUser={currentUser} /> : null}
+        {activeView === "commercial" ? <CommercialPerformance currentUser={currentUser} /> : null}
+        {activeView === "receivables" ? <Receivables currentUser={currentUser} /> : null}
+        {activeView === "payables" ? <Payables currentUser={currentUser} /> : null}
+        {activeView === "consignment" ? <Consignment /> : null}
+        {activeView === "returns" ? <Returns currentUser={currentUser} /> : null}
+        {activeView === "commitments" ? <Commitments /> : null}
         {activeView === "dashboard" ? (
           <DashboardView
             expiredInventoryCount={expiredInventoryCount}
@@ -2048,15 +2123,7 @@ export function App() {
         {activeView === "counts" ? <CountsView counts={counts} /> : null}
         {activeView === "expiry" ? <ExpiryView inventory={inventory} /> : null}
         {activeView === "customers" ? <CustomersView customers={customers} /> : null}
-        {activeView === "security" ? (
-          <SecurityView
-            currentUser={currentUser}
-            message={securityMessage}
-            onSaveApprovalRule={handleSaveApprovalRule}
-            onSaveUser={handleSaveSecurityUser}
-            securityOverview={securityOverview}
-          />
-        ) : null}
+        {activeView === "security" ? <AccessCenter currentUser={currentUser} /> : null}
         {activeView === "audit" ? <AuditView auditEvents={auditEvents} /> : null}
         {activeView === "learning" ? <LearningCenterView insights={learningInsights} /> : null}
         {activeView === "assistant" ? (
@@ -2079,7 +2146,8 @@ export function App() {
             shipments={shipments}
           />
         ) : null}
-        </div>
+        </motion.div>
+        </AnimatePresence>
         {isWalkthroughOpen ? (
           <GuidedWalkthrough
             onClose={handleCloseWalkthrough}
@@ -5171,48 +5239,7 @@ function matchesScopeValue(ruleValue: string, requestedValue: string) {
   return ruleValue.toLowerCase() === "all" || ruleValue.toLowerCase() === requestedValue.toLowerCase();
 }
 
-function hasPermission(user: ApiAuthenticatedUser | null, permission: string) {
-  if (!user) {
-    return false;
-  }
-  return user.role_name === "Admin" || user.permissions.includes(permission);
-}
-
-function canAccessView(user: ApiAuthenticatedUser | null, viewId: string) {
-  if (!user) {
-    return false;
-  }
-  if (
-    user.role_name === "Admin" ||
-    viewId === "command-center" ||
-    viewId === "dashboard" ||
-    viewId === "analytics" ||
-    viewId === "goods-tracking" ||
-    viewId === "traceability" ||
-    viewId === "assistant" ||
-    viewId === "platform-progress" ||
-    viewId === "learning"
-  ) {
-    return true;
-  }
-
-  const permissionByView: Record<string, string[]> = {
-    documents: ["import_approval", "goods_receipt"],
-    "import-validation": ["import_approval", "goods_receipt"],
-    "erp-uploads": ["reports_export", "import_approval", "goods_receipt"],
-    products: ["masters"],
-    inventory: ["goods_receipt", "inventory_approval", "inventory_value", "expiry_review"],
-    shipments: ["shipment_request", "shipment_approval"],
-    dispatches: ["dispatch", "dispatch_approval"],
-    receipts: ["goods_receipt"],
-    counts: ["inventory_count", "reconciliation"],
-    expiry: ["expiry_review", "batch_traceability"],
-    customers: ["customer_read", "shipment_request"],
-    security: ["security"],
-    audit: ["audit"],
-  };
-  return (permissionByView[viewId] ?? []).some((permission) => user.permissions.includes(permission));
-}
+// hasPermission / canAccessView now live in app/nav.ts (workspace registry).
 
 function buildVisibleWalkthroughSteps(
   items: Array<{ id: string; label: string; icon: IconComponent }>,
@@ -6609,13 +6636,7 @@ function parseMetricNumber(value: string) {
   return { prefix, suffix, target, formatter };
 }
 
-function prefersReducedMotion(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches
-  );
-}
+// prefersReducedMotion now imported from ../motion/motion.
 
 // Counts a metric up from zero to its final value on mount. Falls back to the
 // plain value for non-numeric strings or when the user prefers reduced motion.

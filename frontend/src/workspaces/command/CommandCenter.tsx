@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, useAnimationFrame } from "framer-motion";
-import { ArrowUpRight, CheckCircle2, GitBranch, Globe2, Radar, ScrollText } from "lucide-react";
+import { ArrowUpRight, CheckCircle2, GitBranch, Globe2, Radar, ScrollText, TrendingUp } from "lucide-react";
 
 import {
   fetchApprovals,
@@ -9,12 +9,14 @@ import {
   fetchExecutiveActions,
   fetchExecutiveCommandCenterV3,
   fetchReview,
+  fetchVerticalPerformance,
   type ApiApproval,
   type ApiAuthenticatedUser,
   type ApiCountryPerformance,
   type ApiDecision,
   type ApiExecutiveAction,
   type ApiExecutiveCommandCenterV3,
+  type ApiPerformanceScorecard,
 } from "../../lib/api";
 import { CountryEnvironment, useCountry, type EnvironmentVital } from "../../context/CountryContext";
 import { itemVariants, listVariants, prefersReducedMotion } from "../../motion/motion";
@@ -110,8 +112,24 @@ export function CommandCenter({
   const [approvals, setApprovals] = useState<ApiApproval[]>([]);
   const [decisions, setDecisions] = useState<ApiDecision[]>([]);
   const [performance, setPerformance] = useState<ApiCountryPerformance[]>([]);
+  const [verticals, setVerticals] = useState<ApiPerformanceScorecard[]>([]);
   const [reviewCounts, setReviewCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
+
+  // Vertical achievement follows the selected country environment.
+  useEffect(() => {
+    let active = true;
+    fetchVerticalPerformance(country || undefined)
+      .then((rows) => {
+        if (active) setVerticals(rows);
+      })
+      .catch(() => {
+        if (active) setVerticals([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [country]);
 
   useEffect(() => {
     let active = true;
@@ -285,30 +303,14 @@ export function CommandCenter({
         )}
       </section>
 
-      {/* Country league (general manager / country) */}
-      {(lens === "general_manager" || lens === "country_manager") && performance.length > 0 ? (
-        <section className="panel cockpit-panel">
-          <div className="panel-heading">
-            <h2>{country ? `${country} performance` : "Country performance"}</h2>
-            <span>{country ? "your station" : "the map"}</span>
-          </div>
-          <div className="league">
-            {(country ? performance.filter((p) => p.name.toLowerCase() === country.toLowerCase()) : performance).slice(0, 6).map((row) => (
-              <div className="league-row" key={row.name}>
-                <span className="league-name">{row.name}</span>
-                <div className="league-bar">
-                  <span style={{ width: `${Math.min(row.value_achievement_pct ?? 0, 100)}%` }} data-state={achievementState(row.value_achievement_pct)} />
-                </div>
-                <strong className="league-pct">{row.value_achievement_pct == null ? "—" : `${row.value_achievement_pct}%`}</strong>
-              </div>
-            ))}
-          </div>
-        </section>
+      {/* Sales performance — country + vertical achievement, value + quantity */}
+      {(lens === "general_manager" || lens === "country_manager") && (performance.length > 0 || verticals.length > 0) ? (
+        <SalesPerformance country={country} performance={performance} verticals={verticals} animate={!reduced} />
       ) : null}
 
       {/* Worklists */}
       <div className="cockpit-columns">
-        <Worklist title="My approvals" meta={`${approvals.length} pending`} icon={CheckCircle2} onMore={() => onNavigate("security")}>
+        <Worklist title="My approvals" meta={`${approvals.length} pending`} icon={CheckCircle2} onMore={() => onNavigate("approvals")}>
           {approvals.length === 0 ? (
             <p className="empty-state">No approvals waiting on you.</p>
           ) : (
@@ -318,7 +320,7 @@ export function CommandCenter({
           )}
         </Worklist>
 
-        <Worklist title="Open decisions" meta={`${decisions.length} open`} icon={GitBranch}>
+        <Worklist title="Open decisions" meta={`${decisions.length} open`} icon={GitBranch} onMore={() => onNavigate("decision-center")}>
           {decisions.length === 0 ? (
             <p className="empty-state">No open decisions logged.</p>
           ) : (
@@ -331,7 +333,7 @@ export function CommandCenter({
         <Worklist title="Reviews to run" meta="this week" icon={ScrollText}>
           <div className="cc-reviews">
             {REVIEWS.map((name) => (
-              <button className="cc-review-chip" key={name} type="button" onClick={() => onNavigate("analytics")}>
+              <button className="cc-review-chip" key={name} type="button" onClick={() => onNavigate("reviews")}>
                 <span>{name.replace(/-/g, " ")}</span>
                 <strong>{reviewCounts[name] ?? 0}</strong>
               </button>
@@ -341,6 +343,101 @@ export function CommandCenter({
       </div>
     </div>
   );
+}
+
+// Sales performance: the brief's four lenses — country achievement, vertical
+// achievement, sales value, sales quantity — in one country-aware section.
+function SalesPerformance({
+  country,
+  performance,
+  verticals,
+  animate,
+}: {
+  country: string;
+  performance: ApiCountryPerformance[];
+  verticals: ApiPerformanceScorecard[];
+  animate: boolean;
+}) {
+  const scoped = country
+    ? performance.filter((row) => row.name.toLowerCase() === country.toLowerCase())
+    : performance;
+  const sum = (rows: ApiCountryPerformance[], pick: (row: ApiCountryPerformance) => number) =>
+    rows.reduce((total, row) => total + (pick(row) || 0), 0);
+  const salesValue = sum(scoped, (row) => row.actual_value);
+  const targetValue = sum(scoped, (row) => row.target_value);
+  const salesQuantity = sum(scoped, (row) => row.actual_quantity);
+  const targetQuantity = sum(scoped, (row) => row.target_quantity);
+  const valuePct = targetValue > 0 ? Math.round((salesValue / targetValue) * 100) : null;
+  const quantityPct = targetQuantity > 0 ? Math.round((salesQuantity / targetQuantity) * 100) : null;
+
+  const vitals: Vital[] = [
+    { label: "Sales value", value: salesValue, kind: "currency" },
+    { label: "Sales quantity", value: salesQuantity, kind: "number" },
+    { label: "Value achievement", value: valuePct ?? 0, kind: "percent", tone: pctTone(valuePct) },
+    { label: "Quantity achievement", value: quantityPct ?? 0, kind: "percent", tone: pctTone(quantityPct) },
+  ];
+
+  return (
+    <section className="panel cockpit-panel sales-perf">
+      <div className="panel-heading">
+        <div className="worklist-title">
+          <TrendingUp size={16} aria-hidden="true" />
+          <h2>Sales performance</h2>
+        </div>
+        <span>{country ? `${country} · this period` : "all stations · this period"}</span>
+      </div>
+      <div className="vitals-row sales-strip">
+        {vitals.map((vital) => (
+          <VitalReadout key={vital.label} vital={vital} animate={animate} />
+        ))}
+      </div>
+      <div className="league-duo">
+        <League
+          title={country ? `${country} achievement` : "Country achievement"}
+          rows={scoped.slice(0, 6)}
+        />
+        <League title="Vertical achievement" rows={verticals.slice(0, 6)} />
+      </div>
+    </section>
+  );
+}
+
+function League({ title, rows }: { title: string; rows: ApiPerformanceScorecard[] }) {
+  return (
+    <div className="league-block">
+      <h4 className="league-head">{title}</h4>
+      {rows.length === 0 ? (
+        <p className="empty-state">No targets set yet — add them in Commercial.</p>
+      ) : (
+        <div className="league">
+          {rows.map((row) => (
+            <div className="league-row" key={`${row.scope}-${row.name}`}>
+              <span className="league-name" title={row.name}>{row.name}</span>
+              <div className="league-bar">
+                <span
+                  style={{ width: `${Math.min(row.value_achievement_pct ?? 0, 100)}%` }}
+                  data-state={achievementState(row.value_achievement_pct)}
+                />
+              </div>
+              <span className="league-figures">
+                <strong className="league-pct">
+                  {row.value_achievement_pct == null ? "—" : `${row.value_achievement_pct}%`}
+                </strong>
+                <small>{inr(row.actual_value)} · {num(row.actual_quantity)} units</small>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function pctTone(pct: number | null): string {
+  if (pct == null) return "neutral";
+  if (pct >= 100) return "good";
+  if (pct >= 70) return "warn";
+  return "bad";
 }
 
 function greeting(): string {
@@ -374,9 +471,9 @@ function routeFor(source: string): string {
     case "demand":
     case "receivables":
     case "credit_control":
-      return "analytics";
+      return "reviews";
     default:
-      return "analytics";
+      return "reviews";
   }
 }
 

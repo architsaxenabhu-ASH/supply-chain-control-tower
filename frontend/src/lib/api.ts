@@ -104,6 +104,21 @@ async function postJson<TResponse, TPayload>(path: string, payload: TPayload): P
   return response.json();
 }
 
+async function patchJson<TResponse, TPayload>(path: string, payload: TPayload): Promise<TResponse> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: "PATCH",
+    headers: authHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: `Could not submit ${path}` }));
+    throw new Error(error.detail ?? `Could not submit ${path}`);
+  }
+
+  return response.json();
+}
+
 export type ApiProduct = {
   item_code: string;
   product_description: string;
@@ -1126,11 +1141,17 @@ export type ApiDecision = {
   decision_type: string;
   reason: string;
   user: string;
+  role: string | null;
   problem_type: string | null;
   owner: string | null;
   context: string | null;
   options_considered: string[];
   decided_at: string;
+  related_product: string | null;
+  related_batch: string | null;
+  related_shipment: string | null;
+  related_customer: string | null;
+  related_supplier: string | null;
   expected_outcome: string | null;
   actual_outcome: string | null;
   effectiveness: string | null;
@@ -1143,10 +1164,15 @@ export type ApiCountryPerformance = {
   target_value: number;
   actual_value: number;
   value_achievement_pct: number | null;
+  target_quantity: number;
+  actual_quantity: number;
   quantity_achievement_pct: number | null;
   growth_pct: number | null;
   diagnostics: Record<string, string>;
 };
+
+// Same scorecard shape for vertical / distributor / customer drill-downs.
+export type ApiPerformanceScorecard = ApiCountryPerformance;
 
 export type ApiCommitmentDashboard = {
   total_commitments: number;
@@ -1192,8 +1218,128 @@ export function fetchDecisions(status?: string): Promise<ApiDecision[]> {
   return getJson<ApiDecision[]>(`/decisions${query}`);
 }
 
+export type ApiDecisionRequest = {
+  decision_type: string;
+  reason: string;
+  user: string;
+  role?: string | null;
+  problem_type?: string | null;
+  owner?: string | null;
+  context?: string | null;
+  options_considered?: string[];
+  related_product?: string | null;
+  related_batch?: string | null;
+  related_shipment?: string | null;
+  related_customer?: string | null;
+  related_supplier?: string | null;
+  expected_outcome?: string | null;
+  status?: string;
+};
+
+export type ApiDecisionOutcomeRequest = {
+  actual_outcome?: string | null;
+  effectiveness?: "effective" | "partially_effective" | "ineffective" | null;
+  status: string;
+  actor: string;
+};
+
+export type ApiDecisionEffectiveness = {
+  decision_id: string;
+  decision_type: string;
+  problem_type: string | null;
+  owner: string | null;
+  expected_outcome: string | null;
+  actual_outcome: string | null;
+  effectiveness: string | null;
+  status: string;
+};
+
+export type ApiSimilarDecision = {
+  decision_id: string;
+  decision_type: string;
+  problem_type: string | null;
+  owner: string | null;
+  reason: string;
+  expected_outcome: string | null;
+  actual_outcome: string | null;
+  effectiveness: string | null;
+  similarity_score: number;
+  matched_on: string[];
+};
+
+export function createDecision(request: ApiDecisionRequest): Promise<ApiDecision> {
+  return postJson<ApiDecision, ApiDecisionRequest>("/decisions", request);
+}
+
+export function recordDecisionOutcome(
+  decisionId: string,
+  request: ApiDecisionOutcomeRequest,
+): Promise<ApiDecision> {
+  return patchJson<ApiDecision, ApiDecisionOutcomeRequest>(
+    `/decisions/${encodeURIComponent(decisionId)}/outcome`,
+    request,
+  );
+}
+
+export function fetchDecisionEffectiveness(params?: {
+  owner?: string;
+  problem_type?: string;
+}): Promise<ApiDecisionEffectiveness[]> {
+  const query = buildQuery(params);
+  return getJson<ApiDecisionEffectiveness[]>(`/decision-effectiveness${query}`);
+}
+
+export function fetchDecisionHistory(params?: {
+  owner?: string;
+  problem_type?: string;
+  related?: string;
+}): Promise<ApiDecision[]> {
+  const query = buildQuery(params);
+  return getJson<ApiDecision[]>(`/decision-history${query}`);
+}
+
+export function fetchSimilarDecisions(params?: {
+  problem_type?: string;
+  decision_type?: string;
+  context?: string;
+  related_product?: string;
+  related_customer?: string;
+  limit?: number;
+}): Promise<ApiSimilarDecision[]> {
+  const query = buildQuery(params);
+  return getJson<ApiSimilarDecision[]>(`/decision-similarity${query}`);
+}
+
+function buildQuery(params?: Record<string, string | number | undefined>): string {
+  if (!params) return "";
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== "") search.set(key, String(value));
+  }
+  const text = search.toString();
+  return text ? `?${text}` : "";
+}
+
+export type ApiDecideApprovalRequest = {
+  outcome: "approved" | "rejected";
+  approver: string;
+  note?: string | null;
+};
+
+export function decideApproval(approvalId: string, request: ApiDecideApprovalRequest): Promise<ApiApproval> {
+  return postJson<ApiApproval, ApiDecideApprovalRequest>(
+    `/approvals/${encodeURIComponent(approvalId)}/decide`,
+    request,
+  );
+}
+
 export function fetchCountryPerformanceV2(): Promise<ApiCountryPerformance[]> {
   return getJson<ApiCountryPerformance[]>("/country-performance-v2");
+}
+
+export function fetchVerticalPerformance(country?: string): Promise<ApiPerformanceScorecard[]> {
+  const query = country ? `?country=${encodeURIComponent(country)}` : "";
+  return getJson<ApiPerformanceScorecard[]>(`/vertical-performance${query}`);
 }
 
 export function fetchCommitmentDashboard(): Promise<ApiCommitmentDashboard> {
@@ -1206,4 +1352,297 @@ export function fetchReview(name: string): Promise<ApiReview> {
 
 export function fetchDecisionLearningInsights(): Promise<ApiDecisionLearningInsights> {
   return getJson<ApiDecisionLearningInsights>("/learning-insights");
+}
+
+// ---- Commercial drill-down (Phase 5A) -------------------------------------
+
+export function fetchDistributorPerformanceV2(params?: {
+  country?: string;
+  vertical?: string;
+}): Promise<ApiPerformanceScorecard[]> {
+  return getJson<ApiPerformanceScorecard[]>(`/distributor-performance-v2${buildQuery(params)}`);
+}
+
+export function fetchCustomerPerformance(params?: {
+  country?: string;
+  vertical?: string;
+  distributor?: string;
+}): Promise<ApiPerformanceScorecard[]> {
+  return getJson<ApiPerformanceScorecard[]>(`/customer-performance${buildQuery(params)}`);
+}
+
+export type ApiCommercialTarget = {
+  scope: string;
+  scope_value: string;
+  target_value: number;
+  target_quantity: number;
+  period: string | null;
+  updated_by: string | null;
+  updated_at: string | null;
+};
+
+export type ApiSetTargetRequest = {
+  scope: string;
+  scope_value: string;
+  target_value?: number;
+  target_quantity?: number;
+  period?: string | null;
+  actor: string;
+};
+
+export function setCommercialTarget(request: ApiSetTargetRequest): Promise<ApiCommercialTarget> {
+  return postJson<ApiCommercialTarget, ApiSetTargetRequest>("/commercial-targets", request);
+}
+
+// ---- Receivables / Payables (Phase 5A) -------------------------------------
+
+export type ApiPaymentEntry = { amount: number; paid_date: string; note: string | null; actor: string | null };
+
+export type ApiReceivable = {
+  receivable_id: string;
+  distributor: string;
+  country: string;
+  invoice_number: string;
+  invoice_date: string;
+  due_date: string;
+  payment_terms: string | null;
+  invoice_value: number;
+  paid_value: number;
+  outstanding_value: number;
+  status: string;
+  payment_history: ApiPaymentEntry[];
+};
+
+export type ApiPaymentRisk = {
+  distributor: string;
+  risk_level: string;
+  outstanding_amount: number;
+  past_due_amount: number;
+  past_due_days: number;
+  payment_trend: string;
+  reasons: string[];
+};
+
+export type ApiCreditControl = {
+  distributor: string;
+  credit_limit: number;
+  outstanding_exposure: number;
+  available_credit: number;
+  overdue_amount: number;
+  status: string;
+  override: boolean;
+};
+
+export function fetchReceivables(params?: {
+  distributor?: string;
+  status?: string;
+  country?: string;
+}): Promise<ApiReceivable[]> {
+  return getJson<ApiReceivable[]>(`/receivables${buildQuery(params)}`);
+}
+
+export function fetchPaymentRisks(): Promise<ApiPaymentRisk[]> {
+  return getJson<ApiPaymentRisk[]>("/payment-risk");
+}
+
+export function fetchCreditControl(): Promise<ApiCreditControl[]> {
+  return getJson<ApiCreditControl[]>("/credit-control");
+}
+
+export type ApiRecordPaymentRequest = { amount: number; paid_date?: string | null; note?: string | null; actor: string };
+
+export function recordReceivablePayment(receivableId: string, request: ApiRecordPaymentRequest): Promise<ApiReceivable> {
+  return postJson<ApiReceivable, ApiRecordPaymentRequest>(
+    `/receivables/${encodeURIComponent(receivableId)}/payment`,
+    request,
+  );
+}
+
+export type ApiPayable = {
+  payable_id: string;
+  partner_type: string;
+  partner_name: string;
+  country: string;
+  invoice_number: string;
+  invoice_date: string;
+  due_date: string;
+  payment_terms: string | null;
+  invoice_value: number;
+  paid_value: number;
+  outstanding_value: number;
+  status: string;
+  payment_history: ApiPaymentEntry[];
+};
+
+export type ApiPayablesRisk = {
+  partner_name: string;
+  partner_type: string;
+  risk_level: string;
+  outstanding_amount: number;
+  past_due_amount: number;
+  days_to_next_due: number | null;
+  dependency_pct: number;
+  reasons: string[];
+};
+
+export function fetchPayables(params?: {
+  partner_name?: string;
+  partner_type?: string;
+  status?: string;
+}): Promise<ApiPayable[]> {
+  return getJson<ApiPayable[]>(`/payables${buildQuery(params)}`);
+}
+
+export function fetchPayablesRisks(): Promise<ApiPayablesRisk[]> {
+  return getJson<ApiPayablesRisk[]>("/payables-risk");
+}
+
+export function recordPayablePayment(payableId: string, request: ApiRecordPaymentRequest): Promise<ApiPayable> {
+  return postJson<ApiPayable, ApiRecordPaymentRequest>(
+    `/payables/${encodeURIComponent(payableId)}/payment`,
+    request,
+  );
+}
+
+// ---- Consignment / Returns / Commitments (Phase 5A) ------------------------
+
+export type ApiConsignment = {
+  consignment_id: string;
+  distributor: string;
+  country: string;
+  material: string;
+  batch_number: string;
+  quantity_sent: number;
+  quantity_reported: number;
+  quantity_consumed: number;
+  quantity_remaining: number;
+  last_report_date: string | null;
+  sent_date: string;
+};
+
+export type ApiConsignmentRisk = {
+  consignment_id: string;
+  distributor: string;
+  material: string;
+  batch_number: string;
+  risk_level: string;
+  days_since_sent: number;
+  days_since_report: number | null;
+  consumption_pct: number;
+  recommended_action: string;
+  reasons: string[];
+};
+
+export type ApiConsignmentDashboard = {
+  total_consignments: number;
+  total_quantity_sent: number;
+  total_remaining: number;
+  no_report_count: number;
+  aging_count: number;
+  expiry_exposure_count: number;
+  low_consumption_count: number;
+  high_risk_count: number;
+};
+
+export function fetchConsignments(params?: { distributor?: string; country?: string }): Promise<ApiConsignment[]> {
+  return getJson<ApiConsignment[]>(`/consignment-inventory${buildQuery(params)}`);
+}
+
+export function fetchConsignmentRisks(): Promise<ApiConsignmentRisk[]> {
+  return getJson<ApiConsignmentRisk[]>("/consignment-risk");
+}
+
+export function fetchConsignmentDashboard(): Promise<ApiConsignmentDashboard> {
+  return getJson<ApiConsignmentDashboard>("/consignment-dashboard");
+}
+
+export type ApiReturnRecord = {
+  return_id: string;
+  material: string;
+  batch_number: string | null;
+  return_reason: string | null;
+  returned_quantity: number;
+  inspection_result: string | null;
+  verification_result: string | null;
+  reusable_quantity: number;
+  rejected_quantity: number;
+  status: string;
+};
+
+export type ApiReturnDashboard = {
+  total_returns: number;
+  total_returned_quantity: number;
+  reusable_quantity: number;
+  rejected_quantity: number;
+  available_quantity: number;
+  pending_inspection: number;
+  pending_verification: number;
+  by_reason: Record<string, number>;
+};
+
+export function fetchReturns(params?: { status?: string; material?: string }): Promise<ApiReturnRecord[]> {
+  return getJson<ApiReturnRecord[]>(`/returns${buildQuery(params)}`);
+}
+
+export function fetchReturnDashboard(): Promise<ApiReturnDashboard> {
+  return getJson<ApiReturnDashboard>("/return-dashboard");
+}
+
+export function inspectReturn(
+  returnId: string,
+  request: { inspection_result: string; reusable_quantity?: number; rejected_quantity?: number; actor: string },
+): Promise<ApiReturnRecord> {
+  return postJson(`/returns/${encodeURIComponent(returnId)}/inspect`, request);
+}
+
+export function verifyReturn(
+  returnId: string,
+  request: { verification_result: string; actor: string },
+): Promise<ApiReturnRecord> {
+  return postJson(`/returns/${encodeURIComponent(returnId)}/verify`, request);
+}
+
+export type ApiCustomerCommitment = {
+  commitment_id: string;
+  po_number: string;
+  customer: string;
+  distributor: string;
+  country: string;
+  material: string;
+  batch_number: string | null;
+  ordered_quantity: number;
+  allocated_quantity: number;
+  shipped_quantity: number;
+  delivered_quantity: number;
+  backorder_quantity: number;
+  required_delivery_date: string;
+  expected_fulfillment_date: string | null;
+  status: string;
+};
+
+export type ApiCommitmentRisk = {
+  commitment_id: string;
+  po_number: string;
+  customer: string;
+  material: string;
+  risk_level: string;
+  fill_rate_pct: number;
+  otif: boolean;
+  delay_days: number;
+  backorder_quantity: number;
+  backorder_value: number;
+  days_to_required: number;
+  reasons: string[];
+};
+
+export function fetchCustomerCommitments(params?: {
+  status?: string;
+  customer?: string;
+  country?: string;
+}): Promise<ApiCustomerCommitment[]> {
+  return getJson<ApiCustomerCommitment[]>(`/customer-commitments${buildQuery(params)}`);
+}
+
+export function fetchCommitmentRisks(): Promise<ApiCommitmentRisk[]> {
+  return getJson<ApiCommitmentRisk[]>("/customer-commitment-risk");
 }
