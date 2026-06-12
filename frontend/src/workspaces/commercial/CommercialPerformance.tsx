@@ -1,3 +1,4 @@
+import { formatMoney, formatUnits } from "../../lib/currency";
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { ChevronRight, Target, TrendingUp } from "lucide-react";
@@ -22,14 +23,8 @@ type Level = "country" | "vertical" | "distributor" | "customer";
 
 const LEVELS: Level[] = ["country", "vertical", "distributor", "customer"];
 
-const inr = (value: number) =>
-  new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    maximumFractionDigits: 0,
-    notation: value >= 1_00_00_000 ? "compact" : "standard",
-  }).format(value || 0);
-const num = (value: number) => new Intl.NumberFormat("en-IN").format(Math.round(value || 0));
+const inr = (value: number) => formatMoney(value, { compact: true });
+const num = formatUnits;
 
 function humanize(value: string): string {
   const text = value.replace(/[_-]/g, " ").trim();
@@ -285,7 +280,7 @@ export function CommercialPerformance({ currentUser }: { currentUser: ApiAuthent
                       <input
                         type="number"
                         min="0"
-                        placeholder="Target value (₹)"
+                        placeholder="Target value (INR)"
                         value={targetValue}
                         onChange={(event) => setTargetValue(event.target.value)}
                         aria-label={`Target value for ${row.name}`}

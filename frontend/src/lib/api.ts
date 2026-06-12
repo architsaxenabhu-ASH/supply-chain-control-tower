@@ -1646,3 +1646,36 @@ export function fetchCustomerCommitments(params?: {
 export function fetchCommitmentRisks(): Promise<ApiCommitmentRisk[]> {
   return getJson<ApiCommitmentRisk[]>("/customer-commitment-risk");
 }
+
+// ---- Currency (Phase 5D) ----
+
+export type ApiCurrencyRateSet = {
+  rate_date: string;
+  base_currency: string;
+  rates: Record<string, number>;
+  source: string;
+  locked_at: string;
+  updated_by: string | null;
+  note: string | null;
+};
+
+export function listCurrencyRates(limit = 30): Promise<ApiCurrencyRateSet[]> {
+  return getJson<ApiCurrencyRateSet[]>(`/currency/rates?limit=${limit}`);
+}
+
+export function fetchCurrencyRates(rateDate: string, base = "INR"): Promise<ApiCurrencyRateSet> {
+  return getJson<ApiCurrencyRateSet>(`/currency/rates/${rateDate}?base=${encodeURIComponent(base)}`);
+}
+
+export type ApiSaveCurrencyRatesRequest = {
+  rate_date: string;
+  base_currency?: string;
+  rates: Record<string, number>;
+  source?: string;
+  actor?: string | null;
+  reason?: string | null;
+};
+
+export function saveCurrencyRates(payload: ApiSaveCurrencyRatesRequest): Promise<ApiCurrencyRateSet> {
+  return postJson<ApiCurrencyRateSet, ApiSaveCurrencyRatesRequest>("/currency/rates", payload);
+}

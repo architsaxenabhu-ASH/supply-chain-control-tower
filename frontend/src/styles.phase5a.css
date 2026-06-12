@@ -1009,3 +1009,195 @@
   .map-dot-pulse { animation: none; opacity: 0; }
   .map-country { transition: none; }
 }
+
+/* ============================================================
+   Phase 5D — currency environment + living tab icons
+   ============================================================ */
+
+/* ---- Currency selector (top bar) ---- */
+.currency-selector {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 10px 0 6px;
+  border: 1px solid var(--tower-border, #28323e);
+  border-radius: 10px;
+  background: var(--tower-panel, #141b24);
+}
+.currency-selector:focus-within { box-shadow: 0 0 0 3px var(--country-accent-soft); }
+.currency-badge {
+  display: grid;
+  place-items: center;
+  height: 24px;
+  padding: 0 7px;
+  border-radius: 7px;
+  background: var(--country-accent-soft);
+  color: var(--country-accent);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.currency-selector select {
+  border: none;
+  background: transparent;
+  color: var(--tower-text, #e6edf3);
+  font-weight: 600;
+  font-size: 13px;
+  outline: none;
+  cursor: pointer;
+}
+
+/* ---- Rates popover ---- */
+.rates-anchor { position: relative; }
+.rates-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: var(--z-modal);
+  display: grid;
+  gap: 12px;
+  width: min(340px, 92vw);
+  padding: 16px;
+  border-radius: 14px;
+  background: var(--tower-panel-strong, #1b2530);
+  border: 1px solid var(--tower-border, #28323e);
+  box-shadow: var(--tower-shadow, 0 18px 46px rgba(0, 0, 0, 0.34));
+}
+.rates-popover .filter-control input[type="date"] {
+  border: 1px solid var(--tower-border, #28323e);
+  border-radius: 9px;
+  background: var(--tower-bg-2, #0e151d);
+  color: var(--tower-text, #e6edf3);
+  padding: 7px 10px;
+  font-size: 13px;
+}
+.rates-source {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--tower-muted, #93a3b4);
+}
+.rates-source svg { flex: 0 0 auto; color: var(--country-accent); }
+.rates-rows { display: grid; gap: 8px; }
+.rates-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 9px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.rates-row span { color: var(--tower-muted, #93a3b4); white-space: nowrap; }
+.rates-row input {
+  width: 100%;
+  border: 1px solid var(--tower-border, #28323e);
+  border-radius: 9px;
+  background: var(--tower-bg-2, #0e151d);
+  color: var(--tower-text, #e6edf3);
+  padding: 7px 10px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.rates-row input:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--country-accent-soft); }
+.rates-reason {
+  border: 1px solid var(--tower-border, #28323e);
+  border-radius: 9px;
+  background: var(--tower-bg-2, #0e151d);
+  color: var(--tower-text, #e6edf3);
+  padding: 8px 11px;
+  font-size: 13px;
+}
+.rates-reason:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--country-accent-soft); }
+.rates-actions { display: flex; align-items: center; gap: 10px; }
+.rates-actions small { color: var(--tower-muted, #93a3b4); font-size: 11px; }
+.rates-message { margin: 0; font-size: 12px; color: var(--country-accent); }
+
+/* ---- Living tab icons ----
+   Every tab's icon moves in that tab's motion signature while the tab is
+   active or hovered: glide travels, rise settles, sweep tilts across,
+   loop turns back, stamp presses, network breathes, flow drifts, path
+   descends, fade breathes opacity. Subtle by design (1-3px), and fully
+   disabled under prefers-reduced-motion. */
+.ws-tab svg, .ws-item svg { will-change: transform; }
+
+.ws-tab.active[data-signature="rise"] svg, .ws-tab:hover[data-signature="rise"] svg,
+.ws-item.active[data-signature="rise"] svg, .ws-item:hover[data-signature="rise"] svg {
+  animation: icon-rise 2.4s ease-in-out infinite;
+}
+.ws-tab.active[data-signature="glide"] svg, .ws-tab:hover[data-signature="glide"] svg,
+.ws-item.active[data-signature="glide"] svg, .ws-item:hover[data-signature="glide"] svg {
+  animation: icon-glide 2.6s ease-in-out infinite;
+}
+.ws-tab.active[data-signature="sweep"] svg, .ws-tab:hover[data-signature="sweep"] svg,
+.ws-item.active[data-signature="sweep"] svg, .ws-item:hover[data-signature="sweep"] svg {
+  animation: icon-sweep 2.8s ease-in-out infinite;
+}
+.ws-tab.active[data-signature="flow"] svg, .ws-tab:hover[data-signature="flow"] svg,
+.ws-item.active[data-signature="flow"] svg, .ws-item:hover[data-signature="flow"] svg {
+  animation: icon-flow 2.6s ease-in-out infinite;
+}
+.ws-tab.active[data-signature="network"] svg, .ws-tab:hover[data-signature="network"] svg,
+.ws-item.active[data-signature="network"] svg, .ws-item:hover[data-signature="network"] svg {
+  animation: icon-network 2.4s ease-in-out infinite;
+}
+.ws-tab.active[data-signature="loop"] svg, .ws-tab:hover[data-signature="loop"] svg,
+.ws-item.active[data-signature="loop"] svg, .ws-item:hover[data-signature="loop"] svg {
+  animation: icon-loop 3.4s linear infinite;
+}
+.ws-tab.active[data-signature="path"] svg, .ws-tab:hover[data-signature="path"] svg,
+.ws-item.active[data-signature="path"] svg, .ws-item:hover[data-signature="path"] svg {
+  animation: icon-path 2.6s ease-in-out infinite;
+}
+.ws-tab.active[data-signature="stamp"] svg, .ws-tab:hover[data-signature="stamp"] svg,
+.ws-item.active[data-signature="stamp"] svg, .ws-item:hover[data-signature="stamp"] svg {
+  animation: icon-stamp 2.8s ease-in-out infinite;
+}
+.ws-tab.active[data-signature="fade"] svg, .ws-tab:hover[data-signature="fade"] svg,
+.ws-item.active[data-signature="fade"] svg, .ws-item:hover[data-signature="fade"] svg {
+  animation: icon-fade 2.8s ease-in-out infinite;
+}
+
+@keyframes icon-rise {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2.5px); }
+}
+@keyframes icon-glide {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(3px); }
+}
+@keyframes icon-sweep {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(10deg); }
+}
+@keyframes icon-flow {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(-3px); }
+}
+@keyframes icon-network {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.12); }
+}
+@keyframes icon-loop {
+  to { transform: rotate(-360deg); }
+}
+@keyframes icon-path {
+  0%, 100% { transform: translateY(0); opacity: 1; }
+  50% { transform: translateY(2px); opacity: 0.75; }
+}
+@keyframes icon-stamp {
+  0%, 55%, 100% { transform: scale(1); }
+  65% { transform: scale(0.88); }
+  78% { transform: scale(1.08); }
+}
+@keyframes icon-fade {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ws-tab svg, .ws-item svg { animation: none !important; }
+}

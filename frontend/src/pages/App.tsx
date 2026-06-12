@@ -17,6 +17,8 @@ import { InventoryHub } from "../workspaces/inventory/InventoryHub";
 import { PrimarySales } from "../workspaces/primary/PrimarySales";
 import { SecondarySales } from "../workspaces/secondary/SecondarySales";
 import { CountryProvider, CountrySelector } from "../context/CountryContext";
+import { CurrencyProvider, CurrencyRatesPanel, CurrencySelector } from "../context/CurrencyContext";
+import { formatMoney } from "../lib/currency";
 import {
   ALL_TABS,
   canAccessView,
@@ -726,12 +728,10 @@ const documentTypes: Array<{ label: string; value: DocumentType }> = [
   { label: "Air Waybill", value: "air_waybill" },
 ];
 
-const formatCurrency = (value: number) =>
-  new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  }).format(value);
+// Money formatting goes through the currency engine (Phase 5D): amounts are
+// stored in the base currency and converted to the selected display currency
+// at the rate locked for the chosen date.
+const formatCurrency = (value: number) => formatMoney(value);
 
 const formatNumber = (value: number) =>
   new Intl.NumberFormat("en-US", {
@@ -1897,6 +1897,7 @@ export function App() {
 
   return (
     <CountryProvider scope={countryOptions}>
+    <CurrencyProvider>
     <main className="app-shell">
       <aside className="sidebar">
         <div className="brand">
@@ -1916,6 +1917,7 @@ export function App() {
                 onClick={() => openWorkspace(workspace)}
                 aria-current={isActive ? "page" : undefined}
                 title={workspace.label}
+                data-signature={workspace.tabs[0]?.signature ?? "fade"}
               >
                 <workspace.icon size={18} aria-hidden="true" />
                 <span className="ws-item-label">{workspace.label}</span>
@@ -1938,6 +1940,8 @@ export function App() {
           </div>
           <div className="topbar-actions">
             <CountrySelector />
+            <CurrencySelector />
+            <CurrencyRatesPanel actor={currentUser.email} />
             <span className="connection-status">{apiStatus}</span>
             <span className="connection-status">{currentUser.email} / {currentUser.role_name}</span>
             <button className="secondary-action" onClick={handleLogout}>
@@ -1976,6 +1980,7 @@ export function App() {
                   key={tab.id}
                   onClick={() => setActiveView(tab.id)}
                   aria-current={isActive ? "page" : undefined}
+                  data-signature={tab.signature}
                 >
                   <tab.icon size={15} aria-hidden="true" />
                   <span>{tab.label}</span>
@@ -2165,6 +2170,7 @@ export function App() {
         ) : null}
       </section>
     </main>
+    </CurrencyProvider>
     </CountryProvider>
   );
 }

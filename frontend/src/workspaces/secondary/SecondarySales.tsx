@@ -1,3 +1,4 @@
+import { formatMoney, formatUnits } from "../../lib/currency";
 import { useEffect, useMemo, useState } from "react";
 import { Gauge, Globe2, Send, ShieldAlert } from "lucide-react";
 
@@ -20,7 +21,7 @@ import { WorldMap } from "../../components/WorldMap";
 // fulfillment, backorders, OTIF, and delayed deliveries. This page is
 // customer commitment management, not stock management.
 
-const num = (value: number) => new Intl.NumberFormat("en-IN").format(Math.round(value || 0));
+const num = formatUnits;
 
 const CLOSED_STATUSES = new Set(["fulfilled", "delivered", "cancelled", "closed"]);
 

@@ -1,3 +1,4 @@
+import { formatMoney, formatUnits } from "../../lib/currency";
 import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { CheckCircle2, RotateCcw, Search } from "lucide-react";
@@ -16,7 +17,7 @@ import { itemVariants, listVariants, prefersReducedMotion, signatureVariants } f
 // Returns (Phase 5A): the return loop — returned → inspection → verification →
 // available or rejected. Inspect and verify happen right on the row.
 
-const num = (value: number) => new Intl.NumberFormat("en-IN").format(Math.round(value || 0));
+const num = formatUnits;
 
 const STATUS_FILTERS = ["all", "returned", "inspection", "verification", "available", "rejected"] as const;
 

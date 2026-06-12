@@ -1,3 +1,4 @@
+import { formatMoney, formatUnits } from "../../lib/currency";
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { CheckCircle2, ClipboardPen, ScrollText } from "lucide-react";
@@ -51,13 +52,7 @@ const OWNERS = ["sales", "supply_chain", "finance", "management"];
 const CURRENCY_KEY = /value|amount|outstanding|exposure|overdue|balance|credit/i;
 const PERCENT_KEY = /pct|percent|rate/i;
 
-const inr = (value: number) =>
-  new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    maximumFractionDigits: 0,
-    notation: value >= 1_00_00_000 ? "compact" : "standard",
-  }).format(value || 0);
+const inr = (value: number) => formatMoney(value, { compact: true });
 
 function humanize(key: string): string {
   const text = key.replace(/[_-]/g, " ").trim();
@@ -69,7 +64,7 @@ function formatSummaryValue(key: string, value: number | string | null): string 
   if (typeof value === "string") return value;
   if (PERCENT_KEY.test(key)) return `${Math.round(value)}%`;
   if (CURRENCY_KEY.test(key)) return inr(value);
-  return new Intl.NumberFormat("en-IN").format(value);
+  return formatUnits(value);
 }
 
 function formatDetailValue(key: string, value: unknown): string {

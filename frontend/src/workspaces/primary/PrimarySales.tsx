@@ -1,3 +1,4 @@
+import { formatMoney, formatUnits } from "../../lib/currency";
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, FileCheck2, Globe2, MoveRight, PlaneLanding } from "lucide-react";
 
@@ -16,7 +17,7 @@ import { WorldMap } from "../../components/WorldMap";
 // their documents (CI / PL / AWB), open and overdue arrivals, and the
 // movement from origin to destination country.
 
-const num = (value: number) => new Intl.NumberFormat("en-IN").format(Math.round(value || 0));
+const num = formatUnits;
 
 const RECEIVED_STATUSES = new Set(["received", "closed"]);
 const AWAITING_STATUSES = new Set(["arrived", "goods_receipt_pending"]);

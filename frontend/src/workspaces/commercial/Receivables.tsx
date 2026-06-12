@@ -1,3 +1,4 @@
+import { formatMoney, formatUnits } from "../../lib/currency";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Banknote, ShieldAlert, Wallet } from "lucide-react";
@@ -18,13 +19,7 @@ import { itemVariants, listVariants, prefersReducedMotion, signatureVariants } f
 // Receivables (Phase 5A): the money flowing in. Aging ledger, payment risk,
 // credit control — and payments recorded right on the invoice row.
 
-const inr = (value: number) =>
-  new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    maximumFractionDigits: 0,
-    notation: value >= 1_00_00_000 ? "compact" : "standard",
-  }).format(value || 0);
+const inr = (value: number) => formatMoney(value, { compact: true });
 
 const STATUS_FILTERS = ["all", "open", "partially_paid", "overdue", "paid"] as const;
 

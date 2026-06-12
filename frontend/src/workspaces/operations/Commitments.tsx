@@ -1,3 +1,4 @@
+import { formatMoney, formatUnits } from "../../lib/currency";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Handshake, ShieldAlert } from "lucide-react";
@@ -16,14 +17,8 @@ import { itemVariants, listVariants, prefersReducedMotion, signatureVariants } f
 // Commitments (Phase 5A): promises made to customers — PO fill rate, OTIF,
 // backorders, and the risks that threaten them.
 
-const num = (value: number) => new Intl.NumberFormat("en-IN").format(Math.round(value || 0));
-const inr = (value: number) =>
-  new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    maximumFractionDigits: 0,
-    notation: value >= 1_00_00_000 ? "compact" : "standard",
-  }).format(value || 0);
+const num = formatUnits;
+const inr = (value: number) => formatMoney(value, { compact: true });
 
 const STATUS_FILTERS = ["all", "open", "partially_fulfilled", "delayed", "backordered", "fulfilled"] as const;
 

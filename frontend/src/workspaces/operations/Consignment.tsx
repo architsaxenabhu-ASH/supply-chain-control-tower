@@ -1,3 +1,4 @@
+import { formatMoney, formatUnits } from "../../lib/currency";
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { PackageOpen, ShieldAlert } from "lucide-react";
@@ -16,7 +17,7 @@ import { itemVariants, listVariants, prefersReducedMotion, signatureVariants } f
 // Consignment (Phase 5A): stock that left the warehouse but is still ours.
 // Dashboard vitals, distributor-reported balances, and risk lanes.
 
-const num = (value: number) => new Intl.NumberFormat("en-IN").format(Math.round(value || 0));
+const num = formatUnits;
 
 function humanize(value: string): string {
   const text = value.replace(/[_-]/g, " ").trim();

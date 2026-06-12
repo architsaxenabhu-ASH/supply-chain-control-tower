@@ -1,3 +1,4 @@
+import { formatMoney, formatUnits } from "../../lib/currency";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, useAnimationFrame } from "framer-motion";
 import { ArrowUpRight, CheckCircle2, GitBranch, Globe2, Radar, ScrollText, TrendingUp } from "lucide-react";
@@ -21,9 +22,8 @@ import {
 import { CountryEnvironment, useCountry, type EnvironmentVital } from "../../context/CountryContext";
 import { itemVariants, listVariants, prefersReducedMotion } from "../../motion/motion";
 
-const inr = (value: number) =>
-  new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0, notation: value >= 1_00_00_000 ? "compact" : "standard" }).format(value || 0);
-const num = (value: number) => new Intl.NumberFormat("en-IN").format(Math.round(value || 0));
+const inr = (value: number) => formatMoney(value, { compact: true });
+const num = formatUnits;
 
 const REVIEWS = ["inventory", "expiry", "open-orders", "receivables", "distributor", "country", "vertical"] as const;
 

@@ -1,3 +1,4 @@
+import { formatMoney, formatUnits } from "../../lib/currency";
 import { useEffect, useMemo, useState } from "react";
 import { Boxes, Globe2, PieChart, Warehouse } from "lucide-react";
 
@@ -21,9 +22,8 @@ import { DonutChart } from "../../components/DonutChart";
 // expiry risk, inventory value, and batch drill-down. Filters: date,
 // country, vertical, product, expiry band. All options come from live data.
 
-const num = (value: number) => new Intl.NumberFormat("en-IN").format(Math.round(value || 0));
-const money = (value: number) =>
-  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(value || 0);
+const num = formatUnits;
+const money = (value: number) => formatMoney(value);
 
 const EXPIRY_TONES: Record<string, "bad" | "warn" | "info" | "good"> = {
   "0-90 Days": "bad",

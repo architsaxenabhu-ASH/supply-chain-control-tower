@@ -115,3 +115,22 @@ so they work in both themes.
   centre total and dot legend; top-N slices, remainder grouped as "Other".
 - **Filter bar** (`components/FilterBar.tsx`) — date range + data-derived
   selects + product search in one strip; options never hardcoded.
+
+## Currency environment (Phase 5D)
+
+Amounts are stored in the base currency (INR) and converted at display time.
+`lib/currency.ts` + `context/CurrencyContext.tsx`: top-bar selector offers
+Local (selected country's currency), EUR, USD, INR and every code with a
+locked rate. Rates lock per date to the ECB end-of-day reference rate
+(published ~16:00 CET) fetched once and stored via `/currency/rates`; manual
+overrides require a reason and land in the audit trail (module "currency").
+All money rendering goes through `formatMoney` (compact for big figures);
+unit counts through `formatUnits` (international grouping, never lakh/crore).
+
+## Living tab icons (Phase 5D)
+
+Every workspace tab and rail item carries `data-signature`; while active or
+hovered, its icon animates in that signature's meaning (glide travels, rise
+settles, sweep tilts, loop turns back, stamp presses, network breathes, flow
+drifts, path descends, fade breathes). 1-3px amplitudes, 2.4-3.4s cycles,
+disabled under `prefers-reduced-motion`.
