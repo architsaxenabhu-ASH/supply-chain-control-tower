@@ -81,12 +81,27 @@ export function rescanDocument(documentId: string): Promise<DocumentRecord> {
   );
 }
 
+// In-flight request counter (Phase 5F): the tab-entry stinger reads this to
+// know when the incoming view has truly finished loading its data — views
+// render their shells before data arrives, so the network is the honest
+// readiness signal.
+let pendingReads = 0;
+
+export function getPendingReadCount(): number {
+  return pendingReads;
+}
+
 async function getJson<T>(path: string): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, { headers: authHeaders() });
-  if (!response.ok) {
-    throw new Error(`Could not load ${path}`);
+  pendingReads += 1;
+  try {
+    const response = await fetch(`${API_BASE_URL}${path}`, { headers: authHeaders() });
+    if (!response.ok) {
+      throw new Error(`Could not load ${path}`);
+    }
+    return await response.json();
+  } finally {
+    pendingReads -= 1;
   }
-  return response.json();
 }
 
 async function postJson<TResponse, TPayload>(path: string, payload: TPayload): Promise<TResponse> {

@@ -79,6 +79,7 @@ import {
   evaluateImportChecklist,
   fetchAuditChainStatus,
   fetchCorrectionSuggestion,
+  getPendingReadCount,
   fetchErpTemplates,
   fetchCustomers,
   fetchAuditEvents,
@@ -1135,11 +1136,15 @@ function loadStoredCurrentUser(): ApiAuthenticatedUser | null {
 // across the canvas when switching tabs — the page's motion identity plays
 // while the content settles underneath. Pointer-transparent so fast users are
 // never blocked, and skipped entirely under reduced motion.
-// The overlay holds until the incoming view stops reporting aria-busy
-// (its data has loaded), with a minimum so the entry reads and a hard cap
-// so a stuck request can never trap the screen.
+// The overlay holds until the incoming view has truly loaded: no API reads
+// in flight and no skeleton still reporting aria-busy. A minimum keeps the
+// entry readable on instant tabs; a hard cap means a stuck request can never
+// trap the screen (the overlay is pointer-transparent regardless).
 const STINGER_MIN_MS = 450;
-const STINGER_MAX_MS = 4000;
+const STINGER_MAX_MS = 8000;
+// A view may finish one request and immediately start the next; require a
+// short quiet period before declaring the tab loaded.
+const STINGER_SETTLE_MS = 250;
 
 function stingerVariants(signature: Signature): Variants {
   const enter = { duration: 0.2, ease: EASE_OUT_QUINT };
@@ -1922,19 +1927,29 @@ export function App() {
       signature: tab.signature,
     });
   }, [activeView, reducedMotion]);
-  // Hold the stinger while the incoming view is still loading (it renders
-  // skeletons marked aria-busy); release as soon as the tab is ready.
+  // Hold the stinger while the incoming view is still loading — any API read
+  // in flight or any skeleton marked aria-busy — and release only once the
+  // tab has been quiet for a moment (views often chain several requests).
   useEffect(() => {
     if (!stinger) return;
     const startedAt = performance.now();
+    let quietSince: number | null = null;
     const interval = window.setInterval(() => {
-      const elapsed = performance.now() - startedAt;
-      const stillLoading = Boolean(viewCanvasRef.current?.querySelector('[aria-busy="true"]'));
-      if ((elapsed >= STINGER_MIN_MS && !stillLoading) || elapsed >= STINGER_MAX_MS) {
+      const now = performance.now();
+      const elapsed = now - startedAt;
+      const stillLoading =
+        getPendingReadCount() > 0 || Boolean(viewCanvasRef.current?.querySelector('[aria-busy="true"]'));
+      if (stillLoading) {
+        quietSince = null;
+      } else if (quietSince === null) {
+        quietSince = now;
+      }
+      const settled = quietSince !== null && now - quietSince >= STINGER_SETTLE_MS;
+      if ((elapsed >= STINGER_MIN_MS && settled) || elapsed >= STINGER_MAX_MS) {
         window.clearInterval(interval);
         setStinger(null);
       }
-    }, 110);
+    }, 90);
     return () => window.clearInterval(interval);
   }, [stinger]);
 
