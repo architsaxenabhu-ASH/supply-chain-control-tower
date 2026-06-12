@@ -1,4 +1,5 @@
-import { formatMoney, formatUnits } from "../../lib/currency";
+import { convertAmount, formatDisplay, formatIn, formatUnits } from "../../lib/currency";
+import { useCurrency } from "../../context/CurrencyContext";
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, FileCheck2, Globe2, MoveRight, PlaneLanding } from "lucide-react";
 
@@ -51,6 +52,7 @@ function isOverdue(candidate: ApiImportFileCandidate, today: string): boolean {
 
 export function PrimarySales() {
   const { country: envCountry } = useCountry();
+  const { effectiveCurrency, rateSet } = useCurrency();
   const [candidates, setCandidates] = useState<ApiImportFileCandidate[]>([]);
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -167,6 +169,31 @@ export function PrimarySales() {
     }
     return counts;
   }, [documents]);
+
+  // Invoice value grouped by the currency captured from each uploaded
+  // invoice — Meril India bills subsidiaries in different currencies.
+  const valueByCurrency = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const candidate of filtered) {
+      for (const line of candidate.lines) {
+        const value = (line.unit_value ?? 0) * line.quantity;
+        if (value <= 0) continue;
+        const code = line.currency ? line.currency.toUpperCase() : "UNSPECIFIED";
+        map.set(code, (map.get(code) ?? 0) + value);
+      }
+    }
+    return [...map.entries()].sort((a, b) => b[1] - a[1]);
+  }, [filtered]);
+
+  const convertedInvoiceTotal = useMemo(
+    () =>
+      valueByCurrency.reduce(
+        (sum, [code, value]) => sum + convertAmount(value, code === "UNSPECIFIED" ? null : code),
+        0,
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [valueByCurrency, effectiveCurrency, rateSet],
+  );
 
   if (loading) {
     return (
@@ -322,6 +349,20 @@ export function PrimarySales() {
                 <span>AWB linked</span>
               </div>
             </div>
+            {valueByCurrency.length > 0 ? (
+              <div className="score-stack">
+                {valueByCurrency.map(([code, value]) => (
+                  <div className="score-row-head" key={code}>
+                    <span>{code === "UNSPECIFIED" ? "No currency on invoice" : `${code} invoices`}</span>
+                    <strong>{code === "UNSPECIFIED" ? num(value) : formatIn(code, value)}</strong>
+                  </div>
+                ))}
+                <div className="score-row-head">
+                  <span>Total at locked rate</span>
+                  <strong>{formatDisplay(convertedInvoiceTotal)}</strong>
+                </div>
+              </div>
+            ) : null}
             <p className="access-note">
               <small>
                 Library holds {documents.length} uploaded document{documents.length === 1 ? "" : "s"}

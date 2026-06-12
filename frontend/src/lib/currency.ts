@@ -79,21 +79,50 @@ export function currencyForCountry(country: string): string {
 // legacy views (plain functions, no hooks) stay unchanged apart from
 // delegating here; the provider re-renders the app on every change, so each
 // view re-reads the formatter with fresh state.
+//
+// Cross-currency model (Phase 5E): every amount carries its own source
+// currency (captured from the uploaded invoice). Conversion goes source →
+// base → display using the rate set locked for the chosen date. An amount in
+// a currency without a locked rate is shown in its original currency rather
+// than converted wrongly.
 
 let displayCurrency = BASE_CURRENCY;
-let rateToDisplay = 1; // 1 base unit = rateToDisplay display units
+let baseCurrency = BASE_CURRENCY;
+let baseRates: Record<string, number> = {}; // 1 base unit = baseRates[code] code units
 
-export function setDisplayCurrency(code: string, rate: number): void {
-  displayCurrency = code || BASE_CURRENCY;
-  rateToDisplay = Number.isFinite(rate) && rate > 0 ? rate : 1;
+export function setDisplayState(code: string, base: string, rates: Record<string, number>): void {
+  baseCurrency = (base || BASE_CURRENCY).toUpperCase();
+  displayCurrency = (code || baseCurrency).toUpperCase();
+  baseRates = rates ?? {};
 }
 
 export function getDisplayCurrency(): string {
   return displayCurrency;
 }
 
-export function convertFromBase(value: number): number {
-  return (value || 0) * rateToDisplay;
+function rateFor(code: string): number | null {
+  const wanted = code.toUpperCase();
+  if (wanted === baseCurrency) return 1;
+  const rate = baseRates[wanted];
+  return Number.isFinite(rate) && rate > 0 ? rate : null;
+}
+
+/** True when an amount in `from` can be expressed in the display currency. */
+export function canConvert(from?: string | null): boolean {
+  const src = (from ?? baseCurrency).toUpperCase();
+  if (src === displayCurrency) return true;
+  return rateFor(src) !== null && rateFor(displayCurrency) !== null;
+}
+
+/** Convert an amount from its source currency into the display currency.
+ *  Unconvertible amounts are returned unchanged (caller may keep original). */
+export function convertAmount(value: number, from?: string | null): number {
+  const src = (from ?? baseCurrency).toUpperCase();
+  if (src === displayCurrency) return value || 0;
+  const srcRate = rateFor(src);
+  const dstRate = rateFor(displayCurrency);
+  if (srcRate === null || dstRate === null) return value || 0;
+  return ((value || 0) / srcRate) * dstRate;
 }
 
 const formatterCache = new Map<string, Intl.NumberFormat>();
@@ -113,15 +142,32 @@ function moneyFormatter(code: string, compact: boolean, decimals: boolean): Intl
   return formatter;
 }
 
-export function formatMoney(value: number, options?: { compact?: boolean }): string {
-  const converted = convertFromBase(value);
-  const compact = Boolean(options?.compact) && Math.abs(converted) >= 1_000_000;
-  const decimals = Math.abs(converted) > 0 && Math.abs(converted) < 1000;
+/** Format an amount in a specific currency, without any conversion. */
+export function formatIn(code: string, value: number, compactOption?: boolean): string {
+  const amount = value || 0;
+  const compact = Boolean(compactOption) && Math.abs(amount) >= 1_000_000;
+  const decimals = Math.abs(amount) > 0 && Math.abs(amount) < 1000;
   try {
-    return moneyFormatter(displayCurrency, compact, decimals).format(converted);
+    return moneyFormatter(code.toUpperCase(), compact, decimals).format(amount);
   } catch {
-    return `${displayCurrency} ${Math.round(converted).toLocaleString("en-US")}`;
+    return `${code.toUpperCase()} ${Math.round(amount).toLocaleString("en-US")}`;
   }
+}
+
+/** Format an amount already expressed in the display currency (no conversion). */
+export function formatDisplay(value: number, options?: { compact?: boolean }): string {
+  return formatIn(displayCurrency, value, options?.compact);
+}
+
+/** Format an amount given in its source currency, converted to the display
+ *  currency at the locked rate. Falls back to the original currency when no
+ *  rate is locked for it (honest, never silently wrong). */
+export function formatMoney(value: number, options?: { compact?: boolean; from?: string | null }): string {
+  const src = (options?.from ?? baseCurrency).toUpperCase();
+  if (src !== displayCurrency && !canConvert(src)) {
+    return formatIn(src, value, options?.compact);
+  }
+  return formatDisplay(convertAmount(value, src), options);
 }
 
 const unitFormatter = new Intl.NumberFormat("en-US");

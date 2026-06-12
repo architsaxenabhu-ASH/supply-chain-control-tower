@@ -19,6 +19,8 @@ class Receivable(BaseModel):
     due_date: str
     payment_terms: str | None = None
     invoice_value: float
+    # Invoice currency captured from the document (None = base currency).
+    currency: str | None = None
     paid_value: float = 0
     outstanding_value: float = 0
     status: str = "open"
@@ -35,6 +37,7 @@ class CreateReceivableRequest(BaseModel):
     due_date: str
     payment_terms: str | None = None
     invoice_value: float
+    currency: str | None = None
     paid_value: float = 0
     actor: str
 

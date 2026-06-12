@@ -55,6 +55,8 @@ class InventoryBatch(BaseModel):
     inventory_value: float
     days_to_expiry: int
     expiry_bucket: str
+    # Invoice currency the unit value was captured in (None = base currency).
+    currency: str | None = None
 
 
 class ShipmentLine(BaseModel):
@@ -94,6 +96,7 @@ class GoodsReceiptLine(BaseModel):
     quantity_received: float
     expiry_date: date
     unit_value: float
+    currency: str | None = None
 
 
 class GoodsReceipt(BaseModel):
@@ -171,6 +174,7 @@ class CreateGoodsReceiptLineRequest(BaseModel):
     manufacturing_date: date | None = None
     expiry_date: date
     unit_value: float
+    currency: str | None = None
 
 
 class CreateGoodsReceiptRequest(BaseModel):

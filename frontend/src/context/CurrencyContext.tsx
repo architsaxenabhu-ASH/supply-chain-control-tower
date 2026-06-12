@@ -20,7 +20,7 @@ import {
   BASE_CURRENCY,
   PINNED_CURRENCIES,
   currencyForCountry,
-  setDisplayCurrency,
+  setDisplayState,
 } from "../lib/currency";
 import { useCountry } from "./CountryContext";
 
@@ -129,9 +129,7 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
   }, [choice, country, rateSet]);
 
   useEffect(() => {
-    const base = rateSet?.base_currency ?? BASE_CURRENCY;
-    const rate = effectiveCurrency === base ? 1 : (rateSet?.rates?.[effectiveCurrency] ?? 1);
-    setDisplayCurrency(effectiveCurrency, rate);
+    setDisplayState(effectiveCurrency, rateSet?.base_currency ?? BASE_CURRENCY, rateSet?.rates ?? {});
   }, [effectiveCurrency, rateSet]);
 
   const availableCurrencies = useMemo(() => {
@@ -231,6 +229,8 @@ export function CurrencyRatesPanel({ actor }: { actor: string | null }) {
   const { rateDate, setRateDate, rateSet, status, override } = useCurrency();
   const [open, setOpen] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [addCode, setAddCode] = useState("");
+  const [addValue, setAddValue] = useState("");
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -261,6 +261,11 @@ export function CurrencyRatesPanel({ actor }: { actor: string | null }) {
       if (!Number.isFinite(baseUnits) || baseUnits <= 0) continue;
       changed[code] = 1 / baseUnits;
     }
+    const extraCode = addCode.trim().toUpperCase();
+    const extraBaseUnits = Number(addValue);
+    if (/^[A-Z]{3}$/.test(extraCode) && Number.isFinite(extraBaseUnits) && extraBaseUnits > 0) {
+      changed[extraCode] = 1 / extraBaseUnits;
+    }
     if (Object.keys(changed).length === 0 || !reason.trim()) return;
     setSaving(true);
     setMessage("");
@@ -275,11 +280,15 @@ export function CurrencyRatesPanel({ actor }: { actor: string | null }) {
     }
   }
 
-  const dirty = Object.entries(drafts).some(([code, text]) => {
-    const current = baseUnitsFor(code);
-    const next = Number(text);
-    return Number.isFinite(next) && next > 0 && (current === null || Math.abs(next - current) > 1e-9);
-  });
+  const addingValid =
+    /^[A-Za-z]{3}$/.test(addCode.trim()) && Number.isFinite(Number(addValue)) && Number(addValue) > 0;
+  const dirty =
+    addingValid ||
+    Object.entries(drafts).some(([code, text]) => {
+      const current = baseUnitsFor(code);
+      const next = Number(text);
+      return Number.isFinite(next) && next > 0 && (current === null || Math.abs(next - current) > 1e-9);
+    });
 
   return (
     <div className="rates-anchor">
@@ -335,6 +344,26 @@ export function CurrencyRatesPanel({ actor }: { actor: string | null }) {
               );
             })}
           </div>
+          <label className="rates-row rates-add">
+            <input
+              type="text"
+              maxLength={3}
+              placeholder="Code"
+              aria-label="Add currency code"
+              value={addCode}
+              onChange={(event) => setAddCode(event.target.value.toUpperCase())}
+            />
+            <input
+              type="number"
+              min="0"
+              step="any"
+              placeholder={`Value of 1 unit in ${base}`}
+              aria-label="Base units per unit of added currency"
+              value={addValue}
+              onChange={(event) => setAddValue(event.target.value)}
+            />
+            <strong>{base}</strong>
+          </label>
           <input
             className="rates-reason"
             placeholder="Reason for override (required, goes to audit)"

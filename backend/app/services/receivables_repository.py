@@ -74,6 +74,7 @@ def create_receivable(request: CreateReceivableRequest) -> Receivable:
         due_date=request.due_date,
         payment_terms=request.payment_terms,
         invoice_value=request.invoice_value,
+        currency=request.currency.strip().upper() if request.currency else None,
         paid_value=request.paid_value,
         created_by=request.actor,
         updated_at=datetime.now().isoformat(),

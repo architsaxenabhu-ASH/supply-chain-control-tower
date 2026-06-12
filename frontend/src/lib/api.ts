@@ -141,6 +141,7 @@ export type ApiInventoryBatch = {
   inventory_value: number;
   days_to_expiry: number;
   expiry_bucket: string;
+  currency: string | null;
 };
 
 export type ApiShipment = {
@@ -1407,6 +1408,7 @@ export type ApiReceivable = {
   due_date: string;
   payment_terms: string | null;
   invoice_value: number;
+  currency: string | null;
   paid_value: number;
   outstanding_value: number;
   status: string;

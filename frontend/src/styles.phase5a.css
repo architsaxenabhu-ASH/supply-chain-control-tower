@@ -1103,6 +1103,8 @@
   font-variant-numeric: tabular-nums;
 }
 .rates-row input:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--country-accent-soft); }
+.rates-add { padding-top: 4px; border-top: 1px dashed var(--tower-border, #28323e); }
+.rates-add input:first-child { width: 58px; text-transform: uppercase; }
 .rates-reason {
   border: 1px solid var(--tower-border, #28323e);
   border-radius: 9px;

@@ -1,4 +1,5 @@
-import { formatMoney, formatUnits } from "../../lib/currency";
+import { BASE_CURRENCY, convertAmount, formatDisplay, formatIn, formatMoney } from "../../lib/currency";
+import { useCurrency } from "../../context/CurrencyContext";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Banknote, ShieldAlert, Wallet } from "lucide-react";
@@ -20,6 +21,11 @@ import { itemVariants, listVariants, prefersReducedMotion, signatureVariants } f
 // credit control — and payments recorded right on the invoice row.
 
 const inr = (value: number) => formatMoney(value, { compact: true });
+// Invoice rows carry their own currency (captured from the document);
+// totals are converted to the display currency at the locked rate first.
+const rowMoney = (value: number, currency: string | null) =>
+  formatMoney(value, { compact: true, from: currency });
+const total = (value: number) => formatDisplay(value, { compact: true });
 
 const STATUS_FILTERS = ["all", "open", "partially_paid", "overdue", "paid"] as const;
 
@@ -45,6 +51,7 @@ function riskPill(level: string): string {
 export function Receivables({ currentUser }: { currentUser: ApiAuthenticatedUser }) {
   const reduced = prefersReducedMotion();
   const { country } = useCountry();
+  const { effectiveCurrency, rateSet } = useCurrency();
   const [receivables, setReceivables] = useState<ApiReceivable[]>([]);
   const [risks, setRisks] = useState<ApiPaymentRisk[]>([]);
   const [credit, setCredit] = useState<ApiCreditControl[]>([]);
@@ -77,12 +84,16 @@ export function Receivables({ currentUser }: { currentUser: ApiAuthenticatedUser
   }, [load]);
 
   const totals = useMemo(() => {
-    const outstanding = receivables.reduce((sum, row) => sum + (row.outstanding_value || 0), 0);
+    const outstanding = receivables.reduce(
+      (sum, row) => sum + convertAmount(row.outstanding_value || 0, row.currency),
+      0,
+    );
     const overdue = receivables
       .filter((row) => row.status === "overdue")
-      .reduce((sum, row) => sum + (row.outstanding_value || 0), 0);
+      .reduce((sum, row) => sum + convertAmount(row.outstanding_value || 0, row.currency), 0);
     return { outstanding, overdue, count: receivables.length, riskCount: risks.length };
-  }, [receivables, risks]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [receivables, risks, effectiveCurrency, rateSet]);
 
   const blockedCredit = useMemo(
     () => credit.filter((row) => row.status !== "healthy").slice(0, 5),
@@ -99,7 +110,10 @@ export function Receivables({ currentUser }: { currentUser: ApiAuthenticatedUser
     setMessage(null);
     try {
       await recordReceivablePayment(row.receivable_id, { amount, actor: currentUser.email });
-      setMessage({ tone: "good", text: `Payment of ${inr(amount)} recorded against ${row.invoice_number}.` });
+      setMessage({
+        tone: "good",
+        text: `Payment of ${formatIn(row.currency ?? BASE_CURRENCY, amount)} recorded against ${row.invoice_number}.`,
+      });
       setPayingId(null);
       setPaymentAmount("");
       load();
@@ -122,7 +136,7 @@ export function Receivables({ currentUser }: { currentUser: ApiAuthenticatedUser
         <div className="cockpit-hero-top">
           <div>
             <p className="eyebrow">Receivables · {country || "all stations"}</p>
-            <h2>{inr(totals.outstanding)} outstanding{totals.overdue > 0 ? ` · ${inr(totals.overdue)} overdue` : ""}</h2>
+            <h2>{total(totals.outstanding)} outstanding{totals.overdue > 0 ? ` · ${total(totals.overdue)} overdue` : ""}</h2>
           </div>
           <div className="lane-switch" role="tablist" aria-label="Receivable status">
             {STATUS_FILTERS.map((option) => (
@@ -141,11 +155,11 @@ export function Receivables({ currentUser }: { currentUser: ApiAuthenticatedUser
         </div>
         <div className="vitals-row">
           <div className="vital">
-            <strong>{inr(totals.outstanding)}</strong>
+            <strong>{total(totals.outstanding)}</strong>
             <span>Outstanding</span>
           </div>
           <div className={`vital ${totals.overdue > 0 ? "tone-bad" : "tone-good"}`}>
-            <strong>{inr(totals.overdue)}</strong>
+            <strong>{total(totals.overdue)}</strong>
             <span>Overdue</span>
           </div>
           <div className="vital">
@@ -196,6 +210,7 @@ export function Receivables({ currentUser }: { currentUser: ApiAuthenticatedUser
                   <div className="finance-row-main">
                     <div className="finance-row-head">
                       <strong>{row.invoice_number}</strong>
+                      {row.currency ? <span className="tag">{row.currency}</span> : null}
                       <span className={`risk-pill ${statusPill(row.status)}`}>{humanize(row.status)}</span>
                     </div>
                     <small>
@@ -204,10 +219,10 @@ export function Receivables({ currentUser }: { currentUser: ApiAuthenticatedUser
                   </div>
                   <div className="finance-row-figures">
                     <span>
-                      <small>Invoice</small> {inr(row.invoice_value)}
+                      <small>Invoice</small> {rowMoney(row.invoice_value, row.currency)}
                     </span>
                     <span>
-                      <small>Outstanding</small> <strong>{inr(row.outstanding_value)}</strong>
+                      <small>Outstanding</small> <strong>{rowMoney(row.outstanding_value, row.currency)}</strong>
                     </span>
                   </div>
                   {row.status !== "paid" ? (

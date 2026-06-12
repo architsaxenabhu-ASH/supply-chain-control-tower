@@ -433,6 +433,7 @@ def increase_inventory(
     expiry_date: date,
     unit_value: float,
     manufacturing_date: date | None = None,
+    currency: str | None = None,
 ) -> None:
     if quantity <= 0:
         raise ValueError("Receipt quantity must be greater than zero")
@@ -447,6 +448,8 @@ def increase_inventory(
         raw_batch["unit_value"] = unit_value
         if manufacturing_date:
             raw_batch["manufacturing_date"] = manufacturing_date
+        if currency:
+            raw_batch["currency"] = currency.strip().upper()
         _save_raw_batches()
         record_audit_event(
             action="increase",
@@ -467,6 +470,7 @@ def increase_inventory(
         "manufacturing_date": manufacturing_date or date.today(),
         "expiry_date": expiry_date,
         "unit_value": unit_value,
+        "currency": currency.strip().upper() if currency else None,
     }
     RAW_BATCHES.append(new_batch)
     _save_raw_batches()
@@ -537,6 +541,7 @@ def list_inventory_batches() -> list[InventoryBatch]:
                 inventory_value=quantity * unit_value,
                 days_to_expiry=days_to_expiry,
                 expiry_bucket=get_expiry_bucket(days_to_expiry),
+                currency=(str(raw_batch["currency"]).upper() if raw_batch.get("currency") else None),
             )
         )
     return batches
@@ -673,6 +678,7 @@ def post_goods_receipt(request: CreateGoodsReceiptRequest) -> WorkflowResult:
                 quantity_received=line.quantity_received,
                 expiry_date=line.expiry_date,
                 unit_value=line.unit_value,
+                currency=line.currency,
             )
             for line in request.lines
         ],
@@ -687,6 +693,7 @@ def post_goods_receipt(request: CreateGoodsReceiptRequest) -> WorkflowResult:
             manufacturing_date=line.manufacturing_date,
             expiry_date=line.expiry_date,
             unit_value=line.unit_value,
+            currency=line.currency,
         )
 
     GOODS_RECEIPTS.append(receipt)

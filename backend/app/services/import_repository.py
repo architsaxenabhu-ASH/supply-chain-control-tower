@@ -297,6 +297,7 @@ def post_import_goods_receipt(request: ImportGoodsReceiptPostRequest) -> Workflo
                 quantity_received=line.quantity,
                 expiry_date=line.expiry_date,
                 unit_value=line.unit_value or 0,
+                currency=line.currency,
             )
         )
 

@@ -1,4 +1,5 @@
-import { formatMoney, formatUnits } from "../../lib/currency";
+import { convertAmount, formatDisplay, formatMoney, formatUnits } from "../../lib/currency";
+import { useCurrency } from "../../context/CurrencyContext";
 import { useEffect, useMemo, useState } from "react";
 import { Boxes, Globe2, PieChart, Warehouse } from "lucide-react";
 
@@ -23,7 +24,9 @@ import { DonutChart } from "../../components/DonutChart";
 // country, vertical, product, expiry band. All options come from live data.
 
 const num = formatUnits;
-const money = (value: number) => formatMoney(value);
+// Aggregates convert each batch from its own invoice currency first, so
+// `money` formats values already expressed in the display currency.
+const money = (value: number) => formatDisplay(value);
 
 const EXPIRY_TONES: Record<string, "bad" | "warn" | "info" | "good"> = {
   "0-90 Days": "bad",
@@ -38,6 +41,7 @@ const CLOSED_COMMITMENT_STATUSES = new Set(["fulfilled", "delivered", "cancelled
 
 export function InventoryHub() {
   const { country: envCountry } = useCountry();
+  const { effectiveCurrency, rateSet } = useCurrency();
   const [batches, setBatches] = useState<ApiInventoryBatch[]>([]);
   const [warehouses, setWarehouses] = useState<ApiWarehouseLocation[]>([]);
   const [shipments, setShipments] = useState<ApiShipment[]>([]);
@@ -120,9 +124,15 @@ export function InventoryHub() {
   );
 
   const availableUnits = filtered.reduce((sum, batch) => sum + batch.quantity_available, 0);
-  const inventoryValue = filtered.reduce((sum, batch) => sum + batch.inventory_value, 0);
+  const inventoryValue = filtered.reduce(
+    (sum, batch) => sum + convertAmount(batch.inventory_value, batch.currency),
+    0,
+  );
   const riskBatches = filtered.filter((batch) => batch.days_to_expiry <= 90);
-  const riskValue = riskBatches.reduce((sum, batch) => sum + batch.inventory_value, 0);
+  const riskValue = riskBatches.reduce(
+    (sum, batch) => sum + convertAmount(batch.inventory_value, batch.currency),
+    0,
+  );
 
   const reservedUnits = useMemo(
     () =>
@@ -159,25 +169,28 @@ export function InventoryHub() {
       if (!matchesExceptCountry(batch)) continue;
       const country = countryOf(batch.warehouse_location);
       if (!country) continue;
-      map[country] = (map[country] ?? 0) + batch.inventory_value;
+      map[country] = (map[country] ?? 0) + convertAmount(batch.inventory_value, batch.currency);
     }
     return map;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [batches, vertical, expiryBand, dateFrom, dateTo, query, warehouseCountry]);
+  }, [batches, vertical, expiryBand, dateFrom, dateTo, query, warehouseCountry, effectiveCurrency, rateSet]);
 
   const verticalSlices = useMemo(() => {
     const map = new Map<string, number>();
     for (const batch of filtered) {
       const key = batch.product_category || "Unclassified";
-      map.set(key, (map.get(key) ?? 0) + batch.inventory_value);
+      map.set(key, (map.get(key) ?? 0) + convertAmount(batch.inventory_value, batch.currency));
     }
     return [...map.entries()].map(([label, value]) => ({ label, value }));
-  }, [filtered]);
+  }, [filtered, effectiveCurrency, rateSet]);
 
   const warehouseRows = useMemo(() => {
     const map = new Map<string, number>();
     for (const batch of filtered) {
-      map.set(batch.warehouse_location, (map.get(batch.warehouse_location) ?? 0) + batch.inventory_value);
+      map.set(
+        batch.warehouse_location,
+        (map.get(batch.warehouse_location) ?? 0) + convertAmount(batch.inventory_value, batch.currency),
+      );
     }
     const rows = [...map.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
     const max = rows[0]?.[1] ?? 0;
@@ -186,7 +199,7 @@ export function InventoryHub() {
       value,
       pct: max > 0 ? Math.max(Math.round((value / max) * 100), 4) : 0,
     }));
-  }, [filtered]);
+  }, [filtered, effectiveCurrency, rateSet]);
 
   const bandCounts = EXPIRY_ORDER.map((label) => ({
     label,
@@ -400,7 +413,7 @@ export function InventoryHub() {
                     <td>{batch.batch_number}</td>
                     <td>{batch.warehouse_location}</td>
                     <td>{num(batch.quantity_available)}</td>
-                    <td>{money(batch.inventory_value)}</td>
+                    <td>{formatMoney(batch.inventory_value, { from: batch.currency })}</td>
                     <td>{batch.expiry_date}</td>
                     <td>
                       <span className={`dot-pill tone-${tone === "info" ? "info" : tone}`}>
