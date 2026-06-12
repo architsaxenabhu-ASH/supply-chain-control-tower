@@ -10,14 +10,26 @@ screen keeps its view-id and hash URL — nothing is lost, only grouped.
 
 | Workspace | Tabs (view-ids) | Backed by |
 | --- | --- | --- |
-| **Command Center** | Overview (`command-center`), Analytics (`analytics`), Goods Tracking (`goods-tracking`), Progress (`platform-progress`) | `/executive/command-center-v2`, dashboards |
+| **Command Center** | Overview (`command-center`), Analytics (`analytics`), Progress (`platform-progress`) | `/executive/command-center-v2`, dashboards |
 | **My Work** | Queues (`my-work`): Actions · Reviews · Approvals · Decisions | `/executive/actions`, `/executive/approvals`, `/decisions`, review endpoints |
 | **Reviews** | Review Center (`reviews`): Inventory, Expiry, Open Orders, Receivables, Distributor, Country, Vertical | `/commercial/reviews/*` (`ReviewResponse`) |
 | **Approvals** | Approval Center (`approvals`): Pending / Approved / Rejected | `/executive/approvals` + decide, `/security/resolve-approver` |
-| **Operations** | Ops Dashboard (`dashboard`), Inventory (`inventory`), Shipments (`shipments`), Dispatches (`dispatches`), Receipts (`receipts`), Counts (`counts`), Expiry (`expiry`), Consignment (`consignment`), Returns (`returns`), Commitments (`commitments`), Traceability (`traceability`), Documents (`documents`), Import Validation (`import-validation`), ERP Upload (`erp-uploads`), Products (`products`) | warehouse/movement/consignment/returns/commitments routes |
+| **Inventory** | Overview (`inventory-hub`), Batches (`inventory`), Receipts (`receipts`), Counts (`counts`), Expiry (`expiry`), Traceability (`traceability`) | inventory/warehouse/movement routes |
+| **Primary Sales** | Overview (`primary-sales`), Goods Tracking (`goods-tracking`), Documents (`documents`), Import Validation (`import-validation`) | import candidates/documents/timeline routes |
+| **Secondary Sales** | Overview (`secondary-sales`), Dispatches (`dispatches`), Commitments (`commitments`) | commitments/dispatch routes |
+| **Operations** | Ops Dashboard (`dashboard`), Shipments (`shipments`), Consignment (`consignment`), Returns (`returns`), ERP Upload (`erp-uploads`), Products (`products`) | warehouse/consignment/returns routes |
 | **Commercial** | Performance (`commercial`): Country→Vertical→Distributor→Customer drill-down, Targets; Receivables (`receivables`), Payables (`payables`), Customers (`customers`) | `/commercial/*`, `/receivables/*`, `/payables/*` |
 | **Decisions** | Decision Center (`decision-center`), Learning (`learning`), Assistant (`assistant`) | `/decisions/*` (effectiveness, history, similarity, insights), learning routes |
 | **Access** | Users & Roles (`security`), Audit (`audit`) | `/security/*`, `/audit` |
+
+Phase 5C separation — three different management questions, never merged:
+**Inventory** answers "What do we have?" (stock and risk, not sales).
+**Primary Sales** answers "What are we receiving from Meril India?"
+(Meril India → subsidiary: import shipments, CI/PL/AWB documents, arrivals).
+**Secondary Sales** answers "What are we delivering to customers?"
+(subsidiary → customer: POs, fulfillment, backorders, OTIF). Each overview
+ships its own filter bar (date, country, vertical, product + workspace-specific
+filter), KPI vitals, a world map, and drill-down lists.
 
 `activeView` stays the single source of truth (hash-routable). `activeWorkspace`
 is derived from the view→workspace map. Rail click opens the first tab the user

@@ -17,12 +17,14 @@ import {
   History,
   Inbox,
   PackageOpen,
+  PlaneLanding,
   RotateCcw,
   LineChart,
   Package,
   RadioTower,
   Rocket,
   ScrollText,
+  Send,
   ShieldCheck,
   Ship,
   Stamp,
@@ -30,15 +32,22 @@ import {
   Truck,
   Upload,
   Users,
+  Warehouse,
 } from "lucide-react";
 
 import type { ApiAuthenticatedUser } from "../lib/api";
 import type { Signature } from "../motion/motion";
 
-// Workspace navigation registry (Phase 5A). Single source of truth for the
-// management OS information architecture: 8 workspaces, each with tabs.
-// Permissions (never role names) drive visibility; Admin bypasses everything.
-// Adding a screen = one tab entry here + its render branch in App.tsx.
+// Workspace navigation registry (Phase 5C). Single source of truth for the
+// management OS information architecture. Permissions (never role names)
+// drive visibility; Admin bypasses everything. Adding a screen = one tab
+// entry here + its render branch in App.tsx.
+//
+// Inventory, Primary Sales, and Secondary Sales are deliberately separate
+// workspaces — three different management questions:
+//   Inventory       — "What do we have?"            (stock and risk)
+//   Primary Sales   — "What are we receiving from Meril India?"
+//   Secondary Sales — "What are we delivering to customers?"
 
 export type NavIcon = ComponentType<{
   size?: number;
@@ -70,7 +79,6 @@ export const WORKSPACES: WorkspaceDef[] = [
     tabs: [
       { id: "command-center", label: "Overview", icon: Gauge, signature: "rise" },
       { id: "analytics", label: "Analytics", icon: LineChart, signature: "fade" },
-      { id: "goods-tracking", label: "Goods Tracking", icon: RadioTower, signature: "glide" },
       { id: "platform-progress", label: "Progress", icon: Rocket, signature: "sweep" },
     ],
   },
@@ -107,31 +115,23 @@ export const WORKSPACES: WorkspaceDef[] = [
     ],
   },
   {
-    id: "operations",
-    label: "Operations",
-    icon: Boxes,
+    id: "inventory-zone",
+    label: "Inventory",
+    icon: Warehouse,
     tabs: [
-      { id: "dashboard", label: "Ops Dashboard", icon: BarChart3, signature: "rise" },
       {
-        id: "inventory",
-        label: "Inventory",
-        icon: Boxes,
+        id: "inventory-hub",
+        label: "Overview",
+        icon: Warehouse,
         signature: "rise",
         permissions: ["goods_receipt", "inventory_approval", "inventory_value", "expiry_review"],
       },
       {
-        id: "shipments",
-        label: "Shipments",
-        icon: Ship,
-        signature: "glide",
-        permissions: ["shipment_request", "shipment_approval"],
-      },
-      {
-        id: "dispatches",
-        label: "Dispatches",
-        icon: Truck,
-        signature: "glide",
-        permissions: ["dispatch", "dispatch_approval"],
+        id: "inventory",
+        label: "Batches",
+        icon: Boxes,
+        signature: "rise",
+        permissions: ["goods_receipt", "inventory_approval", "inventory_value", "expiry_review"],
       },
       {
         id: "receipts",
@@ -154,28 +154,22 @@ export const WORKSPACES: WorkspaceDef[] = [
         signature: "sweep",
         permissions: ["expiry_review", "batch_traceability"],
       },
-      {
-        id: "consignment",
-        label: "Consignment",
-        icon: PackageOpen,
-        signature: "rise",
-        permissions: ["inventory_value", "inventory_approval", "goods_receipt", "customer_read"],
-      },
-      {
-        id: "returns",
-        label: "Returns",
-        icon: RotateCcw,
-        signature: "loop",
-        permissions: ["goods_receipt", "inventory_count", "reconciliation"],
-      },
-      {
-        id: "commitments",
-        label: "Commitments",
-        icon: Handshake,
-        signature: "glide",
-        permissions: ["shipment_request", "shipment_approval", "customer_read"],
-      },
       { id: "traceability", label: "Traceability", icon: GitBranch, signature: "path" },
+    ],
+  },
+  {
+    id: "primary-sales-zone",
+    label: "Primary Sales",
+    icon: PlaneLanding,
+    tabs: [
+      {
+        id: "primary-sales",
+        label: "Overview",
+        icon: PlaneLanding,
+        signature: "glide",
+        permissions: ["import_approval", "goods_receipt", "shipment_approval"],
+      },
+      { id: "goods-tracking", label: "Goods Tracking", icon: RadioTower, signature: "glide" },
       {
         id: "documents",
         label: "Documents",
@@ -189,6 +183,63 @@ export const WORKSPACES: WorkspaceDef[] = [
         icon: ClipboardCheck,
         signature: "rise",
         permissions: ["import_approval", "goods_receipt"],
+      },
+    ],
+  },
+  {
+    id: "secondary-sales-zone",
+    label: "Secondary Sales",
+    icon: Send,
+    tabs: [
+      {
+        id: "secondary-sales",
+        label: "Overview",
+        icon: Send,
+        signature: "flow",
+        permissions: ["shipment_request", "shipment_approval", "dispatch", "customer_read"],
+      },
+      {
+        id: "dispatches",
+        label: "Dispatches",
+        icon: Truck,
+        signature: "glide",
+        permissions: ["dispatch", "dispatch_approval"],
+      },
+      {
+        id: "commitments",
+        label: "Commitments",
+        icon: Handshake,
+        signature: "glide",
+        permissions: ["shipment_request", "shipment_approval", "customer_read"],
+      },
+    ],
+  },
+  {
+    id: "operations",
+    label: "Operations",
+    icon: Boxes,
+    tabs: [
+      { id: "dashboard", label: "Ops Dashboard", icon: BarChart3, signature: "rise" },
+      {
+        id: "shipments",
+        label: "Shipments",
+        icon: Ship,
+        signature: "glide",
+        permissions: ["shipment_request", "shipment_approval"],
+      },
+      {
+        id: "consignment",
+        label: "Consignment",
+        icon: PackageOpen,
+        signature: "rise",
+        permissions: ["inventory_value", "inventory_approval", "goods_receipt", "customer_read"],
+      },
+      {
+        id: "returns",
+        label: "Returns",
+        icon: RotateCcw,
+        signature: "loop",
+        permissions: ["goods_receipt", "inventory_count", "reconciliation"],
       },
       {
         id: "erp-uploads",

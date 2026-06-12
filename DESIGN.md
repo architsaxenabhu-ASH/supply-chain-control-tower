@@ -107,3 +107,11 @@ so they work in both themes.
   paragraph instead of a bare header row.
 - **Hero vitals** — big `clamp()` figures (`.vitals-row .vital`) with tone
   colours, optionally paired with a delta chip, inside `.cockpit-hero`.
+- **World map** (`components/WorldMap.tsx`) — choropleth lit by
+  `--country-accent` intensity with pulsing centroid dots; clicking a lit
+  country focuses the page's country filter. Country shapes are geography
+  reference data; matching against learned business countries is dynamic.
+- **Contribution donut** (`components/DonutChart.tsx`) — pure-SVG donut with
+  centre total and dot legend; top-N slices, remainder grouped as "Other".
+- **Filter bar** (`components/FilterBar.tsx`) — date range + data-derived
+  selects + product search in one strip; options never hardcoded.

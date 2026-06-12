@@ -13,6 +13,9 @@ import { Consignment } from "../workspaces/operations/Consignment";
 import { Returns } from "../workspaces/operations/Returns";
 import { Commitments } from "../workspaces/operations/Commitments";
 import { AccessCenter } from "../workspaces/access/AccessCenter";
+import { InventoryHub } from "../workspaces/inventory/InventoryHub";
+import { PrimarySales } from "../workspaces/primary/PrimarySales";
+import { SecondarySales } from "../workspaces/secondary/SecondarySales";
 import { CountryProvider, CountrySelector } from "../context/CountryContext";
 import {
   ALL_TABS,
@@ -2006,6 +2009,9 @@ export function App() {
         {activeView === "consignment" ? <Consignment /> : null}
         {activeView === "returns" ? <Returns currentUser={currentUser} /> : null}
         {activeView === "commitments" ? <Commitments /> : null}
+        {activeView === "inventory-hub" ? <InventoryHub /> : null}
+        {activeView === "primary-sales" ? <PrimarySales /> : null}
+        {activeView === "secondary-sales" ? <SecondarySales /> : null}
         {activeView === "dashboard" ? (
           <DashboardView
             expiredInventoryCount={expiredInventoryCount}
