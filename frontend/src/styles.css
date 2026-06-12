@@ -1114,7 +1114,7 @@ td {
 /* Supply Chain Control Tower visual system */
 :root {
   color: #e7f7ff;
-  background: #07111d;
+  background: var(--tower-bg);
   --tower-bg: #07111d;
   --tower-bg-2: #0b1724;
   --tower-panel: rgba(13, 27, 42, 0.86);
@@ -1308,7 +1308,7 @@ h2,
 
 .connection-status {
   border-color: var(--tower-border);
-  background: rgba(6, 17, 26, 0.72);
+  background: color-mix(in srgb, var(--tower-bg) 72%, transparent);
 }
 
 .nav-item {
@@ -1335,7 +1335,7 @@ h2,
 
 .secondary-action {
   border-color: var(--tower-border-strong);
-  background: rgba(9, 24, 36, 0.78);
+  background: color-mix(in srgb, var(--tower-bg-2) 78%, transparent);
   color: var(--tower-text);
 }
 
@@ -1351,7 +1351,7 @@ h2,
 .metric-card {
   min-height: 104px;
   background:
-    linear-gradient(180deg, rgba(72, 229, 255, 0.11), rgba(13, 27, 42, 0.86)),
+    linear-gradient(180deg, rgba(72, 229, 255, 0.11), var(--tower-panel)),
     var(--tower-panel);
 }
 
@@ -1370,7 +1370,7 @@ h2,
 }
 
 .workflow-step.waiting {
-  background: rgba(13, 27, 42, 0.72);
+  background: color-mix(in srgb, var(--tower-panel) 84%, transparent);
 }
 
 .workflow-icon,
@@ -1414,8 +1414,8 @@ h2,
   border: 1px solid rgba(126, 231, 255, 0.12);
   border-radius: 8px;
   background:
-    linear-gradient(180deg, rgba(126, 231, 255, 0.08), rgba(6, 17, 26, 0.62)),
-    #07111d;
+    linear-gradient(180deg, rgba(126, 231, 255, 0.08), color-mix(in srgb, var(--tower-bg) 62%, transparent)),
+    var(--tower-bg);
   padding: 18px 18px 28px;
 }
 
@@ -1487,7 +1487,7 @@ h2,
   gap: 10px;
   border: 1px solid rgba(126, 231, 255, 0.14);
   border-radius: 8px;
-  background: rgba(6, 17, 26, 0.56);
+  background: color-mix(in srgb, var(--tower-bg) 56%, transparent);
   padding: 12px;
 }
 
@@ -1525,7 +1525,7 @@ h2,
   gap: 12px;
   border: 1px solid rgba(126, 231, 255, 0.14);
   border-radius: 8px;
-  background: rgba(6, 17, 26, 0.42);
+  background: color-mix(in srgb, var(--tower-bg) 42%, transparent);
   padding: 12px;
 }
 
@@ -1627,7 +1627,7 @@ h2,
 .assistant-box textarea,
 .search-box {
   border-color: var(--tower-border);
-  background: rgba(6, 17, 26, 0.74);
+  background: color-mix(in srgb, var(--tower-bg) 74%, transparent);
   color: var(--tower-text);
 }
 
@@ -1788,7 +1788,7 @@ td {
   border: 1px solid var(--tower-border);
   border-radius: 8px;
   background:
-    linear-gradient(180deg, rgba(72, 229, 255, 0.1), rgba(13, 27, 42, 0.82)),
+    linear-gradient(180deg, rgba(72, 229, 255, 0.1), color-mix(in srgb, var(--tower-panel) 95%, transparent)),
     var(--tower-panel);
   box-shadow: var(--tower-shadow);
   backdrop-filter: blur(14px);
@@ -1820,7 +1820,7 @@ td {
   aspect-ratio: 1;
   place-items: center;
   border-radius: 50%;
-  background: #07111d;
+  background: var(--tower-bg);
   text-align: center;
 }
 
@@ -1940,7 +1940,7 @@ td {
   min-width: 0;
   border: 1px solid rgba(126, 231, 255, 0.18);
   border-radius: 8px;
-  background: rgba(6, 17, 26, 0.58);
+  background: color-mix(in srgb, var(--tower-bg) 58%, transparent);
   padding: 12px 10px;
   transform-style: preserve-3d;
   transition: transform 200ms ease, border-color 200ms ease;
@@ -2005,7 +2005,7 @@ td {
   min-height: 180px;
   border: 1px solid rgba(126, 231, 255, 0.14);
   border-radius: 8px;
-  background: rgba(6, 17, 26, 0.46);
+  background: color-mix(in srgb, var(--tower-bg) 46%, transparent);
   padding: 13px;
 }
 
@@ -2048,7 +2048,7 @@ td {
   gap: 8px;
   border: 1px solid rgba(126, 231, 255, 0.14);
   border-radius: 8px;
-  background: rgba(6, 17, 26, 0.44);
+  background: color-mix(in srgb, var(--tower-bg) 44%, transparent);
   padding: 13px;
 }
 
@@ -2096,7 +2096,7 @@ td {
   background:
     linear-gradient(90deg, rgba(72, 229, 255, 0.08) 1px, transparent 1px),
     linear-gradient(0deg, rgba(72, 229, 255, 0.08) 1px, transparent 1px),
-    radial-gradient(circle at 50% 50%, rgba(72, 229, 255, 0.18), rgba(6, 17, 26, 0.62) 58%, rgba(6, 17, 26, 0.9) 100%);
+    radial-gradient(circle at 50% 50%, rgba(72, 229, 255, 0.18), color-mix(in srgb, var(--tower-bg) 62%, transparent) 58%, color-mix(in srgb, var(--tower-bg) 90%, transparent) 100%);
   background-size: 42px 42px, 42px 42px, auto;
   perspective: 900px;
 }
@@ -2120,7 +2120,7 @@ td {
   z-index: 2;
   border: 1px solid rgba(126, 231, 255, 0.34);
   border-radius: 6px;
-  background: rgba(6, 17, 26, 0.86);
+  background: color-mix(in srgb, var(--tower-bg) 86%, transparent);
   color: var(--tower-text);
   font-size: 12px;
   font-weight: 900;
@@ -2206,7 +2206,7 @@ td {
   place-items: center;
   border: 1px solid rgba(126, 231, 255, 0.2);
   border-radius: 8px;
-  background: rgba(6, 17, 26, 0.5);
+  background: color-mix(in srgb, var(--tower-bg) 50%, transparent);
 }
 
 .brain-orbit svg {
@@ -2253,7 +2253,7 @@ td {
   min-height: 218px;
   border: 1px solid rgba(126, 231, 255, 0.14);
   border-radius: 8px;
-  background: rgba(6, 17, 26, 0.46);
+  background: color-mix(in srgb, var(--tower-bg) 46%, transparent);
   padding: 14px;
   overflow: hidden;
 }
@@ -2297,7 +2297,7 @@ td {
   width: min(430px, calc(100vw - 32px));
   border: 1px solid var(--tower-border-strong);
   border-radius: 8px;
-  background: rgba(6, 17, 26, 0.94);
+  background: color-mix(in srgb, var(--tower-bg) 94%, transparent);
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
   padding: 16px;
   animation: walkthrough-enter 260ms ease-out both;
@@ -2337,7 +2337,7 @@ td {
   place-items: center;
   border: 1px solid var(--tower-border);
   border-radius: 6px;
-  background: rgba(9, 24, 36, 0.78);
+  background: color-mix(in srgb, var(--tower-bg-2) 78%, transparent);
   color: var(--tower-text);
   cursor: pointer;
 }
@@ -2354,7 +2354,7 @@ td {
   place-items: center;
   border: 1px solid rgba(126, 231, 255, 0.16);
   border-radius: 7px;
-  background: rgba(9, 24, 36, 0.74);
+  background: color-mix(in srgb, var(--tower-bg-2) 74%, transparent);
   color: var(--tower-muted);
   cursor: pointer;
 }
@@ -2797,7 +2797,7 @@ td {
   padding: 9px 12px;
   border-radius: 8px;
   border: 1px solid var(--tower-border);
-  background: rgba(9, 24, 36, 0.55);
+  background: color-mix(in srgb, var(--tower-bg-2) 55%, transparent);
 }
 
 .status-tag.status-present {
@@ -2822,7 +2822,7 @@ td {
   font-size: 12px;
   font-weight: 600;
   border: 1px solid var(--tower-border);
-  background: rgba(9, 24, 36, 0.55);
+  background: color-mix(in srgb, var(--tower-bg-2) 55%, transparent);
   white-space: nowrap;
 }
 
@@ -2871,7 +2871,7 @@ td {
   height: 14px;
   border-radius: 999px;
   overflow: hidden;
-  background: rgba(9, 24, 36, 0.7);
+  background: color-mix(in srgb, var(--tower-bg-2) 70%, transparent);
   border: 1px solid var(--tower-border);
 }
 
@@ -2921,7 +2921,7 @@ td {
   padding: 10px 12px;
   border-radius: 8px;
   border: 1px solid var(--tower-border);
-  background: rgba(9, 24, 36, 0.55);
+  background: color-mix(in srgb, var(--tower-bg-2) 55%, transparent);
   color: var(--tower-text);
   cursor: pointer;
   transition:
@@ -3032,7 +3032,7 @@ td {
   height: 26px;
   border-radius: 50%;
   border: 1px solid var(--tower-border);
-  background: rgba(9, 24, 36, 0.55);
+  background: color-mix(in srgb, var(--tower-bg-2) 55%, transparent);
   color: var(--tower-muted);
   font-size: 12px;
   font-weight: 700;
@@ -3106,7 +3106,7 @@ td {
 .funnel-track {
   height: 12px;
   border-radius: 999px;
-  background: rgba(9, 24, 36, 0.6);
+  background: color-mix(in srgb, var(--tower-bg-2) 60%, transparent);
   border: 1px solid var(--tower-border);
   overflow: hidden;
 }
@@ -3180,7 +3180,7 @@ td {
   padding: 10px 12px;
   border-radius: 8px;
   border: 1px solid var(--tower-border);
-  background: rgba(9, 24, 36, 0.45);
+  background: color-mix(in srgb, var(--tower-bg-2) 45%, transparent);
   animation: panel-rise 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
