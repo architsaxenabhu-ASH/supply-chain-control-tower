@@ -29,6 +29,7 @@ import { formatMoney, getCurrencyRevision, subscribeCurrency } from "../lib/curr
 import {
   ALL_TABS,
   canAccessView,
+  firstAccessibleView,
   hasPermission,
   tabOfView,
   visibleTabs,
@@ -1906,6 +1907,9 @@ export function App() {
   // derived from data already loaded (no extra fetches). Primary = what is
   // coming, Inventory = what we have, Secondary = what is going out. Tone is the
   // pulse colour: green when clear, amber/red when something needs attention.
+  // Operational state per stage — Healthy / Attention / Critical — not just a
+  // count. Critical = value or commitment at risk; Attention = needs a human
+  // soon; Healthy = flowing cleanly. The pip beats when not healthy.
   const pulseToday = getDateStamp();
   const pulseIncoming = importQueue.filter(
     (candidate) => !["received", "closed", "cancelled"].includes(candidate.status.toLowerCase()),
@@ -1917,14 +1921,38 @@ export function App() {
       !["received", "closed", "cancelled"].includes(candidate.status.toLowerCase()),
   ).length;
   const pulseExpiryRisk = expiringIn90Days + expiredInventoryCount;
+  const pulseAwaitingApproval = shipments.filter((shipment) => shipment.status === "Submitted").length;
   const pulseStockValue = formatMoney(totalInventoryValue, { compact: true });
+
+  const STATE_TONE: Record<"healthy" | "attention" | "critical", "good" | "warn" | "bad"> = {
+    healthy: "good",
+    attention: "warn",
+    critical: "bad",
+  };
+  const STATE_LABEL: Record<"healthy" | "attention" | "critical", string> = {
+    healthy: "Healthy",
+    attention: "Attention",
+    critical: "Critical",
+  };
+
+  const primaryState = pulseDelays > 0 ? "critical" : pulseIncoming > 0 ? "attention" : "healthy";
+  const inventoryState =
+    expiredInventoryCount > 0 || expiringIn30Days > 0
+      ? "critical"
+      : pulseExpiryRisk > 0 || totalInventoryQuantity === 0
+        ? "attention"
+        : "healthy";
+  const secondaryState = pulseAwaitingApproval > 0 ? "attention" : "healthy";
+
   const flowStages = [
     {
       id: "primary" as const,
       label: "Primary Sales",
       value: pulseIncoming > 0 ? `${pulseIncoming} inbound` : "Clear",
-      context: pulseDelays > 0 ? `${pulseDelays} past ETA` : pulseIncoming > 0 ? "on schedule" : "nothing inbound",
-      tone: pulseDelays > 0 ? "bad" : ("good" as "good" | "warn" | "bad"),
+      state: primaryState as "healthy" | "attention" | "critical",
+      stateLabel: STATE_LABEL[primaryState],
+      context: pulseDelays > 0 ? `${pulseDelays} past ETA` : pulseIncoming > 0 ? "in motion" : "all clear",
+      tone: STATE_TONE[primaryState],
       view: "dash-primary",
       // The connector below a node animates when stock flows INTO the next
       // node: primary → inventory moves when imports are inbound.
@@ -1934,13 +1962,17 @@ export function App() {
       id: "inventory" as const,
       label: "Inventory",
       value: totalInventoryQuantity > 0 ? pulseStockValue : "Empty",
+      state: inventoryState as "healthy" | "attention" | "critical",
+      stateLabel: STATE_LABEL[inventoryState],
       context:
-        pulseExpiryRisk > 0
-          ? `${pulseExpiryRisk} at risk`
-          : totalInventoryQuantity > 0
-            ? `${formatNumber(totalInventoryQuantity)} units`
-            : "no stock",
-      tone: pulseExpiryRisk > 0 ? "warn" : ("good" as "good" | "warn" | "bad"),
+        expiredInventoryCount > 0
+          ? `${expiredInventoryCount} expired`
+          : pulseExpiryRisk > 0
+            ? `${pulseExpiryRisk} near expiry`
+            : totalInventoryQuantity > 0
+              ? `${formatNumber(totalInventoryQuantity)} units`
+              : "no stock",
+      tone: STATE_TONE[inventoryState],
       view: "dash-inventory",
       // inventory → secondary moves when orders are going out.
       flowsInto: openShipments > 0,
@@ -1949,8 +1981,10 @@ export function App() {
       id: "secondary" as const,
       label: "Secondary Sales",
       value: openShipments > 0 ? `${openShipments} open` : "Clear",
-      context: openShipments > 0 ? "in motion" : "nothing going out",
-      tone: "good" as "good" | "warn" | "bad",
+      state: secondaryState as "healthy" | "attention" | "critical",
+      stateLabel: STATE_LABEL[secondaryState],
+      context: pulseAwaitingApproval > 0 ? `${pulseAwaitingApproval} to approve` : openShipments > 0 ? "in motion" : "all clear",
+      tone: STATE_TONE[secondaryState],
       view: "dash-secondary",
       flowsInto: false,
     },
@@ -2035,9 +2069,12 @@ export function App() {
   );
   const canExportActiveView = hasPermission(currentUser, "reports_export");
 
+  // Guard: if the user lands on (or is left on) a screen they may not open —
+  // restricted role, a stale hash, or a permission change — send them to their
+  // first allowed screen. Admin passes everything; this only ever tightens.
   useEffect(() => {
     if (currentUser && !canAccessView(currentUser, activeView)) {
-      setActiveView("dashboard");
+      setActiveView(firstAccessibleView(currentUser));
     }
   }, [activeView, currentUser]);
 
@@ -2167,7 +2204,8 @@ export function App() {
                     className={`flow-pulse-pip tone-${stage.tone}${stage.tone !== "good" && !reducedMotion ? " is-beating" : ""}`}
                     aria-hidden="true"
                   />
-                  {stage.context}
+                  <span className={`flow-pulse-state tone-${stage.tone}`}>{stage.stateLabel}</span>
+                  <span className="flow-pulse-detail">· {stage.context}</span>
                 </span>
               </button>
             </div>

@@ -143,12 +143,40 @@ The dashboard is a springboard, not just a summary:
 - Business → Open country review · Open vertical review · Clear approvals (n)
 - Finance → Open receivables (n overdue) · Open payables (n) · Record collection plan
 
-The sidebar **flow pulse** is now a business heartbeat: each stage shows a live
-value plus an operational-context line with a status pip
-(`.flow-pulse-pip`) — green when clear, amber/red when something needs
-attention, and the pip *beats* when it is not green (delays past ETA, stock at
-expiry risk). A dot still flows down the connector when stock is actually
-moving into the next stage.
+The sidebar **flow pulse** is a business heartbeat: each stage shows a live
+value plus an operational **state** — **Healthy / Attention / Critical**
+(`.flow-pulse-state`) — with a status pip that *beats* when not healthy.
+Critical = value or commitment at risk (imports past ETA, stock expired/near
+expiry); Attention = needs a human soon (in motion, awaiting approval);
+Healthy = flowing cleanly. A dot flows down the connector when stock is
+actually moving into the next stage.
+
+## Decision cockpit (Phase 5L)
+
+The Decision Center is the signature feature — a management decision cockpit,
+not a transaction screen. It runs the loop **Situation → Options → Decision →
+Reason → Outcome**:
+
+- **Situations awaiting a decision** — live risks (expiry, backorders, delays,
+  overdue payments, pending approvals) surface from `/executive/actions` as
+  situation cards with a severity pip.
+- Selecting a situation opens the rail: a **recommended action**, **how we
+  handled this before** (similar past decisions + their outcomes via
+  `/decisions/similar`), and a **capture form** (Situation → Options →
+  Decision → Reason → Expected outcome → `createDecision`).
+- **Decision history** timeline; selecting a past open decision lets you
+  **record its outcome** and effectiveness, closing the loop so the playbook
+  learns. Hero vitals show effectiveness and the most effective play.
+
+## RBAC (Phase 5L)
+
+Navigation is permission-gated end to end: `visibleSections` →
+`visibleWorkspaces` → `visibleTabs` → `canAccessView` means the rail only
+shows screens a user may open; Admin (`role_name === "Admin"`) bypasses and
+sees everything. A guard redirects any disallowed `activeView` to
+`firstAccessibleView(user)`. Edit actions inside screens are gated separately
+with `hasPermission(user, "<permission>")`, so view-only and edit rights are
+distinct and managed per user in Access → Users & Roles.
 
 ## Reference patterns (Phase 5B)
 

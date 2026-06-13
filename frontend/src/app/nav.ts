@@ -370,3 +370,16 @@ export function visibleSections(
     workspaces: visible.filter((workspace) => workspace.section === section.id),
   })).filter((section) => section.workspaces.length > 0);
 }
+
+/** The first screen this user is actually allowed to open — used as a safe
+ *  landing / redirect target so a restricted user never lands on a blocked
+ *  view. Falls back to the Business dashboard (open to all signed-in users). */
+export function firstAccessibleView(user: ApiAuthenticatedUser | null): string {
+  for (const section of visibleSections(user)) {
+    for (const workspace of section.workspaces) {
+      const tabs = visibleTabs(user, workspace);
+      if (tabs.length > 0) return tabs[0].id;
+    }
+  }
+  return "dash-business";
+}

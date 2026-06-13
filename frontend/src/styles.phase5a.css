@@ -106,10 +106,16 @@
 .flow-pulse-context {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   font-size: 10.5px;
   color: var(--tower-muted, #93a3b4);
+  min-width: 0;
 }
+.flow-pulse-state { font-weight: 800; letter-spacing: 0.02em; }
+.flow-pulse-state.tone-good { color: var(--tower-emerald, #34d399); }
+.flow-pulse-state.tone-warn { color: var(--tower-amber, #fbbf24); }
+.flow-pulse-state.tone-bad { color: var(--tower-crimson, #f87171); }
+.flow-pulse-detail { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* The status pip is the heartbeat: green when clear, amber/red when something
    needs attention — and it beats when it is not green. */
 .flow-pulse-pip {
@@ -661,6 +667,62 @@
 .vital-text { font-size: 1.1rem !important; letter-spacing: -0.01em !important; }
 .decision-columns { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(280px, 1fr); gap: 18px; align-items: start; }
 .decision-timeline { min-width: 0; }
+
+/* Decision cockpit (Phase 5L): situations on the left, the decision rail on
+   the right. */
+.decision-cockpit-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(300px, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+.decision-cockpit-main { display: grid; gap: 18px; min-width: 0; }
+@media (max-width: 1100px) {
+  .decision-cockpit-grid { grid-template-columns: 1fr; }
+}
+.situation-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.situation-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--tower-border, #28323e);
+  border-radius: 12px;
+  background: var(--tower-bg-2, #0e151d);
+  color: var(--tower-text, #e6edf3);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.18s var(--ease-out), background 0.18s var(--ease-out);
+}
+.situation-card:hover { border-color: var(--country-accent); }
+.situation-card.selected { border-color: var(--country-accent); background: color-mix(in srgb, var(--country-accent) 8%, var(--tower-bg-2, #0e151d)); }
+.situation-card:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--country-accent-soft); }
+.situation-pip {
+  width: 9px;
+  height: 9px;
+  margin-top: 5px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  padding: 0;
+}
+.situation-pip.risk-critical { background: var(--tower-crimson, #f87171); }
+.situation-pip.risk-medium { background: var(--tower-amber, #fbbf24); }
+.situation-pip.risk-low { background: var(--tower-emerald, #34d399); }
+.situation-body { display: grid; gap: 2px; min-width: 0; flex: 1; }
+.situation-body strong { font-size: 13.5px; }
+.situation-body small { font-size: 12px; color: var(--tower-muted, #93a3b4); }
+.situation-source { text-transform: capitalize; opacity: 0.8; }
+.decision-recommend {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--tower-text, #e6edf3);
+  text-wrap: pretty;
+}
+.decision-capture-form input,
+.decision-capture-form textarea { width: 100%; }
+.decision-rail-hint { text-align: center; }
 .decision-list {
   position: relative;
   display: grid;
