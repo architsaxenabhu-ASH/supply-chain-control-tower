@@ -189,6 +189,23 @@ delay (P4); **customer commitments** timeline with required date and OTIF risk
 / record a decision). All computed from existing endpoints (inventory, import
 candidates, commitments, products) — no duplicate business logic.
 
+## Operations Intelligence Center (Phase 6 sprint, P1)
+
+`workspaces/intelligence/OperationsIntelligence.tsx` (Dashboards → Ops
+Intelligence, view `dash-ops-intel`, first/primary management workspace). Not
+an exception list — it shows three lanes:
+- **Attention required** — executive-action risks (shipment delay, inventory,
+  commitment, payment), approval bottlenecks, OCR validation pending, master-
+  data candidates. Each item routes to where it can be worked.
+- **Performing well** — countries & distributors at/above target, OTIF
+  achievement, inventory health. What is right, not only what is wrong.
+- **Recently resolved** — read from the audit trail: payments recorded, stock
+  received, orders progressed, approvals completed, decisions closed.
+Composed entirely from existing engines (executive actions, performance
+scorecards, commitment/inventory dashboards, approvals, validation queue, audit
+trail) — no new business logic. Situation Rooms (P2) will launch from these
+items with the full story + past decisions + outcomes.
+
 ## Historical Time Machine — Business Snapshot (Phase 6, P1)
 
 `workspaces/planning/BusinessSnapshot.tsx` (Planning workspace → Time Machine

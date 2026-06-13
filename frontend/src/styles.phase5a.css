@@ -1310,6 +1310,76 @@
   .launch-action:hover .launch-action-go { transform: none; }
 }
 
+/* Operations Intelligence Center (Phase 6): three lanes — what needs
+   attention, what is healthy, what has improved. */
+.oic-lanes { display: flex; gap: 8px; flex-wrap: wrap; }
+.oic-lane-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 15px;
+  border: 1px solid var(--tower-border, #28323e);
+  border-radius: 12px;
+  background: var(--tower-panel, #141b24);
+  color: var(--tower-muted, #93a3b4);
+  cursor: pointer;
+  font-size: 13.5px;
+  font-weight: 700;
+  transition: border-color 0.18s var(--ease-out), color 0.18s var(--ease-out), background 0.18s var(--ease-out);
+}
+.oic-lane-tab:hover { color: var(--tower-text, #e6edf3); }
+.oic-lane-tab.active { color: var(--tower-text, #e6edf3); border-color: var(--country-accent); background: var(--country-accent-soft); }
+.oic-lane-dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
+.oic-lane-dot.tone-bad { background: var(--tower-crimson, #f87171); }
+.oic-lane-dot.tone-good { background: var(--tower-emerald, #34d399); }
+.oic-lane-dot.tone-info { background: var(--country-accent); }
+.oic-lane-count {
+  display: grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--tower-bg-2, #0e151d);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+.oic-list { display: grid; gap: 9px; margin: 0; padding: 0; list-style: none; }
+.oic-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--tower-border, #28323e);
+  border-radius: 12px;
+  background: var(--tower-bg-2, #0e151d);
+  color: var(--tower-text, #e6edf3);
+  text-align: left;
+}
+.oic-item.is-clickable { cursor: pointer; transition: border-color 0.18s var(--ease-out), background 0.18s var(--ease-out), transform 0.15s var(--ease-out); }
+.oic-item.is-clickable:hover { border-color: var(--country-accent); background: color-mix(in srgb, var(--country-accent) 7%, var(--tower-bg-2, #0e151d)); transform: translateX(2px); }
+.oic-item:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--country-accent-soft); }
+.oic-item-icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  border-radius: 10px;
+  background: var(--tower-panel-strong, #1b2530);
+  color: var(--country-accent);
+}
+.oic-item-body { display: grid; gap: 2px; min-width: 0; flex: 1; }
+.oic-item-body strong { font-size: 13.5px; }
+.oic-item-body small { font-size: 12px; color: var(--tower-muted, #93a3b4); overflow: hidden; text-overflow: ellipsis; }
+.oic-item-go { color: var(--tower-muted, #93a3b4); flex: 0 0 auto; }
+.oic-item.is-clickable:hover .oic-item-go { color: var(--country-accent); }
+
+@media (prefers-reduced-motion: reduce) {
+  .oic-item.is-clickable:hover { transform: none; }
+}
+
 /* Planning coverage bar inside a table cell (Phase 6). */
 .planning-coverage { display: flex; align-items: center; gap: 9px; min-width: 120px; }
 .planning-coverage .score-row-track { flex: 1; }

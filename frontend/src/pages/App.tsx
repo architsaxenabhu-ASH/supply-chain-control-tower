@@ -25,6 +25,7 @@ import {
 } from "../workspaces/dashboards/Dashboards";
 import { PlanningDashboard } from "../workspaces/planning/PlanningDashboard";
 import { BusinessSnapshot } from "../workspaces/planning/BusinessSnapshot";
+import { OperationsIntelligence } from "../workspaces/intelligence/OperationsIntelligence";
 import { CountryProvider, CountrySelector } from "../context/CountryContext";
 import { CurrencyProvider, CurrencyRatesPanel, CurrencySelector } from "../context/CurrencyContext";
 import { formatMoney, getCurrencyRevision, subscribeCurrency } from "../lib/currency";
@@ -2352,6 +2353,7 @@ export function App() {
         {activeView === "inventory-hub" ? <InventoryHub /> : null}
         {activeView === "primary-sales" ? <PrimarySales /> : null}
         {activeView === "secondary-sales" ? <SecondarySales /> : null}
+        {activeView === "dash-ops-intel" ? <OperationsIntelligence onNavigate={setActiveView} /> : null}
         {activeView === "dash-planning" ? <PlanningDashboard onNavigate={setActiveView} /> : null}
         {activeView === "dash-snapshot" ? <BusinessSnapshot /> : null}
         {activeView === "dash-primary" ? <PrimarySalesDashboard onNavigate={setActiveView} /> : null}

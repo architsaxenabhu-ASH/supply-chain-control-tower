@@ -1,5 +1,6 @@
 import type { ComponentType } from "react";
 import {
+  Activity,
   BarChart3,
   Bot,
   Boxes,
@@ -212,6 +213,13 @@ export const WORKSPACES: WorkspaceDef[] = [
     ],
   },
   // ============================ DASHBOARDS ============================
+  {
+    id: "ops-intel-zone",
+    label: "Ops Intelligence",
+    icon: Activity,
+    section: "dashboards",
+    tabs: [{ id: "dash-ops-intel", label: "Operations Intelligence", icon: Activity, signature: "rise" }],
+  },
   {
     id: "dash-planning-zone",
     label: "Planning",
