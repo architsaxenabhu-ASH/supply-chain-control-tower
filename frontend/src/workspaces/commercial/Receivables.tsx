@@ -1,6 +1,13 @@
-import { BASE_CURRENCY, convertAmount, formatDisplay, formatIn, formatMoney } from "../../lib/currency";
-import { useCurrency } from "../../context/CurrencyContext";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  BASE_CURRENCY,
+  convertAmount,
+  formatDisplay,
+  formatIn,
+  formatMoney,
+  getCurrencyRevision,
+  subscribeCurrency,
+} from "../../lib/currency";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { motion } from "framer-motion";
 import { Banknote, ShieldAlert, Wallet } from "lucide-react";
 
@@ -21,10 +28,10 @@ import { itemVariants, listVariants, prefersReducedMotion, signatureVariants } f
 // credit control — and payments recorded right on the invoice row.
 
 const inr = (value: number) => formatMoney(value, { compact: true });
-// Invoice rows carry their own currency (captured from the document);
-// totals are converted to the display currency at the locked rate first.
-const rowMoney = (value: number, currency: string | null) =>
-  formatMoney(value, { compact: true, from: currency });
+// Receivables belong to the subsidiary → customer flow, so they convert on the
+// secondary book at the rate locked for each invoice's own date.
+const rowMoney = (value: number, currency: string | null, onDate: string | null) =>
+  formatMoney(value, { compact: true, from: currency, book: "secondary", onDate });
 const total = (value: number) => formatDisplay(value, { compact: true });
 
 const STATUS_FILTERS = ["all", "open", "partially_paid", "overdue", "paid"] as const;
@@ -51,7 +58,7 @@ function riskPill(level: string): string {
 export function Receivables({ currentUser }: { currentUser: ApiAuthenticatedUser }) {
   const reduced = prefersReducedMotion();
   const { country } = useCountry();
-  const { effectiveCurrency, rateSet } = useCurrency();
+  const rev = useSyncExternalStore(subscribeCurrency, getCurrencyRevision);
   const [receivables, setReceivables] = useState<ApiReceivable[]>([]);
   const [risks, setRisks] = useState<ApiPaymentRisk[]>([]);
   const [credit, setCredit] = useState<ApiCreditControl[]>([]);
@@ -84,16 +91,19 @@ export function Receivables({ currentUser }: { currentUser: ApiAuthenticatedUser
   }, [load]);
 
   const totals = useMemo(() => {
-    const outstanding = receivables.reduce(
-      (sum, row) => sum + convertAmount(row.outstanding_value || 0, row.currency),
-      0,
-    );
+    const convert = (row: ApiReceivable) =>
+      convertAmount(row.outstanding_value || 0, {
+        from: row.currency,
+        book: "secondary",
+        onDate: row.invoice_date,
+      });
+    const outstanding = receivables.reduce((sum, row) => sum + convert(row), 0);
     const overdue = receivables
       .filter((row) => row.status === "overdue")
-      .reduce((sum, row) => sum + convertAmount(row.outstanding_value || 0, row.currency), 0);
+      .reduce((sum, row) => sum + convert(row), 0);
     return { outstanding, overdue, count: receivables.length, riskCount: risks.length };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [receivables, risks, effectiveCurrency, rateSet]);
+  }, [receivables, risks, rev]);
 
   const blockedCredit = useMemo(
     () => credit.filter((row) => row.status !== "healthy").slice(0, 5),
@@ -219,10 +229,11 @@ export function Receivables({ currentUser }: { currentUser: ApiAuthenticatedUser
                   </div>
                   <div className="finance-row-figures">
                     <span>
-                      <small>Invoice</small> {rowMoney(row.invoice_value, row.currency)}
+                      <small>Invoice</small> {rowMoney(row.invoice_value, row.currency, row.invoice_date)}
                     </span>
                     <span>
-                      <small>Outstanding</small> <strong>{rowMoney(row.outstanding_value, row.currency)}</strong>
+                      <small>Outstanding</small>{" "}
+                      <strong>{rowMoney(row.outstanding_value, row.currency, row.invoice_date)}</strong>
                     </span>
                   </div>
                   {row.status !== "paid" ? (

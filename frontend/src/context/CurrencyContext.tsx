@@ -19,15 +19,21 @@ import {
 import {
   BASE_CURRENCY,
   PINNED_CURRENCIES,
+  RATE_BOOKS,
   currencyForCountry,
+  drainMissingRateDates,
   setDisplayState,
+  setRateTable,
+  type RateBook,
 } from "../lib/currency";
 import { useCountry } from "./CountryContext";
 
-// Currency environment (Phase 5D). The display currency converts every money
-// figure at the rate locked for the chosen date — the ECB end-of-day reference
-// rate (published ~16:00 CET) — unless someone overrides it manually, which is
-// recorded in the audit trail (module "currency").
+// Currency environment (Phase 5D/5G). Money figures convert at the rate locked
+// for the transaction's own date, from one of two rate books:
+//   primary   — Meril India → subsidiary; default for inventory valuation too
+//   secondary — subsidiary → customer
+// Rates lock to the ECB end-of-day reference (published ~16:00 CET); manual
+// overrides per book are recorded in the audit trail (module "currency").
 
 type CurrencyStatus = "loading" | "locked" | "manual" | "unavailable";
 
@@ -37,121 +43,157 @@ type CurrencyContextValue = {
   effectiveCurrency: string;
   rateDate: string;
   setRateDate: (date: string) => void;
-  rateSet: ApiCurrencyRateSet | null;
+  primarySet: ApiCurrencyRateSet | null;
+  secondarySet: ApiCurrencyRateSet | null;
   status: CurrencyStatus;
   availableCurrencies: string[];
-  override: (rates: Record<string, number>, actor: string | null, reason: string) => Promise<void>;
+  activeBook: RateBook;
+  override: (book: RateBook, rates: Record<string, number>, actor: string | null, reason: string) => Promise<void>;
 };
 
 const CurrencyContext = createContext<CurrencyContextValue | null>(null);
+
+// Views that belong to the subsidiary → customer flow use the secondary rate
+// book; everything else (imports, inventory, operations) uses primary.
+const SECONDARY_VIEWS = new Set([
+  "secondary-sales",
+  "dispatches",
+  "commitments",
+  "commercial",
+  "receivables",
+  "payables",
+  "customers",
+]);
+
+function bookForView(view: string | undefined): RateBook {
+  return view && SECONDARY_VIEWS.has(view) ? "secondary" : "primary";
+}
 
 function todayStamp(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-export function CurrencyProvider({ children }: { children: ReactNode }) {
+// Load the locked rate set for a book + date: our own store first, else lock
+// the ECB reference rate for that date, else fall back to the latest set.
+// Both books default to the same ECB reference and only diverge once someone
+// overrides one of them.
+async function loadBookRates(date: string, book: RateBook): Promise<ApiCurrencyRateSet | null> {
+  try {
+    return await fetchCurrencyRates(date, BASE_CURRENCY, book);
+  } catch {
+    /* nothing locked yet for this book + date */
+  }
+  try {
+    const response = await fetch(`https://api.frankfurter.dev/v1/${date}?base=${BASE_CURRENCY}`);
+    if (response.ok) {
+      const data = (await response.json()) as { base: string; date: string; rates: Record<string, number> };
+      return await saveCurrencyRates({
+        rate_date: date,
+        base_currency: BASE_CURRENCY,
+        rates: data.rates,
+        source: "ecb_reference_1600cet",
+        book,
+        reason: `Locked from ECB reference rates published for ${data.date}`,
+      });
+    }
+  } catch {
+    /* offline or rate service unreachable */
+  }
+  try {
+    const recent = await listCurrencyRates(1, book);
+    if (recent.length > 0) return recent[0];
+  } catch {
+    /* backend unreachable */
+  }
+  return null;
+}
+
+export function CurrencyProvider({ activeView, children }: { activeView?: string; children: ReactNode }) {
   const { country } = useCountry();
   const [choice, setChoice] = useState<string>("LOCAL");
   const [rateDate, setRateDate] = useState<string>(todayStamp());
-  const [rateSet, setRateSet] = useState<ApiCurrencyRateSet | null>(null);
+  const [primarySet, setPrimarySet] = useState<ApiCurrencyRateSet | null>(null);
+  const [secondarySet, setSecondarySet] = useState<ApiCurrencyRateSet | null>(null);
   const [status, setStatus] = useState<CurrencyStatus>("loading");
-  const lockingRef = useRef(false);
+  const activeBook = bookForView(activeView);
 
+  // Load (or lock) both books for the active reference date.
   useEffect(() => {
     let active = true;
     setStatus("loading");
-    (async () => {
-      // 1. Rates already locked for this date in our own store.
-      try {
-        const saved = await fetchCurrencyRates(rateDate);
+    Promise.all([loadBookRates(rateDate, "primary"), loadBookRates(rateDate, "secondary")]).then(
+      ([primary, secondary]) => {
         if (!active) return;
-        setRateSet(saved);
-        setStatus(saved.source === "manual" ? "manual" : "locked");
-        return;
-      } catch {
-        /* nothing locked yet */
-      }
-      // 2. Lock the ECB end-of-day reference rate for the selected date.
-      if (!lockingRef.current) {
-        lockingRef.current = true;
-        try {
-          const response = await fetch(`https://api.frankfurter.dev/v1/${rateDate}?base=${BASE_CURRENCY}`);
-          if (response.ok) {
-            const data = (await response.json()) as {
-              base: string;
-              date: string;
-              rates: Record<string, number>;
-            };
-            const locked = await saveCurrencyRates({
-              rate_date: rateDate,
-              base_currency: BASE_CURRENCY,
-              rates: data.rates,
-              source: "ecb_reference_1600cet",
-              reason: `Locked from ECB reference rates published for ${data.date}`,
-            });
-            if (!active) return;
-            setRateSet(locked);
-            setStatus("locked");
-            return;
-          }
-        } catch {
-          /* offline or rate service unreachable */
-        } finally {
-          lockingRef.current = false;
-        }
-      }
-      // 3. Fall back to the most recent locked set so money still reads sensibly.
-      try {
-        const recent = await listCurrencyRates(1);
-        if (!active) return;
-        if (recent.length > 0) {
-          setRateSet(recent[0]);
-          setStatus(recent[0].source === "manual" ? "manual" : "locked");
-          return;
-        }
-      } catch {
-        /* backend unreachable */
-      }
-      if (active) {
-        setRateSet(null);
-        setStatus("unavailable");
-      }
-    })();
+        setPrimarySet(primary);
+        setSecondarySet(secondary);
+        if (primary) setRateTable("primary", rateDate, primary.base_currency, primary.rates);
+        if (secondary) setRateTable("secondary", rateDate, secondary.base_currency, secondary.rates);
+        const anyManual = primary?.source === "manual" || secondary?.source === "manual";
+        setStatus(primary || secondary ? (anyManual ? "manual" : "locked") : "unavailable");
+      },
+    );
     return () => {
       active = false;
     };
   }, [rateDate]);
 
-  const effectiveCurrency = useMemo(() => {
-    const wanted = choice === "LOCAL" ? currencyForCountry(country) : choice;
-    if (wanted === (rateSet?.base_currency ?? BASE_CURRENCY)) return wanted;
-    return rateSet?.rates?.[wanted] ? wanted : BASE_CURRENCY;
-  }, [choice, country, rateSet]);
-
+  // Lazily lock rates for historical transaction dates that views request
+  // (a batch's registration date, an invoice date) but aren't cached yet.
+  const inFlight = useRef<Set<string>>(new Set());
   useEffect(() => {
-    setDisplayState(effectiveCurrency, rateSet?.base_currency ?? BASE_CURRENCY, rateSet?.rates ?? {});
-  }, [effectiveCurrency, rateSet]);
+    const interval = window.setInterval(() => {
+      const missing = drainMissingRateDates();
+      for (const { book, date } of missing) {
+        const key = `${book}|${date}`;
+        if (inFlight.current.has(key)) continue;
+        inFlight.current.add(key);
+        void loadBookRates(date, book)
+          .then((set) => {
+            if (set) setRateTable(book, date, set.base_currency, set.rates);
+          })
+          .finally(() => inFlight.current.delete(key));
+      }
+    }, 500);
+    return () => window.clearInterval(interval);
+  }, []);
 
   const availableCurrencies = useMemo(() => {
     const codes = new Set<string>(PINNED_CURRENCIES);
-    for (const code of Object.keys(rateSet?.rates ?? {})) codes.add(code);
+    for (const code of Object.keys(primarySet?.rates ?? {})) codes.add(code);
+    for (const code of Object.keys(secondarySet?.rates ?? {})) codes.add(code);
     return [...codes].sort();
-  }, [rateSet]);
+  }, [primarySet, secondarySet]);
+
+  const effectiveCurrency = useMemo(() => {
+    const wanted = choice === "LOCAL" ? currencyForCountry(country) : choice;
+    if (wanted === BASE_CURRENCY) return wanted;
+    return availableCurrencies.includes(wanted) ? wanted : BASE_CURRENCY;
+  }, [choice, country, availableCurrencies]);
+
+  // Publish display state to the engine store — this is what makes every
+  // figure across the app re-render together on any change.
+  useEffect(() => {
+    setDisplayState(effectiveCurrency, activeBook, rateDate);
+  }, [effectiveCurrency, activeBook, rateDate]);
 
   const override = useCallback(
-    async (rates: Record<string, number>, actor: string | null, reason: string) => {
+    async (book: RateBook, rates: Record<string, number>, actor: string | null, reason: string) => {
+      const existing = book === "secondary" ? secondarySet : primarySet;
       const saved = await saveCurrencyRates({
         rate_date: rateDate,
-        base_currency: rateSet?.base_currency ?? BASE_CURRENCY,
-        rates: { ...(rateSet?.rates ?? {}), ...rates },
+        base_currency: existing?.base_currency ?? BASE_CURRENCY,
+        rates: { ...(existing?.rates ?? {}), ...rates },
         source: "manual",
+        book,
         actor,
         reason,
       });
-      setRateSet(saved);
+      if (book === "secondary") setSecondarySet(saved);
+      else setPrimarySet(saved);
+      setRateTable(book, rateDate, saved.base_currency, saved.rates);
       setStatus("manual");
     },
-    [rateDate, rateSet],
+    [rateDate, primarySet, secondarySet],
   );
 
   const value = useMemo(
@@ -161,12 +203,14 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
       effectiveCurrency,
       rateDate,
       setRateDate,
-      rateSet,
+      primarySet,
+      secondarySet,
       status,
       availableCurrencies,
+      activeBook,
       override,
     }),
-    [choice, effectiveCurrency, rateDate, rateSet, status, availableCurrencies, override],
+    [choice, effectiveCurrency, rateDate, primarySet, secondarySet, status, availableCurrencies, activeBook, override],
   );
 
   return <CurrencyContext.Provider value={value}>{children}</CurrencyContext.Provider>;
@@ -181,9 +225,11 @@ export function useCurrency(): CurrencyContextValue {
       effectiveCurrency: BASE_CURRENCY,
       rateDate: todayStamp(),
       setRateDate: () => undefined,
-      rateSet: null,
+      primarySet: null,
+      secondarySet: null,
       status: "unavailable",
       availableCurrencies: PINNED_CURRENCIES,
+      activeBook: "primary",
       override: async () => undefined,
     };
   }
@@ -222,12 +268,19 @@ function describeSource(rateSet: ApiCurrencyRateSet | null, status: CurrencyStat
   return `ECB end-of-day reference rates (published ~16:00 CET) locked for ${rateSet.rate_date}`;
 }
 
-// Rates panel: pick the rate date, see the locked rates, and override them.
-// Overrides require a reason and land in the audit trail (Access → Audit).
+const BOOK_LABEL: Record<RateBook, string> = {
+  primary: "Primary (India → subsidiary, inventory)",
+  secondary: "Secondary (subsidiary → customer)",
+};
+
+// Rates panel: choose the rate date and book (primary / secondary), see the
+// locked rates, and override them. Overrides require a reason and land in the
+// audit trail (Access → Audit).
 export function CurrencyRatesPanel({ actor }: { actor: string | null }) {
   const { country } = useCountry();
-  const { rateDate, setRateDate, rateSet, status, override } = useCurrency();
+  const { rateDate, setRateDate, primarySet, secondarySet, status, override } = useCurrency();
   const [open, setOpen] = useState(false);
+  const [book, setBook] = useState<RateBook>("primary");
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [addCode, setAddCode] = useState("");
   const [addValue, setAddValue] = useState("");
@@ -235,6 +288,7 @@ export function CurrencyRatesPanel({ actor }: { actor: string | null }) {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
 
+  const rateSet = book === "secondary" ? secondarySet : primarySet;
   const base = rateSet?.base_currency ?? BASE_CURRENCY;
   const localCode = currencyForCountry(country);
   const editableCodes = useMemo(() => {
@@ -246,7 +300,7 @@ export function CurrencyRatesPanel({ actor }: { actor: string | null }) {
   useEffect(() => {
     setDrafts({});
     setMessage("");
-  }, [rateSet]);
+  }, [rateSet, book]);
 
   // Rates are stored as "1 base = X code"; people think in "1 code = Y base".
   const baseUnitsFor = (code: string): number | null => {
@@ -270,8 +324,10 @@ export function CurrencyRatesPanel({ actor }: { actor: string | null }) {
     setSaving(true);
     setMessage("");
     try {
-      await override(changed, actor, reason.trim());
+      await override(book, changed, actor, reason.trim());
       setReason("");
+      setAddCode("");
+      setAddValue("");
       setMessage("Saved. The override is recorded in the audit trail.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not save the override.");
@@ -304,6 +360,22 @@ export function CurrencyRatesPanel({ actor }: { actor: string | null }) {
       </button>
       {open ? (
         <div className="rates-popover" role="dialog" aria-label="Exchange rates">
+          <div className="rates-books" role="tablist" aria-label="Rate book">
+            {RATE_BOOKS.map((option) => (
+              <button
+                key={option}
+                type="button"
+                role="tab"
+                aria-selected={book === option}
+                className={book === option ? "rates-book active" : "rates-book"}
+                onClick={() => setBook(option)}
+                title={BOOK_LABEL[option]}
+              >
+                {option === "primary" ? "Primary" : "Secondary"}
+              </button>
+            ))}
+          </div>
+          <p className="rates-book-hint">{BOOK_LABEL[book]}</p>
           <div className="rates-head">
             <label className="filter-control">
               <span>Rate date (locked at the end-of-day rate)</span>
@@ -328,9 +400,7 @@ export function CurrencyRatesPanel({ actor }: { actor: string | null }) {
               const current = baseUnitsFor(code);
               return (
                 <label className="rates-row" key={code}>
-                  <span>
-                    1 {code} =
-                  </span>
+                  <span>1 {code} =</span>
                   <input
                     type="number"
                     min="0"
@@ -377,7 +447,7 @@ export function CurrencyRatesPanel({ actor }: { actor: string | null }) {
               disabled={!dirty || !reason.trim() || saving}
               onClick={() => void handleSave()}
             >
-              {saving ? "Saving…" : "Save override"}
+              {saving ? "Saving…" : `Save ${book} override`}
             </button>
             <small>Edits are traced in Access → Audit (module: currency).</small>
           </div>

@@ -1103,6 +1103,30 @@
   font-variant-numeric: tabular-nums;
 }
 .rates-row input:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--country-accent-soft); }
+.rates-books {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 10px;
+  background: var(--tower-bg-2, #0e151d);
+}
+.rates-book {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--tower-muted, #93a3b4);
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 700;
+  transition: background 0.18s var(--ease-out), color 0.18s var(--ease-out);
+}
+.rates-book.active {
+  background: var(--tower-panel, #141b24);
+  color: var(--tower-text, #e6edf3);
+  box-shadow: inset 0 0 0 1px var(--country-accent-soft);
+}
+.rates-book-hint { margin: 0; font-size: 11.5px; color: var(--tower-muted, #93a3b4); }
 .rates-add { padding-top: 4px; border-top: 1px dashed var(--tower-border, #28323e); }
 .rates-add input:first-child { width: 58px; text-transform: uppercase; }
 .rates-reason {

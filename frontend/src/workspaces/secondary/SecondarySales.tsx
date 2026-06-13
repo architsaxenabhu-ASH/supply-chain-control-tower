@@ -1,4 +1,4 @@
-import { formatMoney, formatUnits } from "../../lib/currency";
+import { formatUnits } from "../../lib/currency";
 import { useEffect, useMemo, useState } from "react";
 import { Gauge, Globe2, Send, ShieldAlert } from "lucide-react";
 

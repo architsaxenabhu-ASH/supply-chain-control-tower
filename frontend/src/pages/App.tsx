@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { ComponentType, ReactNode } from "react";
 import { AnimatePresence, motion, type Variants } from "framer-motion";
 import { CommandCenter } from "../workspaces/command/CommandCenter";
@@ -18,7 +18,7 @@ import { PrimarySales } from "../workspaces/primary/PrimarySales";
 import { SecondarySales } from "../workspaces/secondary/SecondarySales";
 import { CountryProvider, CountrySelector } from "../context/CountryContext";
 import { CurrencyProvider, CurrencyRatesPanel, CurrencySelector } from "../context/CurrencyContext";
-import { formatMoney } from "../lib/currency";
+import { formatMoney, getCurrencyRevision, subscribeCurrency } from "../lib/currency";
 import {
   ALL_TABS,
   canAccessView,
@@ -1903,6 +1903,11 @@ export function App() {
   };
   const reducedMotion = prefersReducedMotion();
 
+  // Re-render the whole app whenever the currency engine changes (display
+  // currency, rate book, reference date, or locked rates), so every money
+  // figure refreshes together. Module-level formatters need this nudge.
+  useSyncExternalStore(subscribeCurrency, getCurrencyRevision);
+
   // Signature stinger on tab switch — see stingerVariants above.
   const [stinger, setStinger] = useState<{
     key: number;
@@ -2057,7 +2062,7 @@ export function App() {
 
   return (
     <CountryProvider scope={countryOptions}>
-    <CurrencyProvider>
+    <CurrencyProvider activeView={activeView}>
     <main className="app-shell">
       <aside className="sidebar">
         <div className="brand">

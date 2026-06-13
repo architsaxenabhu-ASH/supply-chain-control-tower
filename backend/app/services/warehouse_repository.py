@@ -471,6 +471,7 @@ def increase_inventory(
         "expiry_date": expiry_date,
         "unit_value": unit_value,
         "currency": currency.strip().upper() if currency else None,
+        "registered_date": date.today().isoformat(),
     }
     RAW_BATCHES.append(new_batch)
     _save_raw_batches()
@@ -542,6 +543,9 @@ def list_inventory_batches() -> list[InventoryBatch]:
                 days_to_expiry=days_to_expiry,
                 expiry_bucket=get_expiry_bucket(days_to_expiry),
                 currency=(str(raw_batch["currency"]).upper() if raw_batch.get("currency") else None),
+                registered_date=(
+                    _parse_date(raw_batch["registered_date"]) if raw_batch.get("registered_date") else None
+                ),
             )
         )
     return batches

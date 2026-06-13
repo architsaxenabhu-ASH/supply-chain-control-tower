@@ -1,6 +1,5 @@
-import { convertAmount, formatDisplay, formatMoney, formatUnits } from "../../lib/currency";
-import { useCurrency } from "../../context/CurrencyContext";
-import { useEffect, useMemo, useState } from "react";
+import { convertAmount, formatDisplay, formatUnits, getCurrencyRevision, subscribeCurrency } from "../../lib/currency";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { Boxes, Globe2, PieChart, Warehouse } from "lucide-react";
 
 import {
@@ -27,6 +26,7 @@ const num = formatUnits;
 // Aggregates convert each batch from its own invoice currency first, so
 // `money` formats values already expressed in the display currency.
 const money = (value: number) => formatDisplay(value);
+const todayStamp = () => new Date().toISOString().slice(0, 10);
 
 const EXPIRY_TONES: Record<string, "bad" | "warn" | "info" | "good"> = {
   "0-90 Days": "bad",
@@ -41,12 +41,17 @@ const CLOSED_COMMITMENT_STATUSES = new Set(["fulfilled", "delivered", "cancelled
 
 export function InventoryHub() {
   const { country: envCountry } = useCountry();
-  const { effectiveCurrency, rateSet } = useCurrency();
+  // Re-run conversions whenever the currency engine changes (display currency,
+  // book, or a historical rate table arriving for a batch's registration date).
+  const rev = useSyncExternalStore(subscribeCurrency, getCurrencyRevision);
   const [batches, setBatches] = useState<ApiInventoryBatch[]>([]);
   const [warehouses, setWarehouses] = useState<ApiWarehouseLocation[]>([]);
   const [shipments, setShipments] = useState<ApiShipment[]>([]);
   const [commitments, setCommitments] = useState<ApiCustomerCommitment[]>([]);
   const [loading, setLoading] = useState(true);
+  // Inventory values at each batch's registration-date rate by default, with an
+  // option to revalue everything at today's rate.
+  const [valuation, setValuation] = useState<"registered" | "today">("registered");
 
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -123,16 +128,22 @@ export function InventoryHub() {
     [batches, countryFilter, vertical, expiryBand, dateFrom, dateTo, query, warehouseCountry],
   );
 
+  // Convert a batch's value: from its invoice currency, on the primary book,
+  // at its registration date (or today, if revaluing). `rev` keeps the closure
+  // honest as rate tables load.
+  const today = todayStamp();
+  const batchValue = (batch: ApiInventoryBatch): number =>
+    convertAmount(batch.inventory_value, {
+      from: batch.currency,
+      book: "primary",
+      onDate: valuation === "today" ? today : batch.registered_date,
+    });
+  void rev;
+
   const availableUnits = filtered.reduce((sum, batch) => sum + batch.quantity_available, 0);
-  const inventoryValue = filtered.reduce(
-    (sum, batch) => sum + convertAmount(batch.inventory_value, batch.currency),
-    0,
-  );
+  const inventoryValue = filtered.reduce((sum, batch) => sum + batchValue(batch), 0);
   const riskBatches = filtered.filter((batch) => batch.days_to_expiry <= 90);
-  const riskValue = riskBatches.reduce(
-    (sum, batch) => sum + convertAmount(batch.inventory_value, batch.currency),
-    0,
-  );
+  const riskValue = riskBatches.reduce((sum, batch) => sum + batchValue(batch), 0);
 
   const reservedUnits = useMemo(
     () =>
@@ -169,28 +180,26 @@ export function InventoryHub() {
       if (!matchesExceptCountry(batch)) continue;
       const country = countryOf(batch.warehouse_location);
       if (!country) continue;
-      map[country] = (map[country] ?? 0) + convertAmount(batch.inventory_value, batch.currency);
+      map[country] = (map[country] ?? 0) + batchValue(batch);
     }
     return map;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [batches, vertical, expiryBand, dateFrom, dateTo, query, warehouseCountry, effectiveCurrency, rateSet]);
+  }, [batches, vertical, expiryBand, dateFrom, dateTo, query, warehouseCountry, valuation, rev]);
 
   const verticalSlices = useMemo(() => {
     const map = new Map<string, number>();
     for (const batch of filtered) {
       const key = batch.product_category || "Unclassified";
-      map.set(key, (map.get(key) ?? 0) + convertAmount(batch.inventory_value, batch.currency));
+      map.set(key, (map.get(key) ?? 0) + batchValue(batch));
     }
     return [...map.entries()].map(([label, value]) => ({ label, value }));
-  }, [filtered, effectiveCurrency, rateSet]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtered, valuation, rev]);
 
   const warehouseRows = useMemo(() => {
     const map = new Map<string, number>();
     for (const batch of filtered) {
-      map.set(
-        batch.warehouse_location,
-        (map.get(batch.warehouse_location) ?? 0) + convertAmount(batch.inventory_value, batch.currency),
-      );
+      map.set(batch.warehouse_location, (map.get(batch.warehouse_location) ?? 0) + batchValue(batch));
     }
     const rows = [...map.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
     const max = rows[0]?.[1] ?? 0;
@@ -199,7 +208,8 @@ export function InventoryHub() {
       value,
       pct: max > 0 ? Math.max(Math.round((value / max) * 100), 4) : 0,
     }));
-  }, [filtered, effectiveCurrency, rateSet]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtered, valuation, rev]);
 
   const bandCounts = EXPIRY_ORDER.map((label) => ({
     label,
@@ -233,6 +243,28 @@ export function InventoryHub() {
                 ? "No stock on the books yet"
                 : `${num(availableUnits)} units on hand · ${money(inventoryValue)}`}
             </h2>
+          </div>
+          <div className="lens-switch" role="tablist" aria-label="Inventory valuation rate">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={valuation === "registered"}
+              className={valuation === "registered" ? "lens-chip active" : "lens-chip"}
+              onClick={() => setValuation("registered")}
+            >
+              <span>Registration rate</span>
+              <small>rate on the day each batch was received</small>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={valuation === "today"}
+              className={valuation === "today" ? "lens-chip active" : "lens-chip"}
+              onClick={() => setValuation("today")}
+            >
+              <span>Today's rate</span>
+              <small>revalue all stock at today's rate</small>
+            </button>
           </div>
         </div>
         <div className="vitals-row">
@@ -413,7 +445,7 @@ export function InventoryHub() {
                     <td>{batch.batch_number}</td>
                     <td>{batch.warehouse_location}</td>
                     <td>{num(batch.quantity_available)}</td>
-                    <td>{formatMoney(batch.inventory_value, { from: batch.currency })}</td>
+                    <td>{money(batchValue(batch))}</td>
                     <td>{batch.expiry_date}</td>
                     <td>
                       <span className={`dot-pill tone-${tone === "info" ? "info" : tone}`}>

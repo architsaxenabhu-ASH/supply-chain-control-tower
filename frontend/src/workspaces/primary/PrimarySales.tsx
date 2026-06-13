@@ -1,6 +1,5 @@
-import { convertAmount, formatDisplay, formatIn, formatUnits } from "../../lib/currency";
-import { useCurrency } from "../../context/CurrencyContext";
-import { useEffect, useMemo, useState } from "react";
+import { convertAmount, formatDisplay, formatIn, formatUnits, getCurrencyRevision, subscribeCurrency } from "../../lib/currency";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { AlertTriangle, FileCheck2, Globe2, MoveRight, PlaneLanding } from "lucide-react";
 
 import {
@@ -52,7 +51,7 @@ function isOverdue(candidate: ApiImportFileCandidate, today: string): boolean {
 
 export function PrimarySales() {
   const { country: envCountry } = useCountry();
-  const { effectiveCurrency, rateSet } = useCurrency();
+  const rev = useSyncExternalStore(subscribeCurrency, getCurrencyRevision);
   const [candidates, setCandidates] = useState<ApiImportFileCandidate[]>([]);
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -185,14 +184,26 @@ export function PrimarySales() {
     return [...map.entries()].sort((a, b) => b[1] - a[1]);
   }, [filtered]);
 
+  // Total converts each invoice line at the primary-book rate locked for that
+  // shipment's invoice date.
   const convertedInvoiceTotal = useMemo(
-    () =>
-      valueByCurrency.reduce(
-        (sum, [code, value]) => sum + convertAmount(value, code === "UNSPECIFIED" ? null : code),
-        0,
-      ),
+    () => {
+      let sum = 0;
+      for (const candidate of filtered) {
+        for (const line of candidate.lines) {
+          const value = (line.unit_value ?? 0) * line.quantity;
+          if (value <= 0) continue;
+          sum += convertAmount(value, {
+            from: line.currency,
+            book: "primary",
+            onDate: candidate.invoice_date,
+          });
+        }
+      }
+      return sum;
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [valueByCurrency, effectiveCurrency, rateSet],
+    [filtered, rev],
   );
 
   if (loading) {

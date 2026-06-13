@@ -157,6 +157,7 @@ export type ApiInventoryBatch = {
   days_to_expiry: number;
   expiry_bucket: string;
   currency: string | null;
+  registered_date: string | null;
 };
 
 export type ApiShipment = {
@@ -1664,24 +1665,32 @@ export function fetchCommitmentRisks(): Promise<ApiCommitmentRisk[]> {
   return getJson<ApiCommitmentRisk[]>("/customer-commitment-risk");
 }
 
-// ---- Currency (Phase 5D) ----
+// ---- Currency (Phase 5D/5G) ----
 
 export type ApiCurrencyRateSet = {
   rate_date: string;
   base_currency: string;
   rates: Record<string, number>;
   source: string;
+  book: string;
   locked_at: string;
   updated_by: string | null;
   note: string | null;
 };
 
-export function listCurrencyRates(limit = 30): Promise<ApiCurrencyRateSet[]> {
-  return getJson<ApiCurrencyRateSet[]>(`/currency/rates?limit=${limit}`);
+export function listCurrencyRates(limit = 30, book?: string): Promise<ApiCurrencyRateSet[]> {
+  const bookQuery = book ? `&book=${encodeURIComponent(book)}` : "";
+  return getJson<ApiCurrencyRateSet[]>(`/currency/rates?limit=${limit}${bookQuery}`);
 }
 
-export function fetchCurrencyRates(rateDate: string, base = "INR"): Promise<ApiCurrencyRateSet> {
-  return getJson<ApiCurrencyRateSet>(`/currency/rates/${rateDate}?base=${encodeURIComponent(base)}`);
+export function fetchCurrencyRates(
+  rateDate: string,
+  base = "INR",
+  book = "primary",
+): Promise<ApiCurrencyRateSet> {
+  return getJson<ApiCurrencyRateSet>(
+    `/currency/rates/${rateDate}?base=${encodeURIComponent(base)}&book=${encodeURIComponent(book)}`,
+  );
 }
 
 export type ApiSaveCurrencyRatesRequest = {
@@ -1689,6 +1698,7 @@ export type ApiSaveCurrencyRatesRequest = {
   base_currency?: string;
   rates: Record<string, number>;
   source?: string;
+  book?: string;
   actor?: string | null;
   reason?: string | null;
 };

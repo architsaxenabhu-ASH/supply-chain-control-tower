@@ -3395,6 +3395,22 @@ td {
   background: #e6edf4;
 }
 
+/* Workflow step tints: the dark theme fills "done"/"active" with deep green
+   and brown surfaces; light mode needs pale equivalents (the dark fills read
+   as black patches otherwise). */
+[data-theme="light"] .workflow-step.done {
+  border-color: rgba(14, 158, 110, 0.4);
+  background: color-mix(in srgb, var(--tower-emerald) 12%, #ffffff);
+}
+[data-theme="light"] .workflow-step.active {
+  border-color: rgba(196, 123, 0, 0.42);
+  background: color-mix(in srgb, var(--tower-amber) 14%, #ffffff);
+}
+[data-theme="light"] .workflow-step.done .workflow-icon {
+  background: color-mix(in srgb, var(--tower-emerald) 16%, transparent);
+  color: var(--tower-emerald);
+}
+
 /* Text that was light-coloured for the dark theme. */
 [data-theme="light"] .nav-item {
   color: #4a5d6a;

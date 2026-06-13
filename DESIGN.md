@@ -116,16 +116,31 @@ so they work in both themes.
 - **Filter bar** (`components/FilterBar.tsx`) — date range + data-derived
   selects + product search in one strip; options never hardcoded.
 
-## Currency environment (Phase 5D)
+## Currency environment (Phase 5D/5E/5G)
 
-Amounts are stored in the base currency (INR) and converted at display time.
-`lib/currency.ts` + `context/CurrencyContext.tsx`: top-bar selector offers
-Local (selected country's currency), EUR, USD, INR and every code with a
-locked rate. Rates lock per date to the ECB end-of-day reference rate
-(published ~16:00 CET) fetched once and stored via `/currency/rates`; manual
-overrides require a reason and land in the audit trail (module "currency").
-All money rendering goes through `formatMoney` (compact for big figures);
-unit counts through `formatUnits` (international grouping, never lakh/crore).
+Stored amounts keep their own invoice currency; conversion happens at display
+time. `lib/currency.ts` + `context/CurrencyContext.tsx`: the top-bar selector
+offers Local (selected country's currency), EUR, USD, INR and every code with
+a locked rate. `formatMoney` renders money (compact for big figures);
+`formatUnits` renders counts (international grouping, never lakh/crore).
+
+Two rate books (Phase 5G), because the business runs two flows with their own
+rates: **primary** (Meril India → subsidiary; also the default for valuing
+inventory) and **secondary** (subsidiary → customer). The active book follows
+the workspace (`SECONDARY_VIEWS` → secondary, else primary). Conversion is
+date-specific: each amount converts at the rate locked for its own transaction
+date — a batch's registration (goods-receipt) date, an invoice's date — not
+today's rate. Inventory additionally offers a "today's rate" revaluation
+toggle. Rates lock per book + date to the ECB end-of-day reference (published
+~16:00 CET) via `/currency/rates?book=`; historical dates requested by a view
+are locked lazily. Manual overrides are per book, require a reason, and land
+in the audit trail (module "currency").
+
+Reactivity: the engine is an external store (`subscribeCurrency` /
+`getCurrencyRevision`); App subscribes via `useSyncExternalStore` so every
+figure across the app re-renders together whenever the currency, book, date,
+or rates change. Views that convert inside `useMemo` include the revision in
+their deps so aggregates recompute when a historical rate table arrives.
 
 ## Living tab icons (Phase 5D)
 

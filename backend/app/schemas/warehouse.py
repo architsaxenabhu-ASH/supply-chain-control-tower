@@ -57,6 +57,9 @@ class InventoryBatch(BaseModel):
     expiry_bucket: str
     # Invoice currency the unit value was captured in (None = base currency).
     currency: str | None = None
+    # Business date the batch was registered into the system (goods receipt).
+    # Inventory converts its value at this date's locked rate by default.
+    registered_date: date | None = None
 
 
 class ShipmentLine(BaseModel):

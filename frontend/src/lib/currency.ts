@@ -74,53 +74,133 @@ export function currencyForCountry(country: string): string {
   return COUNTRY_CURRENCY[country.trim().toLowerCase()] ?? BASE_CURRENCY;
 }
 
+// ---- Rate books and dates (Phase 5G) ---------------------------------------
+// Two rate books exist because the business runs two flows with their own
+// exchange rates:
+//   primary   — Meril India → subsidiary; also the default for valuing inventory
+//   secondary — subsidiary → customer
+// Rates are also date-specific: an amount converts at the rate locked for the
+// date the transaction was registered (a batch's goods-receipt date, an
+// invoice's date), not today's rate — unless a view explicitly asks for the
+// current-date rate (inventory offers this as an option).
+
+export type RateBook = "primary" | "secondary";
+export const RATE_BOOKS: RateBook[] = ["primary", "secondary"];
+
+type RateTable = { base: string; rates: Record<string, number> };
+
 // ---- Module-global display state -------------------------------------------
-// The CurrencyProvider keeps this in sync. Module-level formatters let the
-// legacy views (plain functions, no hooks) stay unchanged apart from
-// delegating here; the provider re-renders the app on every change, so each
-// view re-reads the formatter with fresh state.
-//
-// Cross-currency model (Phase 5E): every amount carries its own source
-// currency (captured from the uploaded invoice). Conversion goes source →
-// base → display using the rate set locked for the chosen date. An amount in
-// a currency without a locked rate is shown in its original currency rather
-// than converted wrongly.
+// Legacy views call these plain functions (no hooks); an external store (below)
+// makes the whole app re-render whenever any of this changes, so every figure
+// refreshes together when the display currency, book, date, or rates change.
 
 let displayCurrency = BASE_CURRENCY;
-let baseCurrency = BASE_CURRENCY;
-let baseRates: Record<string, number> = {}; // 1 base unit = baseRates[code] code units
+let activeBook: RateBook = "primary";
+let activeDate = new Date().toISOString().slice(0, 10);
+const tables = new Map<string, RateTable>(); // key `${book}|${date}`
+const missingDates = new Set<string>(); // `${book}|${date}` requested but not cached
 
-export function setDisplayState(code: string, base: string, rates: Record<string, number>): void {
-  baseCurrency = (base || BASE_CURRENCY).toUpperCase();
-  displayCurrency = (code || baseCurrency).toUpperCase();
-  baseRates = rates ?? {};
+function tableKey(book: RateBook, date: string): string {
+  return `${book}|${date}`;
+}
+
+// ---- External store: fixes reactivity for module-function consumers ---------
+let revision = 0;
+const listeners = new Set<() => void>();
+
+export function subscribeCurrency(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+export function getCurrencyRevision(): number {
+  return revision;
+}
+
+function notify(): void {
+  revision += 1;
+  for (const listener of listeners) listener();
+}
+
+/** Set which currency is shown, and which book + reference date are active. */
+export function setDisplayState(code: string, book: RateBook, date: string): void {
+  displayCurrency = (code || BASE_CURRENCY).toUpperCase();
+  activeBook = RATE_BOOKS.includes(book) ? book : "primary";
+  activeDate = date || activeDate;
+  notify();
+}
+
+/** Cache a locked rate table for a book + date. Called by the provider after
+ *  loading or locking rates. */
+export function setRateTable(book: RateBook, date: string, base: string, rates: Record<string, number>): void {
+  tables.set(tableKey(book, date), { base: (base || BASE_CURRENCY).toUpperCase(), rates: rates ?? {} });
+  missingDates.delete(tableKey(book, date));
+  notify();
+}
+
+/** Rate tables the provider should fetch/lock (requested at historical dates
+ *  not yet cached). Drained by the provider. */
+export function drainMissingRateDates(): Array<{ book: RateBook; date: string }> {
+  const out = [...missingDates].map((key) => {
+    const [book, date] = key.split("|");
+    return { book: book as RateBook, date };
+  });
+  missingDates.clear();
+  return out;
+}
+
+export function getActiveBook(): RateBook {
+  return activeBook;
 }
 
 export function getDisplayCurrency(): string {
   return displayCurrency;
 }
 
-function rateFor(code: string): number | null {
+function resolveTable(book: RateBook, date: string): RateTable | null {
+  const exact = tables.get(tableKey(book, date));
+  if (exact) return exact;
+  // Remember the gap so the provider can lock this date's rate, then fall back
+  // to the active reference table so figures still read sensibly meanwhile.
+  if (date && date !== activeDate) missingDates.add(tableKey(book, date));
+  return tables.get(tableKey(book, activeDate)) ?? tables.get(tableKey("primary", activeDate)) ?? null;
+}
+
+function rateFor(table: RateTable | null, code: string): number | null {
   const wanted = code.toUpperCase();
-  if (wanted === baseCurrency) return 1;
-  const rate = baseRates[wanted];
-  return Number.isFinite(rate) && rate > 0 ? rate : null;
+  const base = table?.base ?? BASE_CURRENCY;
+  if (wanted === base) return 1;
+  const rate = table?.rates?.[wanted];
+  return Number.isFinite(rate) && rate && rate > 0 ? rate : null;
 }
 
-/** True when an amount in `from` can be expressed in the display currency. */
-export function canConvert(from?: string | null): boolean {
-  const src = (from ?? baseCurrency).toUpperCase();
+export type ConvertOptions = { from?: string | null; book?: RateBook; onDate?: string | null };
+
+/** True when an amount in `from` can be expressed in the display currency
+ *  using the relevant book + date table. */
+export function canConvert(options?: ConvertOptions): boolean {
+  const book = options?.book ?? activeBook;
+  const date = options?.onDate || activeDate;
+  const table = resolveTable(book, date);
+  const base = table?.base ?? BASE_CURRENCY;
+  const src = (options?.from ?? base).toUpperCase();
   if (src === displayCurrency) return true;
-  return rateFor(src) !== null && rateFor(displayCurrency) !== null;
+  return rateFor(table, src) !== null && rateFor(table, displayCurrency) !== null;
 }
 
-/** Convert an amount from its source currency into the display currency.
- *  Unconvertible amounts are returned unchanged (caller may keep original). */
-export function convertAmount(value: number, from?: string | null): number {
-  const src = (from ?? baseCurrency).toUpperCase();
+/** Convert an amount from its source currency into the display currency using
+ *  the book + date rate. Unconvertible amounts are returned unchanged. */
+export function convertAmount(value: number, options?: ConvertOptions): number {
+  const book = options?.book ?? activeBook;
+  const date = options?.onDate || activeDate;
+  const table = resolveTable(book, date);
+  const base = table?.base ?? BASE_CURRENCY;
+  const src = (options?.from ?? base).toUpperCase();
   if (src === displayCurrency) return value || 0;
-  const srcRate = rateFor(src);
-  const dstRate = rateFor(displayCurrency);
+  const srcRate = rateFor(table, src);
+  const dstRate = rateFor(table, displayCurrency);
   if (srcRate === null || dstRate === null) return value || 0;
   return ((value || 0) / srcRate) * dstRate;
 }
@@ -160,14 +240,17 @@ export function formatDisplay(value: number, options?: { compact?: boolean }): s
 }
 
 /** Format an amount given in its source currency, converted to the display
- *  currency at the locked rate. Falls back to the original currency when no
- *  rate is locked for it (honest, never silently wrong). */
-export function formatMoney(value: number, options?: { compact?: boolean; from?: string | null }): string {
-  const src = (options?.from ?? baseCurrency).toUpperCase();
-  if (src !== displayCurrency && !canConvert(src)) {
+ *  currency at the relevant book + date rate. Falls back to the original
+ *  currency when no rate is available (honest, never silently wrong). */
+export function formatMoney(
+  value: number,
+  options?: { compact?: boolean; from?: string | null; book?: RateBook; onDate?: string | null },
+): string {
+  const src = (options?.from ?? BASE_CURRENCY).toUpperCase();
+  if (src !== displayCurrency && !canConvert(options)) {
     return formatIn(src, value, options?.compact);
   }
-  return formatDisplay(convertAmount(value, src), options);
+  return formatDisplay(convertAmount(value, options), options);
 }
 
 const unitFormatter = new Intl.NumberFormat("en-US");
