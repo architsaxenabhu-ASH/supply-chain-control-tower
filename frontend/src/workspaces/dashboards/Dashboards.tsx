@@ -58,7 +58,12 @@ import {
 // book-aware currency engine.
 
 const num = formatUnits;
+// `money` converts a BASE-currency amount to the display currency (use for raw
+// values straight from an endpoint). `disp` formats a value that is ALREADY in
+// the display currency (use for sums built with convertAmount, so we never
+// convert twice).
 const money = (value: number) => formatMoney(value, { compact: true });
+const disp = (value: number) => formatDisplay(value, { compact: true });
 const todayStamp = () => new Date().toISOString().slice(0, 10);
 
 type Vital = { label: string; value: string; tone?: "good" | "warn" | "bad" };
@@ -235,7 +240,7 @@ export function PrimarySalesDashboard() {
   const hasData = candidates.length > 0;
   const answer = !hasData
     ? "Nothing inbound yet — the pipeline is clear"
-    : `${money(incomingValue)} of inventory is on its way from Meril India`;
+    : `${disp(incomingValue)} of inventory is on its way from Meril India`;
   const story = !hasData
     ? "This is your inbound pipeline. As you assemble import shipments in Primary Sales → Operations, their value, status, and arrival risk surface here."
     : delays > 0
@@ -249,11 +254,11 @@ export function PrimarySalesDashboard() {
         answer={answer}
         story={story}
         vitals={[
-          { label: "Incoming inventory value", value: money(incomingValue) },
+          { label: "Incoming inventory value", value: disp(incomingValue) },
           { label: "Open shipments", value: num(inbound) },
           { label: "Awaiting receipt", value: num(awaiting), tone: awaiting > 0 ? "warn" : undefined },
           { label: "Import delays", value: num(delays), tone: delays > 0 ? "bad" : "good" },
-          { label: "Partner costs outstanding", value: money(partnerCosts) },
+          { label: "Partner costs outstanding", value: disp(partnerCosts) },
         ]}
       />
       <div className="hub-columns">
@@ -305,7 +310,7 @@ export function PrimarySalesDashboard() {
 // ============================== 2. INVENTORY ==============================
 
 export function InventoryDashboard() {
-  useSyncExternalStore(subscribeCurrency, getCurrencyRevision);
+  const rev = useSyncExternalStore(subscribeCurrency, getCurrencyRevision);
   const [dash, setDash] = useState<ApiInventoryDashboard | null>(null);
   const [consignment, setConsignment] = useState<ApiConsignmentDashboard | null>(null);
   const [commitment, setCommitment] = useState<ApiCommitmentDashboard | null>(null);
@@ -337,9 +342,16 @@ export function InventoryDashboard() {
     .filter((c) => !["fulfilled", "delivered", "cancelled", "closed"].includes(c.status.toLowerCase()))
     .reduce((sum, c) => sum + c.allocated_quantity, 0);
   const expiryRisk = (dash?.expiring_90 ?? 0) + (dash?.expired ?? 0);
+  // by_category_value is in the base currency — convert each slice to the
+  // display currency (primary book) so the donut matches the hero's value.
   const categorySlices = useMemo(
-    () => Object.entries(dash?.by_category_value ?? {}).map(([label, value]) => ({ label, value })),
-    [dash],
+    () =>
+      Object.entries(dash?.by_category_value ?? {}).map(([label, value]) => ({
+        label,
+        value: convertAmount(value, { book: "primary" }),
+      })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [dash, rev],
   );
 
   if (loading) return <Loading />;
@@ -715,15 +727,16 @@ export function FinanceDashboard() {
   if (loading) return <Loading />;
 
   const net = recvOutstanding - payOutstanding;
+  const creditExposureDisplay = convertAmount(creditExposure, { book: "secondary" });
   const hasFinance = receivables.length > 0 || payables.length > 0;
   const answer = !hasFinance
     ? "No exposure yet — no money is owed in either direction"
-    : `${money(recvOutstanding)} to collect, ${money(payOutstanding)} to pay`;
+    : `${disp(recvOutstanding)} to collect, ${disp(payOutstanding)} to pay`;
   const story = !hasFinance
     ? "This is the money view. As customer invoices and partner costs are recorded, your collect-versus-pay position, credit exposure, and overdue amounts read here."
     : recvOverdue > 0
-      ? `${money(recvOverdue)} of receivables is already overdue — collecting it is the fastest way to improve a net position of ${money(net)}.`
-      : `Your net position is ${money(net)} and nothing is overdue. Watch credit exposure of ${money(creditExposure)} across distributors.`;
+      ? `${disp(recvOverdue)} of receivables is already overdue — collecting it is the fastest way to improve a net position of ${disp(net)}.`
+      : `Your net position is ${disp(net)} and nothing is overdue. Watch credit exposure of ${disp(creditExposureDisplay)} across distributors.`;
 
   return (
     <div className="ops-stage">
@@ -732,11 +745,11 @@ export function FinanceDashboard() {
         answer={answer}
         story={story}
         vitals={[
-          { label: "Receivables outstanding", value: money(recvOutstanding) },
-          { label: "Payables outstanding", value: money(payOutstanding) },
-          { label: "Net cash position", value: money(net), tone: net >= 0 ? "good" : "bad" },
-          { label: "Credit exposure", value: formatDisplay(convertAmount(creditExposure, { book: "secondary" }), { compact: true }) },
-          { label: "Receivables overdue", value: money(recvOverdue), tone: recvOverdue > 0 ? "bad" : "good" },
+          { label: "Receivables outstanding", value: disp(recvOutstanding) },
+          { label: "Payables outstanding", value: disp(payOutstanding) },
+          { label: "Net cash position", value: disp(net), tone: net >= 0 ? "good" : "bad" },
+          { label: "Credit exposure", value: disp(creditExposureDisplay) },
+          { label: "Receivables overdue", value: disp(recvOverdue), tone: recvOverdue > 0 ? "bad" : "good" },
         ]}
       />
       <div className="hub-columns">
