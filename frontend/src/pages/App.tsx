@@ -1901,19 +1901,29 @@ export function App() {
         ? "secondary"
         : null;
 
-  // Live business pulse — real values for each stage, derived from data already
-  // loaded (no extra fetches). Primary = what is coming, Inventory = what we
-  // have, Secondary = what is going out.
+  // Live business heartbeat — real values + operational context for each stage,
+  // derived from data already loaded (no extra fetches). Primary = what is
+  // coming, Inventory = what we have, Secondary = what is going out. Tone is the
+  // pulse colour: green when clear, amber/red when something needs attention.
+  const pulseToday = getDateStamp();
   const pulseIncoming = importQueue.filter(
     (candidate) => !["received", "closed", "cancelled"].includes(candidate.status.toLowerCase()),
   ).length;
+  const pulseDelays = importQueue.filter(
+    (candidate) =>
+      candidate.flight_date &&
+      candidate.flight_date < pulseToday &&
+      !["received", "closed", "cancelled"].includes(candidate.status.toLowerCase()),
+  ).length;
+  const pulseExpiryRisk = expiringIn90Days + expiredInventoryCount;
   const pulseStockValue = formatMoney(totalInventoryValue, { compact: true });
   const flowStages = [
     {
       id: "primary" as const,
       label: "Primary Sales",
       value: pulseIncoming > 0 ? `${pulseIncoming} inbound` : "Clear",
-      sub: "what is coming",
+      context: pulseDelays > 0 ? `${pulseDelays} past ETA` : pulseIncoming > 0 ? "on schedule" : "nothing inbound",
+      tone: pulseDelays > 0 ? "bad" : ("good" as "good" | "warn" | "bad"),
       view: "dash-primary",
       // The connector below a node animates when stock flows INTO the next
       // node: primary → inventory moves when imports are inbound.
@@ -1923,7 +1933,13 @@ export function App() {
       id: "inventory" as const,
       label: "Inventory",
       value: totalInventoryQuantity > 0 ? pulseStockValue : "Empty",
-      sub: "what we have",
+      context:
+        pulseExpiryRisk > 0
+          ? `${pulseExpiryRisk} at risk`
+          : totalInventoryQuantity > 0
+            ? `${formatNumber(totalInventoryQuantity)} units`
+            : "no stock",
+      tone: pulseExpiryRisk > 0 ? "warn" : ("good" as "good" | "warn" | "bad"),
       view: "dash-inventory",
       // inventory → secondary moves when orders are going out.
       flowsInto: openShipments > 0,
@@ -1932,7 +1948,8 @@ export function App() {
       id: "secondary" as const,
       label: "Secondary Sales",
       value: openShipments > 0 ? `${openShipments} open` : "Clear",
-      sub: "promised & delivered",
+      context: openShipments > 0 ? "in motion" : "nothing going out",
+      tone: "good" as "good" | "warn" | "bad",
       view: "dash-secondary",
       flowsInto: false,
     },
@@ -2140,11 +2157,17 @@ export function App() {
                 type="button"
                 className={`flow-pulse-node${flowStage === stage.id ? " active" : ""}`}
                 onClick={() => setActiveView(stage.view)}
-                title={`${stage.label} — ${stage.sub}`}
+                title={`${stage.label} — ${stage.context}`}
               >
                 <span className="flow-pulse-name">{stage.label}</span>
                 <strong className="flow-pulse-value">{stage.value}</strong>
-                <span className="flow-pulse-sub">{stage.sub}</span>
+                <span className="flow-pulse-context">
+                  <span
+                    className={`flow-pulse-pip tone-${stage.tone}${stage.tone !== "good" && !reducedMotion ? " is-beating" : ""}`}
+                    aria-hidden="true"
+                  />
+                  {stage.context}
+                </span>
               </button>
             </div>
           ))}
@@ -2288,11 +2311,11 @@ export function App() {
         {activeView === "inventory-hub" ? <InventoryHub /> : null}
         {activeView === "primary-sales" ? <PrimarySales /> : null}
         {activeView === "secondary-sales" ? <SecondarySales /> : null}
-        {activeView === "dash-primary" ? <PrimarySalesDashboard /> : null}
-        {activeView === "dash-inventory" ? <InventoryDashboard /> : null}
-        {activeView === "dash-secondary" ? <SecondarySalesDashboard /> : null}
-        {activeView === "dash-business" ? <BusinessDashboard /> : null}
-        {activeView === "dash-finance" ? <FinanceDashboard /> : null}
+        {activeView === "dash-primary" ? <PrimarySalesDashboard onNavigate={setActiveView} /> : null}
+        {activeView === "dash-inventory" ? <InventoryDashboard onNavigate={setActiveView} /> : null}
+        {activeView === "dash-secondary" ? <SecondarySalesDashboard onNavigate={setActiveView} /> : null}
+        {activeView === "dash-business" ? <BusinessDashboard onNavigate={setActiveView} /> : null}
+        {activeView === "dash-finance" ? <FinanceDashboard onNavigate={setActiveView} /> : null}
         {activeView === "dashboard" ? (
           <DashboardView
             expiredInventoryCount={expiredInventoryCount}

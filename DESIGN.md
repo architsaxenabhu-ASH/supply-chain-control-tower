@@ -129,6 +129,27 @@ Low-data is composed, not blank: `EmptyStory` (`.empty-story`) shows an icon,
 a headline, and a sentence that teaches what fills the panel, so the system
 feels complete while data volume is still growing.
 
+## Story → Action (Phase 5J)
+
+Every dashboard ends its story with an **action launchpad** (`ActionLaunchpad`,
+`.launchpad`): a row of next-step cards, each with a live count where one
+exists, that jump straight to the operational screen where the work happens.
+The dashboard is a springboard, not just a summary:
+
+- Primary Sales → Open shipments · Chase delays (n) · Record update · Documents
+- Inventory → Review risk · Review expiry (n) · Open reviews · Record decision
+- Secondary Sales → Open commitments (n) · Review backorders (n) · Record
+  fulfillment · Record decision
+- Business → Open country review · Open vertical review · Clear approvals (n)
+- Finance → Open receivables (n overdue) · Open payables (n) · Record collection plan
+
+The sidebar **flow pulse** is now a business heartbeat: each stage shows a live
+value plus an operational-context line with a status pip
+(`.flow-pulse-pip`) — green when clear, amber/red when something needs
+attention, and the pip *beats* when it is not green (delays past ETA, stock at
+expiry risk). A dot still flows down the connector when stock is actually
+moving into the next stage.
+
 ## Reference patterns (Phase 5B)
 
 Adopted from the user's SCM reference set (VeloHub-style control tower, dark

@@ -1,14 +1,24 @@
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore, type ComponentType } from "react";
 import {
   AlertTriangle,
   Banknote,
   Boxes,
+  ChevronRight,
+  ClipboardCheck,
+  Clock,
   Compass,
+  FileUp,
+  GitBranch,
   Globe2,
   HandCoins,
+  Handshake,
+  PackageOpen,
   PlaneLanding,
+  RadioTower,
+  ScrollText,
   Send,
   Stamp,
+  Truck,
   Wallet,
 } from "lucide-react";
 
@@ -134,6 +144,58 @@ function EmptyStory({
   );
 }
 
+// Every dashboard ends its story with a launchpad: the next operational steps,
+// each carrying a live count where one exists, jumping straight to the screen
+// where the work happens. Story → Action.
+export type DashboardNav = { onNavigate: (view: string) => void };
+
+type LaunchAction = {
+  icon: ComponentType<{ size?: number; "aria-hidden"?: boolean | "true" | "false" }>;
+  label: string;
+  hint: string;
+  view: string;
+  count?: number;
+  tone?: "good" | "warn" | "bad";
+};
+
+function ActionLaunchpad({
+  actions,
+  onNavigate,
+}: {
+  actions: LaunchAction[];
+  onNavigate: (view: string) => void;
+}) {
+  return (
+    <section className="launchpad" aria-label="Next actions">
+      <p className="launchpad-label">Next actions</p>
+      <div className="launchpad-row">
+        {actions.map((action) => (
+          <button
+            type="button"
+            className="launch-action"
+            key={action.label}
+            onClick={() => onNavigate(action.view)}
+          >
+            <span className="launch-action-icon">
+              <action.icon size={17} aria-hidden="true" />
+            </span>
+            <span className="launch-action-body">
+              <strong>{action.label}</strong>
+              <small>{action.hint}</small>
+            </span>
+            {typeof action.count === "number" && action.count > 0 ? (
+              <span className={`launch-action-count${action.tone ? ` tone-${action.tone}` : ""}`}>
+                {action.count}
+              </span>
+            ) : null}
+            <ChevronRight size={15} aria-hidden="true" className="launch-action-go" />
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function statusSegments(byStatus: Record<string, number>): { label: string; count: number; tone: string }[] {
   const tone = (status: string): string => {
     const key = status.toLowerCase();
@@ -185,7 +247,7 @@ function ScoreBar({ label, value }: { label: string; value: number | null }) {
 
 // ============================ 1. PRIMARY SALES ============================
 
-export function PrimarySalesDashboard() {
+export function PrimarySalesDashboard({ onNavigate }: DashboardNav) {
   const rev = useSyncExternalStore(subscribeCurrency, getCurrencyRevision);
   const [dash, setDash] = useState<ApiImportDashboard | null>(null);
   const [candidates, setCandidates] = useState<ApiImportFileCandidate[]>([]);
@@ -261,6 +323,15 @@ export function PrimarySalesDashboard() {
           { label: "Partner costs outstanding", value: disp(partnerCosts) },
         ]}
       />
+      <ActionLaunchpad
+        onNavigate={onNavigate}
+        actions={[
+          { icon: PlaneLanding, label: "Open shipments", hint: "see what is inbound", view: "primary-sales", count: inbound },
+          { icon: RadioTower, label: "Chase delays", hint: "shipments past ETA", view: "goods-tracking", count: delays, tone: "bad" },
+          { icon: ClipboardCheck, label: "Record update", hint: "assemble & post a shipment", view: "import-validation" },
+          { icon: FileUp, label: "Documents", hint: "upload CI / PL / AWB", view: "documents" },
+        ]}
+      />
       <div className="hub-columns">
         <section className="panel cockpit-panel">
           <div className="panel-heading">
@@ -309,7 +380,7 @@ export function PrimarySalesDashboard() {
 
 // ============================== 2. INVENTORY ==============================
 
-export function InventoryDashboard() {
+export function InventoryDashboard({ onNavigate }: DashboardNav) {
   const rev = useSyncExternalStore(subscribeCurrency, getCurrencyRevision);
   const [dash, setDash] = useState<ApiInventoryDashboard | null>(null);
   const [consignment, setConsignment] = useState<ApiConsignmentDashboard | null>(null);
@@ -390,6 +461,15 @@ export function InventoryDashboard() {
           { label: "Consignment in field", value: num(consignment?.total_consignments ?? 0) },
         ]}
       />
+      <ActionLaunchpad
+        onNavigate={onNavigate}
+        actions={[
+          { icon: Boxes, label: "Review risk", hint: "position & allocations", view: "inventory-hub" },
+          { icon: AlertTriangle, label: "Review expiry", hint: "batches nearing expiry", view: "expiry", count: expiryRisk, tone: "bad" },
+          { icon: ScrollText, label: "Open reviews", hint: "inventory & consignment", view: "reviews" },
+          { icon: GitBranch, label: "Record decision", hint: "log a stock decision", view: "decision-center" },
+        ]}
+      />
       <div className="hub-columns">
         <section className="panel cockpit-panel">
           <div className="panel-heading">
@@ -434,7 +514,7 @@ export function InventoryDashboard() {
 
 // ========================== 3. SECONDARY SALES ==========================
 
-export function SecondarySalesDashboard() {
+export function SecondarySalesDashboard({ onNavigate }: DashboardNav) {
   useSyncExternalStore(subscribeCurrency, getCurrencyRevision);
   const [dash, setDash] = useState<ApiCommitmentDashboard | null>(null);
   const [commitments, setCommitments] = useState<ApiCustomerCommitment[]>([]);
@@ -492,6 +572,15 @@ export function SecondarySalesDashboard() {
           { label: "Customers served", value: num(customers) },
         ]}
       />
+      <ActionLaunchpad
+        onNavigate={onNavigate}
+        actions={[
+          { icon: Handshake, label: "Open commitments", hint: "customer POs in play", view: "commitments", count: open },
+          { icon: PackageOpen, label: "Review backorders", hint: "orders short on stock", view: "secondary-sales", count: back, tone: "warn" },
+          { icon: Truck, label: "Record fulfillment", hint: "create & dispatch", view: "dispatches" },
+          { icon: GitBranch, label: "Record decision", hint: "log a fulfillment call", view: "decision-center" },
+        ]}
+      />
       <div className="hub-columns">
         <section className="panel cockpit-panel">
           <div className="panel-heading">
@@ -531,7 +620,7 @@ export function SecondarySalesDashboard() {
 
 // ============================= 4. BUSINESS =============================
 
-export function BusinessDashboard() {
+export function BusinessDashboard({ onNavigate }: DashboardNav) {
   const [countries, setCountries] = useState<ApiCountryPerformance[]>([]);
   const [verticals, setVerticals] = useState<ApiCountryPerformance[]>([]);
   const [approvals, setApprovals] = useState<ApiApproval[]>([]);
@@ -605,6 +694,14 @@ export function BusinessDashboard() {
           { label: "Open approvals", value: num(approvals.length), tone: approvals.length > 0 ? "warn" : "good" },
           { label: "Open risks", value: num(actions.length), tone: actions.length > 0 ? "bad" : "good" },
           { label: "Decisions logged", value: num(decisions.length) },
+        ]}
+      />
+      <ActionLaunchpad
+        onNavigate={onNavigate}
+        actions={[
+          { icon: ScrollText, label: "Open country review", hint: "achievement & gaps", view: "reviews" },
+          { icon: Compass, label: "Open vertical review", hint: "performance by vertical", view: "commercial" },
+          { icon: Stamp, label: "Clear approvals", hint: "decisions waiting on you", view: "approvals", count: approvals.length, tone: "warn" },
         ]}
       />
       <div className="hub-columns">
@@ -689,7 +786,7 @@ export function BusinessDashboard() {
 
 // ============================== 5. FINANCE ==============================
 
-export function FinanceDashboard() {
+export function FinanceDashboard({ onNavigate }: DashboardNav) {
   const rev = useSyncExternalStore(subscribeCurrency, getCurrencyRevision);
   const [receivables, setReceivables] = useState<ApiReceivable[]>([]);
   const [payables, setPayables] = useState<ApiPayable[]>([]);
@@ -721,7 +818,9 @@ export function FinanceDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [payables, rev],
   );
-  const recvOverdue = receivables.filter((r) => r.status === "overdue").reduce((sum, r) => sum + convertAmount(r.outstanding_value || 0, { from: r.currency, book: "secondary", onDate: r.invoice_date }), 0);
+  const overdueReceivables = receivables.filter((r) => r.status === "overdue");
+  const overdueCount = overdueReceivables.length;
+  const recvOverdue = overdueReceivables.reduce((sum, r) => sum + convertAmount(r.outstanding_value || 0, { from: r.currency, book: "secondary", onDate: r.invoice_date }), 0);
   const creditExposure = credit.reduce((sum, c) => sum + (c.outstanding_exposure || 0), 0);
 
   if (loading) return <Loading />;
@@ -750,6 +849,14 @@ export function FinanceDashboard() {
           { label: "Net cash position", value: disp(net), tone: net >= 0 ? "good" : "bad" },
           { label: "Credit exposure", value: disp(creditExposureDisplay) },
           { label: "Receivables overdue", value: disp(recvOverdue), tone: recvOverdue > 0 ? "bad" : "good" },
+        ]}
+      />
+      <ActionLaunchpad
+        onNavigate={onNavigate}
+        actions={[
+          { icon: Banknote, label: "Open receivables", hint: "collect what is owed", view: "receivables", count: overdueCount, tone: "bad" },
+          { icon: HandCoins, label: "Open payables", hint: "partner costs to pay", view: "payables", count: payables.length },
+          { icon: GitBranch, label: "Record collection plan", hint: "log a collection decision", view: "decision-center" },
         ]}
       />
       <div className="hub-columns">
