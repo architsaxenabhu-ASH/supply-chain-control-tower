@@ -213,6 +213,13 @@ export const WORKSPACES: WorkspaceDef[] = [
   },
   // ============================ DASHBOARDS ============================
   {
+    id: "dash-planning-zone",
+    label: "Planning",
+    icon: CalendarRange,
+    section: "dashboards",
+    tabs: [{ id: "dash-planning", label: "Planning", icon: CalendarRange, signature: "sweep" }],
+  },
+  {
     id: "dash-primary-zone",
     label: "Primary Sales",
     icon: PlaneLanding,

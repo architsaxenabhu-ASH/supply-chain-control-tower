@@ -168,6 +168,30 @@ Reason → Outcome**:
   **record its outcome** and effectiveness, closing the loop so the playbook
   learns. Hero vitals show effectiveness and the most effective play.
 
+## Planning cockpit (Phase 6)
+
+A new top-level **Planning** dashboard (`workspaces/planning/PlanningDashboard.tsx`,
+view `dash-planning`, first under Dashboards) answers Past · Present · Future in
+one view — by pure calculation, no forecasting or models:
+
+```
+Projected inventory = current available + incoming − committed demand
+                      (incoming arriving, and demand due, by the chosen horizon)
+```
+
+Horizon selector +30 / +60 / +90 / custom date. Sections: present vs projected
+vitals (P2); **requirement gap by vertical** with coverage % and
+shortage/surplus/covered status (P3); **incoming supply** timeline with ETA and
+delay (P4); **customer commitments** timeline with required date and OTIF risk
+(P5); and **shortages developing** with a launchpad to act (pull forward supply
+/ record a decision). All computed from existing endpoints (inventory, import
+candidates, commitments, products) — no duplicate business logic.
+
+Deferred to later Phase 6 passes: P1 historical reconstruction (point-in-time
+state needs backend transaction replay), P7 situation rooms (the Decision
+cockpit already runs situation→decision), P9 granular permission matrix + the
+heartbeat's average-lead-time recalibration (needs historical lead-time data).
+
 ## RBAC (Phase 5L)
 
 Navigation is permission-gated end to end: `visibleSections` →

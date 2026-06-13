@@ -1310,6 +1310,11 @@
   .launch-action:hover .launch-action-go { transform: none; }
 }
 
+/* Planning coverage bar inside a table cell (Phase 6). */
+.planning-coverage { display: flex; align-items: center; gap: 9px; min-width: 120px; }
+.planning-coverage .score-row-track { flex: 1; }
+.planning-coverage span { font-size: 12px; font-variant-numeric: tabular-nums; color: var(--tower-muted, #93a3b4); }
+
 /* ---- Overview layout ---- */
 .hub-columns {
   display: grid;
