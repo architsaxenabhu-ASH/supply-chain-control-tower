@@ -179,7 +179,9 @@ Projected inventory = current available + incoming − committed demand
                       (incoming arriving, and demand due, by the chosen horizon)
 ```
 
-Horizon selector +30 / +60 / +90 / custom date. Sections: present vs projected
+Horizon selector tuned to a distribution subsidiary's decision cycle:
+**Today / +15 / +30 / +45 / custom date** (most calls are made within
+15–45 days). Sections: present vs projected
 vitals (P2); **requirement gap by vertical** with coverage % and
 shortage/surplus/covered status (P3); **incoming supply** timeline with ETA and
 delay (P4); **customer commitments** timeline with required date and OTIF risk
@@ -187,10 +189,25 @@ delay (P4); **customer commitments** timeline with required date and OTIF risk
 / record a decision). All computed from existing endpoints (inventory, import
 candidates, commitments, products) — no duplicate business logic.
 
-Deferred to later Phase 6 passes: P1 historical reconstruction (point-in-time
-state needs backend transaction replay), P7 situation rooms (the Decision
-cockpit already runs situation→decision), P9 granular permission matrix + the
-heartbeat's average-lead-time recalibration (needs historical lead-time data).
+## Historical Time Machine — Business Snapshot (Phase 6, P1)
+
+`workspaces/planning/BusinessSnapshot.tsx` (Planning workspace → Time Machine
+tab, view `dash-snapshot`). Pick any past date and see the whole business as it
+stood that day, reconstructed from the transaction record — not just inventory:
+- **Inventory** (units + value) = goods receipts posted by the date − dispatches
+  out by the date (value uses each line's receipt unit value).
+- **Receivables / payables outstanding** = invoiced by the date − payments
+  collected/made by the date (exact from invoice + payment dates).
+- **Open customer orders** that day (best-effort from required-delivery dates).
+Money converts at the rate locked for the snapshot date (ties into the
+date-locked rate books), so a past day reads in period-accurate value. Date
+shortcuts: Today / Month start / Year start.
+
+Deferred to later Phase 6 passes (per the user's re-sequencing): P2 Situation
+Rooms, Document Intelligence Center, Advanced RBAC matrix, Master Data
+Governance, Data Quality Center, the Operations Intelligence Center reframe of
+exceptions (Attention / Performing Well / Recently Resolved), and the
+heartbeat's average-lead-time recalibration.
 
 ## RBAC (Phase 5L)
 

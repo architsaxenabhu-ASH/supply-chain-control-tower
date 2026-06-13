@@ -217,7 +217,10 @@ export const WORKSPACES: WorkspaceDef[] = [
     label: "Planning",
     icon: CalendarRange,
     section: "dashboards",
-    tabs: [{ id: "dash-planning", label: "Planning", icon: CalendarRange, signature: "sweep" }],
+    tabs: [
+      { id: "dash-planning", label: "Planning", icon: CalendarRange, signature: "sweep" },
+      { id: "dash-snapshot", label: "Time Machine", icon: History, signature: "path" },
+    ],
   },
   {
     id: "dash-primary-zone",

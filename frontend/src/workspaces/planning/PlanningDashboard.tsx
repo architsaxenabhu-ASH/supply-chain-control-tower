@@ -35,7 +35,15 @@ function addDays(days: number): string {
 const CLOSED_COMMITMENT = new Set(["fulfilled", "delivered", "cancelled", "closed"]);
 const CLOSED_IMPORT = new Set(["received", "closed", "cancelled"]);
 
-type Horizon = 30 | 60 | 90 | "custom";
+// Horizons tuned to a medical-device subsidiary's decision cycle (most calls
+// are made within 15 / 30 / 45 days), not a manufacturing planning cadence.
+type Horizon = 0 | 15 | 30 | 45 | "custom";
+const HORIZON_OPTIONS: { value: 0 | 15 | 30 | 45; label: string }[] = [
+  { value: 0, label: "Today" },
+  { value: 15, label: "+15d" },
+  { value: 30, label: "+30d" },
+  { value: 45, label: "+45d" },
+];
 
 type VerticalRow = {
   vertical: string;
@@ -55,8 +63,8 @@ export function PlanningDashboard({ onNavigate }: DashboardNav) {
   const [products, setProducts] = useState<ApiProduct[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [horizon, setHorizon] = useState<Horizon>(30);
-  const [customDate, setCustomDate] = useState(addDays(120));
+  const [horizon, setHorizon] = useState<Horizon>(15);
+  const [customDate, setCustomDate] = useState(addDays(60));
 
   useEffect(() => {
     let active = true;
@@ -80,7 +88,7 @@ export function PlanningDashboard({ onNavigate }: DashboardNav) {
   }, []);
 
   const horizonDate = horizon === "custom" ? customDate : addDays(horizon);
-  const horizonLabel = horizon === "custom" ? customDate : `+${horizon} days`;
+  const horizonLabel = horizon === "custom" ? customDate : horizon === 0 ? "today" : `+${horizon} days`;
 
   // item_code → vertical (product category), learned from products + inventory.
   const categoryOf = useMemo(() => {
@@ -199,21 +207,23 @@ export function PlanningDashboard({ onNavigate }: DashboardNav) {
           <div>
             <p className="eyebrow">Planning · Past · Present · Future</p>
             <h2>
-              {num(currentUnits)} units now → {num(projectedUnits)} projected by {horizonLabel}
+              {horizon === 0
+                ? `${num(currentUnits)} units available today`
+                : `${num(currentUnits)} units now → ${num(projectedUnits)} projected by ${horizonLabel}`}
             </h2>
             <p className="dash-story">{story}</p>
           </div>
           <div className="lens-switch" role="tablist" aria-label="Planning horizon">
-            {([30, 60, 90] as const).map((option) => (
+            {HORIZON_OPTIONS.map((option) => (
               <button
-                key={option}
+                key={option.value}
                 type="button"
                 role="tab"
-                aria-selected={horizon === option}
-                className={horizon === option ? "lens-chip active" : "lens-chip"}
-                onClick={() => setHorizon(option)}
+                aria-selected={horizon === option.value}
+                className={horizon === option.value ? "lens-chip active" : "lens-chip"}
+                onClick={() => setHorizon(option.value)}
               >
-                <span>+{option}d</span>
+                <span>{option.label}</span>
               </button>
             ))}
             <button
