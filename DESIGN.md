@@ -83,6 +83,31 @@ Tokens in `frontend/src/motion/motion.ts`. Fast 0.18s · base 0.24s · slow 0.4s
 - Lists stagger at 0.04s per item. Never gate visibility on animation.
 - Every animation has a `prefers-reduced-motion` fallback (crossfade or none).
 
+## Information architecture (Phase 5H)
+
+The navigation mirrors the real subsidiary operating model so a user reads it
+immediately after login:
+
+```
+Primary Sales  →  Inventory  →  Secondary Sales
+ (buy stock in)   (the bridge)    (sell stock out)
+```
+
+Two top-level sections in the rail (`app/nav.ts`, `WorkspaceDef.section`):
+
+- **Operations** — three flow workspaces, each with role-shaped sub-tabs:
+  - Primary Sales (India → subsidiary): Planning · Operations · Finance · Documents · Tracking
+  - Inventory (the bridge): Planning · Operations · Reviews · Expiry · Consignment · Returns · Receipts · Counts · Traceability
+  - Secondary Sales (subsidiary → customer): Sales · Finance · Operations · Performance · Customers · Shipments · Commitments
+- **Dashboards** — five summaries (`workspaces/dashboards/Dashboards.tsx`):
+  Primary Sales, Inventory, Secondary Sales, Business (executive), Finance.
+- **Manage** — cross-cutting: My Work, Approvals, Decisions, Access, Setup.
+
+A persistent sidebar **flow ribbon** (`.flow-ribbon`) shows Primary → Inventory
+→ Secondary and highlights the user's current stage. Section labels group the
+rail. Dashboards roll up operations; they are not operational screens. The
+active currency book follows the workspace (secondary flow → secondary book).
+
 ## Reference patterns (Phase 5B)
 
 Adopted from the user's SCM reference set (VeloHub-style control tower, dark

@@ -61,8 +61,8 @@ const SECONDARY_VIEWS = new Set([
   "commitments",
   "commercial",
   "receivables",
-  "payables",
   "customers",
+  "dash-secondary",
 ]);
 
 function bookForView(view: string | undefined): RateBook {

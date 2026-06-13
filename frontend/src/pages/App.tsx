@@ -16,6 +16,13 @@ import { AccessCenter } from "../workspaces/access/AccessCenter";
 import { InventoryHub } from "../workspaces/inventory/InventoryHub";
 import { PrimarySales } from "../workspaces/primary/PrimarySales";
 import { SecondarySales } from "../workspaces/secondary/SecondarySales";
+import {
+  BusinessDashboard,
+  FinanceDashboard,
+  InventoryDashboard,
+  PrimarySalesDashboard,
+  SecondarySalesDashboard,
+} from "../workspaces/dashboards/Dashboards";
 import { CountryProvider, CountrySelector } from "../context/CountryContext";
 import { CurrencyProvider, CurrencyRatesPanel, CurrencySelector } from "../context/CurrencyContext";
 import { formatMoney, getCurrencyRevision, subscribeCurrency } from "../lib/currency";
@@ -25,7 +32,7 @@ import {
   hasPermission,
   tabOfView,
   visibleTabs,
-  visibleWorkspaces,
+  visibleSections,
   workspaceOfView,
   type NavIcon,
   type WorkspaceDef,
@@ -1883,7 +1890,16 @@ export function App() {
   // workspace's screens. activeView stays the single source of truth.
   const activeWorkspace = workspaceOfView(activeView);
   const activeTab = tabOfView(activeView);
-  const workspaceRail = useMemo(() => visibleWorkspaces(currentUser), [currentUser]);
+  const railSections = useMemo(() => visibleSections(currentUser), [currentUser]);
+  // Which stage of the Primary → Inventory → Secondary flow the user is in,
+  // so the sidebar ribbon highlights where they are.
+  const flowStage: "primary" | "inventory" | "secondary" | null = activeWorkspace?.id.includes("primary")
+    ? "primary"
+    : activeWorkspace?.id.includes("inventory")
+      ? "inventory"
+      : activeWorkspace?.id.includes("secondary")
+        ? "secondary"
+        : null;
   const activeWorkspaceTabs = useMemo(
     () => (activeWorkspace ? visibleTabs(currentUser, activeWorkspace) : []),
     [currentUser, activeWorkspace],
@@ -2072,28 +2088,45 @@ export function App() {
             <span>Supply Chain Control Tower</span>
           </div>
         </div>
-        <nav className="ws-rail" aria-label="Workspaces">
-          {workspaceRail.map((workspace) => {
-            const isActive = workspace.id === activeWorkspace?.id;
+        <div className="flow-ribbon" aria-label="Operating flow: Primary Sales to Inventory to Secondary Sales">
+          {(["primary", "inventory", "secondary"] as const).map((stage, index) => {
+            const labels = { primary: "Primary", inventory: "Inventory", secondary: "Secondary" };
+            const active = flowStage === stage;
             return (
-              <button
-                className={isActive ? "ws-item active" : "ws-item"}
-                key={workspace.id}
-                onClick={() => openWorkspace(workspace)}
-                aria-current={isActive ? "page" : undefined}
-                title={workspace.label}
-                data-signature={workspace.tabs[0]?.signature ?? "fade"}
-              >
-                <workspace.icon size={18} aria-hidden="true" />
-                <span className="ws-item-label">{workspace.label}</span>
-                {isActive && !reducedMotion ? (
-                  <motion.span className="ws-item-pip" layoutId="ws-item-pip" aria-hidden="true" />
-                ) : isActive ? (
-                  <span className="ws-item-pip" aria-hidden="true" />
-                ) : null}
-              </button>
+              <div className="flow-ribbon-step" key={stage}>
+                {index > 0 ? <span className="flow-ribbon-arrow" aria-hidden="true">↓</span> : null}
+                <span className={active ? "flow-ribbon-node active" : "flow-ribbon-node"}>{labels[stage]}</span>
+              </div>
             );
           })}
+        </div>
+        <nav className="ws-rail" aria-label="Workspaces">
+          {railSections.map((section) => (
+            <div className="ws-section" key={section.id}>
+              <p className="ws-section-label">{section.label}</p>
+              {section.workspaces.map((workspace) => {
+                const isActive = workspace.id === activeWorkspace?.id;
+                return (
+                  <button
+                    className={isActive ? "ws-item active" : "ws-item"}
+                    key={workspace.id}
+                    onClick={() => openWorkspace(workspace)}
+                    aria-current={isActive ? "page" : undefined}
+                    title={workspace.label}
+                    data-signature={workspace.tabs[0]?.signature ?? "fade"}
+                  >
+                    <workspace.icon size={18} aria-hidden="true" />
+                    <span className="ws-item-label">{workspace.label}</span>
+                    {isActive && !reducedMotion ? (
+                      <motion.span className="ws-item-pip" layoutId="ws-item-pip" aria-hidden="true" />
+                    ) : isActive ? (
+                      <span className="ws-item-pip" aria-hidden="true" />
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
         </nav>
       </aside>
 
@@ -2206,6 +2239,11 @@ export function App() {
         {activeView === "inventory-hub" ? <InventoryHub /> : null}
         {activeView === "primary-sales" ? <PrimarySales /> : null}
         {activeView === "secondary-sales" ? <SecondarySales /> : null}
+        {activeView === "dash-primary" ? <PrimarySalesDashboard /> : null}
+        {activeView === "dash-inventory" ? <InventoryDashboard /> : null}
+        {activeView === "dash-secondary" ? <SecondarySalesDashboard /> : null}
+        {activeView === "dash-business" ? <BusinessDashboard /> : null}
+        {activeView === "dash-finance" ? <FinanceDashboard /> : null}
         {activeView === "dashboard" ? (
           <DashboardView
             expiredInventoryCount={expiredInventoryCount}
