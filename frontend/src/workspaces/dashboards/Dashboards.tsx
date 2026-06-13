@@ -63,21 +63,26 @@ const todayStamp = () => new Date().toISOString().slice(0, 10);
 
 type Vital = { label: string; value: string; tone?: "good" | "warn" | "bad" };
 
+// Every dashboard answers one management question (the eyebrow), leads with the
+// answer (the title), and tells the story in one interpreted sentence.
 function Hero({
-  eyebrow,
-  title,
+  question,
+  answer,
+  story,
   vitals,
 }: {
-  eyebrow: string;
-  title: string;
+  question: string;
+  answer: string;
+  story: string;
   vitals: Vital[];
 }) {
   return (
     <section className="cockpit-hero">
       <div className="cockpit-hero-top">
         <div>
-          <p className="eyebrow">{eyebrow}</p>
-          <h2>{title}</h2>
+          <p className="eyebrow">{question}</p>
+          <h2>{answer}</h2>
+          <p className="dash-story">{story}</p>
         </div>
       </div>
       <div className="vitals-row">
@@ -98,6 +103,28 @@ function Loading() {
       <div className="skeleton-row tall" />
       <div className="skeleton-row" />
       <div className="skeleton-row" />
+    </div>
+  );
+}
+
+// Composed empty state for low/no data — teaches what fills the panel so the
+// system feels complete while data volume is still growing.
+function EmptyStory({
+  icon: Icon,
+  title,
+  hint,
+}: {
+  icon: typeof Globe2;
+  title: string;
+  hint: string;
+}) {
+  return (
+    <div className="empty-story">
+      <span className="empty-story-mark">
+        <Icon size={22} aria-hidden="true" />
+      </span>
+      <strong>{title}</strong>
+      <span>{hint}</span>
     </div>
   );
 }
@@ -200,18 +227,31 @@ export function PrimarySalesDashboard() {
   const delays = candidates.filter(
     (c) => c.flight_date && c.flight_date < today && !["received", "closed", "cancelled"].includes(c.status.toLowerCase()),
   ).length;
+  const inbound = dash?.open_shipments ?? 0;
+  const awaiting = dash?.awaiting_receipt ?? 0;
 
   if (loading) return <Loading />;
+
+  const hasData = candidates.length > 0;
+  const answer = !hasData
+    ? "Nothing inbound yet — the pipeline is clear"
+    : `${money(incomingValue)} of inventory is on its way from Meril India`;
+  const story = !hasData
+    ? "This is your inbound pipeline. As you assemble import shipments in Primary Sales → Operations, their value, status, and arrival risk surface here."
+    : delays > 0
+      ? `${delays} shipment${delays === 1 ? " is" : "s are"} past ETA and need chasing; ${awaiting} more ${awaiting === 1 ? "has" : "have"} landed and ${awaiting === 1 ? "is" : "are"} waiting to be received into stock.`
+      : `${inbound} shipment${inbound === 1 ? "" : "s"} in motion and ${awaiting} waiting to be received — nothing is overdue right now.`;
 
   return (
     <div className="ops-stage">
       <Hero
-        eyebrow="Dashboard · Primary Sales"
-        title={`${money(incomingValue)} of inventory inbound from Meril India`}
+        question="Primary Sales · What is coming?"
+        answer={answer}
+        story={story}
         vitals={[
           { label: "Incoming inventory value", value: money(incomingValue) },
-          { label: "Open shipments", value: num(dash?.open_shipments ?? 0) },
-          { label: "Awaiting receipt", value: num(dash?.awaiting_receipt ?? 0), tone: (dash?.awaiting_receipt ?? 0) > 0 ? "warn" : undefined },
+          { label: "Open shipments", value: num(inbound) },
+          { label: "Awaiting receipt", value: num(awaiting), tone: awaiting > 0 ? "warn" : undefined },
           { label: "Import delays", value: num(delays), tone: delays > 0 ? "bad" : "good" },
           { label: "Partner costs outstanding", value: money(partnerCosts) },
         ]}
@@ -231,7 +271,11 @@ export function PrimarySalesDashboard() {
               caption="Open import shipments by destination country"
             />
           ) : (
-            <p className="empty-state">Shipments appear here as imports are assembled with a destination country.</p>
+            <EmptyStory
+              icon={Globe2}
+              title="The map lights up as imports arrive"
+              hint="Assemble an import shipment with a destination country and it appears here, sized by how many shipments are heading to each subsidiary."
+            />
           )}
         </section>
         <aside className="hub-rail">
@@ -245,7 +289,11 @@ export function PrimarySalesDashboard() {
             {dash && Object.keys(dash.by_status).length > 0 ? (
               <SegmentBar segments={statusSegments(dash.by_status)} />
             ) : (
-              <p className="empty-state">No shipments in flight.</p>
+              <EmptyStory
+                icon={PlaneLanding}
+                title="No shipments in flight"
+                hint="Once shipments are moving, this bar shows how many are in transit, awaiting receipt, or received."
+              />
             )}
           </section>
         </aside>
@@ -303,14 +351,27 @@ export function InventoryDashboard() {
     { label: "Expired", count: dash?.expired ?? 0, tone: "bad" },
   ].filter((s) => s.count > 0);
 
+  const stockValue = dash?.total_value ?? 0;
+  const stockQty = dash?.total_quantity ?? 0;
+  const hasStock = stockQty > 0;
+  const answer = !hasStock
+    ? "No stock on the books yet"
+    : `${money(stockValue)} of stock holds the bridge between buying and selling`;
+  const story = !hasStock
+    ? "Inventory is the heart of the subsidiary. The moment a goods receipt posts, available units, value, allocations, and expiry risk all appear here."
+    : expiryRisk > 0
+      ? `${num(allocated)} units are already promised to customers, and ${expiryRisk} batch${expiryRisk === 1 ? "" : "es"} need attention before they expire — clear those first to protect value.`
+      : `${num(allocated)} units are committed to customers and ${num(consignment?.total_consignments ?? 0)} consignment line${(consignment?.total_consignments ?? 0) === 1 ? "" : "s"} sit in the field. Nothing is at expiry risk.`;
+
   return (
     <div className="ops-stage">
       <Hero
-        eyebrow="Dashboard · Inventory"
-        title={`${money(dash?.total_value ?? 0)} of stock holds the bridge between buying and selling`}
+        question="Inventory · What do we have?"
+        answer={answer}
+        story={story}
         vitals={[
-          { label: "Inventory value", value: money(dash?.total_value ?? 0) },
-          { label: "Available units", value: num(dash?.total_quantity ?? 0) },
+          { label: "Inventory value", value: money(stockValue) },
+          { label: "Available units", value: num(stockQty) },
           { label: "Backordered (commitments)", value: num(commitment?.backordered_commitments ?? 0), tone: (commitment?.backordered_commitments ?? 0) > 0 ? "warn" : undefined },
           { label: "Allocated to customer POs", value: num(allocated) },
           { label: "Expiry risk batches", value: num(expiryRisk), tone: expiryRisk > 0 ? "bad" : "good" },
@@ -325,7 +386,15 @@ export function InventoryDashboard() {
               <h2>Value by vertical</h2>
             </div>
           </div>
-          <DonutChart slices={categorySlices} centerLabel="Stock value" formatValue={(v) => formatDisplay(v, { compact: true })} />
+          {categorySlices.length > 0 ? (
+            <DonutChart slices={categorySlices} centerLabel="Stock value" formatValue={(v) => formatDisplay(v, { compact: true })} />
+          ) : (
+            <EmptyStory
+              icon={Boxes}
+              title="No stock to break down yet"
+              hint="As goods are received, this donut splits your inventory value across product verticals so you see where the money sits."
+            />
+          )}
         </section>
         <aside className="hub-rail">
           <section className="panel cockpit-panel">
@@ -338,7 +407,11 @@ export function InventoryDashboard() {
             {expirySegments.length > 0 ? (
               <SegmentBar segments={expirySegments} />
             ) : (
-              <p className="empty-state">No stock inside the expiry windows.</p>
+              <EmptyStory
+                icon={AlertTriangle}
+                title={hasStock ? "Nothing near expiry" : "Expiry watch is ready"}
+                hint={hasStock ? "All stock is comfortably dated — this bar fills only when batches enter the 90-day windows." : "Batches with expiry dates appear here, banded by how soon they expire, so risk is visible early."}
+              />
             )}
           </section>
         </aside>
@@ -379,17 +452,31 @@ export function SecondarySalesDashboard() {
 
   if (loading) return <Loading />;
 
+  const open = dash?.open_commitments ?? 0;
+  const back = dash?.backordered_commitments ?? 0;
+  const otif = dash?.otif_pct;
+  const hasOrders = commitments.length > 0;
+  const answer = !hasOrders
+    ? "No customer orders on the books yet"
+    : `${num(open)} open order${open === 1 ? "" : "s"} promised to ${num(customers)} customer${customers === 1 ? "" : "s"}`;
+  const story = !hasOrders
+    ? "This is the promise side of the business. As customer POs are captured, what you owe, what you have delivered, and whether you are on time all read here."
+    : back > 0
+      ? `${back} order${back === 1 ? " is" : "s are"} short on stock and backordered${otif != null ? `, and on-time-in-full sits at ${Math.round(otif)}%` : ""} — these are the promises at risk.`
+      : `Every open order is covered by stock${otif != null ? ` and on-time-in-full is ${Math.round(otif)}%` : ""}. You have delivered ${num(salesQty)} units so far.`;
+
   return (
     <div className="ops-stage">
       <Hero
-        eyebrow="Dashboard · Secondary Sales"
-        title={`${num(dash?.open_commitments ?? 0)} open customer orders in play`}
+        question="Secondary Sales · What have we promised and delivered?"
+        answer={answer}
+        story={story}
         vitals={[
           { label: "Backorder value", value: money(dash?.total_backorder_value ?? 0), tone: (dash?.total_backorder_value ?? 0) > 0 ? "warn" : undefined },
           { label: "Delivered units", value: num(salesQty) },
-          { label: "Open orders", value: num(dash?.open_commitments ?? 0) },
-          { label: "Backorders", value: num(dash?.backordered_commitments ?? 0), tone: (dash?.backordered_commitments ?? 0) > 0 ? "bad" : "good" },
-          { label: "OTIF", value: dash?.otif_pct == null ? "—" : `${Math.round(dash.otif_pct)}%`, tone: dash?.otif_pct != null && dash.otif_pct < 85 ? "bad" : "good" },
+          { label: "Open orders", value: num(open) },
+          { label: "Backorders", value: num(back), tone: back > 0 ? "bad" : "good" },
+          { label: "OTIF", value: otif == null ? "—" : `${Math.round(otif)}%`, tone: otif != null && otif < 85 ? "bad" : "good" },
           { label: "Customers served", value: num(customers) },
         ]}
       />
@@ -404,7 +491,11 @@ export function SecondarySalesDashboard() {
           {Object.keys(byStatus).length > 0 ? (
             <SegmentBar segments={statusSegments(byStatus)} />
           ) : (
-            <p className="empty-state">Customer orders appear here as commitments are recorded.</p>
+            <EmptyStory
+              icon={Send}
+              title="No customer orders yet"
+              hint="As commitments are recorded, this bar shows how orders split across fulfilled, in-progress, backordered, and delayed."
+            />
           )}
         </section>
         <aside className="hub-rail">
@@ -470,12 +561,33 @@ export function BusinessDashboard() {
 
   if (loading) return <Loading />;
 
+  const avgAchievement =
+    topCountries.length > 0
+      ? Math.round(
+          topCountries.reduce((sum, c) => sum + (c.value_achievement_pct ?? 0), 0) / topCountries.length,
+        )
+      : null;
+  const onTarget = countries.filter((c) => (c.value_achievement_pct ?? 0) >= 100).length;
+  const hasTargets = countries.length > 0 || verticals.length > 0;
+  const answer = !hasTargets
+    ? "No targets set yet — achievement is not being tracked"
+    : avgAchievement === null
+      ? "Targets are set; achievement is building"
+      : `${onTarget} of ${countries.length} countries are at or above target`;
+  const story = !hasTargets
+    ? "This is the executive view. Set country and vertical targets (Secondary Sales → Performance) and this dashboard tracks achievement, risk, and what needs a decision."
+    : actions.length > 0 || approvals.length > 0
+      ? `${approvals.length} approval${approvals.length === 1 ? "" : "s"} and ${actions.length} risk${actions.length === 1 ? "" : "s"} are waiting on management${avgAchievement !== null ? `, with average achievement at ${avgAchievement}%` : ""}.`
+      : `Average achievement is ${avgAchievement}% and nothing is waiting on management attention — the business is running clean.`;
+
   return (
     <div className="ops-stage">
       <Hero
-        eyebrow="Dashboard · Business"
-        title="Executive overview — achievement, risk, and what needs a decision"
+        question="Business · Are we achieving targets?"
+        answer={answer}
+        story={story}
         vitals={[
+          { label: "Avg achievement", value: avgAchievement === null ? "—" : `${avgAchievement}%`, tone: avgAchievement === null ? undefined : avgAchievement >= 100 ? "good" : avgAchievement >= 85 ? "warn" : "bad" },
           { label: "Countries tracked", value: num(countries.length) },
           { label: "Verticals tracked", value: num(verticals.length) },
           { label: "Open approvals", value: num(approvals.length), tone: approvals.length > 0 ? "warn" : "good" },
@@ -498,7 +610,11 @@ export function BusinessDashboard() {
               ))}
             </div>
           ) : (
-            <p className="empty-state">Set country targets to track achievement here.</p>
+            <EmptyStory
+              icon={Globe2}
+              title="No country targets yet"
+              hint="Set a target for a country in Secondary Sales → Performance and its achievement appears here as a progress bar."
+            />
           )}
         </section>
         <aside className="hub-rail">
@@ -516,7 +632,11 @@ export function BusinessDashboard() {
                 ))}
               </div>
             ) : (
-              <p className="empty-state">Set vertical targets to track achievement here.</p>
+              <EmptyStory
+                icon={Compass}
+                title="No vertical targets yet"
+                hint="Targets set per vertical (Cardio, Ortho, …) show their achievement here side by side."
+              />
             )}
           </section>
           <section className="panel cockpit-panel">
@@ -528,7 +648,11 @@ export function BusinessDashboard() {
               <span className="cc-panel-meta">{actions.length}</span>
             </div>
             {actions.length === 0 ? (
-              <p className="empty-state">Nothing flagged for attention.</p>
+              <EmptyStory
+                icon={Stamp}
+                title="Nothing needs management attention"
+                hint="Risks, overdue approvals, and exceptions surface here the moment the system detects them — a clear panel means a clear desk."
+              />
             ) : (
               <div className="worklist-body">
                 {actions.slice(0, 6).map((action, index) => (
@@ -590,15 +714,27 @@ export function FinanceDashboard() {
 
   if (loading) return <Loading />;
 
+  const net = recvOutstanding - payOutstanding;
+  const hasFinance = receivables.length > 0 || payables.length > 0;
+  const answer = !hasFinance
+    ? "No exposure yet — no money is owed in either direction"
+    : `${money(recvOutstanding)} to collect, ${money(payOutstanding)} to pay`;
+  const story = !hasFinance
+    ? "This is the money view. As customer invoices and partner costs are recorded, your collect-versus-pay position, credit exposure, and overdue amounts read here."
+    : recvOverdue > 0
+      ? `${money(recvOverdue)} of receivables is already overdue — collecting it is the fastest way to improve a net position of ${money(net)}.`
+      : `Your net position is ${money(net)} and nothing is overdue. Watch credit exposure of ${money(creditExposure)} across distributors.`;
+
   return (
     <div className="ops-stage">
       <Hero
-        eyebrow="Dashboard · Finance"
-        title={`${money(recvOutstanding)} to collect · ${money(payOutstanding)} to pay`}
+        question="Finance · What is our exposure?"
+        answer={answer}
+        story={story}
         vitals={[
           { label: "Receivables outstanding", value: money(recvOutstanding) },
           { label: "Payables outstanding", value: money(payOutstanding) },
-          { label: "Net cash position", value: money(recvOutstanding - payOutstanding), tone: recvOutstanding - payOutstanding >= 0 ? "good" : "bad" },
+          { label: "Net cash position", value: money(net), tone: net >= 0 ? "good" : "bad" },
           { label: "Credit exposure", value: formatDisplay(convertAmount(creditExposure, { book: "secondary" }), { compact: true }) },
           { label: "Receivables overdue", value: money(recvOverdue), tone: recvOverdue > 0 ? "bad" : "good" },
         ]}
@@ -622,7 +758,11 @@ export function FinanceDashboard() {
               )}
             />
           ) : (
-            <p className="empty-state">Invoices appear here as they are raised.</p>
+            <EmptyStory
+              icon={Banknote}
+              title="No receivables yet"
+              hint="Customer invoices appear here as they are raised, banded by open, partially paid, overdue, and paid."
+            />
           )}
         </section>
         <aside className="hub-rail">
@@ -644,7 +784,11 @@ export function FinanceDashboard() {
                 )}
               />
             ) : (
-              <p className="empty-state">Partner invoices appear here as costs are recorded.</p>
+              <EmptyStory
+                icon={HandCoins}
+                title="No partner costs yet"
+                hint="Freight, customs, warehouse, and logistics invoices appear here as they are recorded, so exposure to each partner is visible."
+              />
             )}
           </section>
           <section className="panel cockpit-panel">

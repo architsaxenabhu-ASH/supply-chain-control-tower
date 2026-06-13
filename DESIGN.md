@@ -103,10 +103,31 @@ Two top-level sections in the rail (`app/nav.ts`, `WorkspaceDef.section`):
   Primary Sales, Inventory, Secondary Sales, Business (executive), Finance.
 - **Manage** — cross-cutting: My Work, Approvals, Decisions, Access, Setup.
 
-A persistent sidebar **flow ribbon** (`.flow-ribbon`) shows Primary → Inventory
-→ Secondary and highlights the user's current stage. Section labels group the
-rail. Dashboards roll up operations; they are not operational screens. The
-active currency book follows the workspace (secondary flow → secondary book).
+Section labels group the rail. Dashboards roll up operations; they are not
+operational screens. The active currency book follows the workspace (secondary
+flow → secondary book).
+
+## Live business pulse + dashboard storytelling (Phase 5I)
+
+The sidebar **flow pulse** (`.flow-pulse`) is alive: each stage shows a real
+value (inbound count · stock value · open orders) derived from data already
+loaded, a dot flows down the connector when stock is actually moving into the
+next stage, and each node navigates to its dashboard. It makes the operating
+model legible and the business feel in motion the moment you log in.
+
+Each dashboard answers **one management question** (the hero eyebrow), leads
+with the **answer** (the hero title), and tells the situation in one
+interpreted **story** sentence (`.dash-story`) — not just numbers:
+
+- Primary Sales — *What is coming?*
+- Inventory — *What do we have?*
+- Secondary Sales — *What have we promised and delivered?*
+- Business — *Are we achieving targets?*
+- Finance — *What is our exposure?*
+
+Low-data is composed, not blank: `EmptyStory` (`.empty-story`) shows an icon,
+a headline, and a sentence that teaches what fills the panel, so the system
+feels complete while data volume is still growing.
 
 ## Reference patterns (Phase 5B)
 

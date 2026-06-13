@@ -1892,7 +1892,7 @@ export function App() {
   const activeTab = tabOfView(activeView);
   const railSections = useMemo(() => visibleSections(currentUser), [currentUser]);
   // Which stage of the Primary → Inventory → Secondary flow the user is in,
-  // so the sidebar ribbon highlights where they are.
+  // so the sidebar pulse highlights where they are.
   const flowStage: "primary" | "inventory" | "secondary" | null = activeWorkspace?.id.includes("primary")
     ? "primary"
     : activeWorkspace?.id.includes("inventory")
@@ -1900,6 +1900,43 @@ export function App() {
       : activeWorkspace?.id.includes("secondary")
         ? "secondary"
         : null;
+
+  // Live business pulse — real values for each stage, derived from data already
+  // loaded (no extra fetches). Primary = what is coming, Inventory = what we
+  // have, Secondary = what is going out.
+  const pulseIncoming = importQueue.filter(
+    (candidate) => !["received", "closed", "cancelled"].includes(candidate.status.toLowerCase()),
+  ).length;
+  const pulseStockValue = formatMoney(totalInventoryValue, { compact: true });
+  const flowStages = [
+    {
+      id: "primary" as const,
+      label: "Primary Sales",
+      value: pulseIncoming > 0 ? `${pulseIncoming} inbound` : "Clear",
+      sub: "what is coming",
+      view: "dash-primary",
+      // The connector below a node animates when stock flows INTO the next
+      // node: primary → inventory moves when imports are inbound.
+      flowsInto: pulseIncoming > 0,
+    },
+    {
+      id: "inventory" as const,
+      label: "Inventory",
+      value: totalInventoryQuantity > 0 ? pulseStockValue : "Empty",
+      sub: "what we have",
+      view: "dash-inventory",
+      // inventory → secondary moves when orders are going out.
+      flowsInto: openShipments > 0,
+    },
+    {
+      id: "secondary" as const,
+      label: "Secondary Sales",
+      value: openShipments > 0 ? `${openShipments} open` : "Clear",
+      sub: "promised & delivered",
+      view: "dash-secondary",
+      flowsInto: false,
+    },
+  ];
   const activeWorkspaceTabs = useMemo(
     () => (activeWorkspace ? visibleTabs(currentUser, activeWorkspace) : []),
     [currentUser, activeWorkspace],
@@ -2088,17 +2125,29 @@ export function App() {
             <span>Supply Chain Control Tower</span>
           </div>
         </div>
-        <div className="flow-ribbon" aria-label="Operating flow: Primary Sales to Inventory to Secondary Sales">
-          {(["primary", "inventory", "secondary"] as const).map((stage, index) => {
-            const labels = { primary: "Primary", inventory: "Inventory", secondary: "Secondary" };
-            const active = flowStage === stage;
-            return (
-              <div className="flow-ribbon-step" key={stage}>
-                {index > 0 ? <span className="flow-ribbon-arrow" aria-hidden="true">↓</span> : null}
-                <span className={active ? "flow-ribbon-node active" : "flow-ribbon-node"}>{labels[stage]}</span>
-              </div>
-            );
-          })}
+        <div className="flow-pulse" aria-label="Live business flow: Primary Sales to Inventory to Secondary Sales">
+          {flowStages.map((stage, index) => (
+            <div className="flow-pulse-step" key={stage.id}>
+              {index > 0 ? (
+                <span
+                  className={`flow-pulse-link${flowStages[index - 1].flowsInto && !reducedMotion ? " is-moving" : ""}`}
+                  aria-hidden="true"
+                >
+                  <span className="flow-pulse-dot" />
+                </span>
+              ) : null}
+              <button
+                type="button"
+                className={`flow-pulse-node${flowStage === stage.id ? " active" : ""}`}
+                onClick={() => setActiveView(stage.view)}
+                title={`${stage.label} — ${stage.sub}`}
+              >
+                <span className="flow-pulse-name">{stage.label}</span>
+                <strong className="flow-pulse-value">{stage.value}</strong>
+                <span className="flow-pulse-sub">{stage.sub}</span>
+              </button>
+            </div>
+          ))}
         </div>
         <nav className="ws-rail" aria-label="Workspaces">
           {railSections.map((section) => (

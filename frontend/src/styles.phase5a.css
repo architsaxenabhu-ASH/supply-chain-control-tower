@@ -25,38 +25,89 @@
   gap: 14px;
   min-width: 0;
 }
-/* Flow ribbon (Phase 5H): the operating model, always in view, so the user
-   reads Primary Sales → Inventory → Secondary Sales at a glance and sees
-   where they are. */
-.flow-ribbon {
+/* Live business pulse (Phase 5I): the operating model, always in view, with
+   real values per stage and a dot flowing down the connectors so the business
+   reads as alive and moving — Primary Sales → Inventory → Secondary Sales. */
+.flow-pulse {
   display: grid;
   gap: 0;
-  padding: 12px 12px 14px;
-  margin-bottom: 4px;
+  padding: 10px 12px 14px;
+  margin-bottom: 2px;
 }
-.flow-ribbon-step { display: grid; gap: 0; justify-items: center; }
-.flow-ribbon-arrow {
-  color: var(--tower-muted, #93a3b4);
-  font-size: 12px;
-  line-height: 1.1;
-  opacity: 0.55;
+.flow-pulse-step { display: grid; gap: 0; justify-items: stretch; }
+.flow-pulse-link {
+  position: relative;
+  height: 16px;
+  width: 2px;
+  justify-self: center;
+  margin: 2px 0;
+  border-radius: 2px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--country-accent) 38%, transparent),
+    color-mix(in srgb, var(--country-accent) 14%, transparent)
+  );
+  overflow: visible;
 }
-.flow-ribbon-node {
-  display: block;
+.flow-pulse-dot {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--country-accent);
+  box-shadow: 0 0 8px var(--country-accent-glow);
+  transform: translate(-50%, -2px);
+  opacity: 0;
+}
+.flow-pulse-link.is-moving .flow-pulse-dot {
+  animation: flow-down 1.9s ease-in-out infinite;
+}
+@keyframes flow-down {
+  0% { top: 0; opacity: 0; }
+  20% { opacity: 1; }
+  80% { opacity: 1; }
+  100% { top: 100%; opacity: 0; }
+}
+.flow-pulse-node {
+  display: grid;
+  gap: 1px;
   width: 100%;
-  text-align: center;
-  padding: 6px 10px;
-  border-radius: 9px;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--tower-muted, #93a3b4);
+  text-align: left;
+  padding: 9px 12px;
+  border: 1px solid transparent;
+  border-radius: 11px;
   background: var(--tower-bg-2, #0e151d);
-  transition: background 0.2s var(--ease-out), color 0.2s var(--ease-out), box-shadow 0.2s var(--ease-out);
-}
-.flow-ribbon-node.active {
   color: var(--tower-text, #e6edf3);
+  cursor: pointer;
+  transition: background 0.2s var(--ease-out), border-color 0.2s var(--ease-out), transform 0.15s var(--ease-out);
+}
+.flow-pulse-node:hover { transform: translateX(2px); }
+.flow-pulse-node:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--country-accent-soft); }
+.flow-pulse-node.active {
   background: var(--country-accent-soft);
-  box-shadow: inset 0 0 0 1px var(--country-accent);
+  border-color: var(--country-accent);
+}
+.flow-pulse-name {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--tower-muted, #93a3b4);
+}
+.flow-pulse-node.active .flow-pulse-name { color: var(--country-accent); }
+.flow-pulse-value {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.flow-pulse-sub { font-size: 10px; color: var(--tower-muted, #93a3b4); opacity: 0.85; }
+
+@media (prefers-reduced-motion: reduce) {
+  .flow-pulse-link.is-moving .flow-pulse-dot { animation: none; }
+  .flow-pulse-node:hover { transform: none; }
 }
 
 /* Section grouping (Phase 5H): Operations / Dashboards / Manage. The two
@@ -1042,6 +1093,36 @@
 }
 .donut-legend strong { font-variant-numeric: tabular-nums; font-size: 12.5px; }
 .donut-legend small { font-variant-numeric: tabular-nums; }
+
+/* Dashboard storytelling (Phase 5I): the interpreted one-line narrative under
+   each dashboard's answer, and a composed empty state that teaches. */
+.dash-story {
+  margin: 8px 0 0;
+  max-width: 64ch;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--tower-muted, #93a3b4);
+  text-wrap: pretty;
+}
+.empty-story {
+  display: grid;
+  justify-items: start;
+  gap: 7px;
+  padding: 20px 4px 8px;
+  max-width: 52ch;
+}
+.empty-story-mark {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 13px;
+  background: var(--country-accent-soft);
+  color: var(--country-accent);
+  margin-bottom: 2px;
+}
+.empty-story strong { font-size: 14.5px; color: var(--tower-text, #e6edf3); }
+.empty-story span { font-size: 13px; line-height: 1.5; color: var(--tower-muted, #93a3b4); text-wrap: pretty; }
 
 /* ---- Overview layout ---- */
 .hub-columns {
