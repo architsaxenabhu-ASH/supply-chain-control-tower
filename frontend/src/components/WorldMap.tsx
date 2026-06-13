@@ -176,6 +176,9 @@ export function WorldMap({
               key={shape.key}
               className={`map-country${slot ? " has-value" : ""}${isActive ? " is-active" : ""}`}
               d={shape.d}
+              // aria-label (not <title>) so screen readers get the value without
+              // the browser drawing its own native tooltip on top of ours.
+              aria-label={slot ? `${shape.name} — ${formatValue ? formatValue(slot.value) : slot.value}` : shape.name}
               style={
                 slot
                   ? { fill: `color-mix(in srgb, var(--country-accent) ${intensity}%, var(--map-land))` }
@@ -185,12 +188,7 @@ export function WorldMap({
               onMouseEnter={slot ? (event) => moveTooltip(event, shape, slot) : undefined}
               onMouseMove={slot ? (event) => moveTooltip(event, shape, slot) : undefined}
               onMouseLeave={() => setHover(null)}
-            >
-              {/* Native title is a screen-reader / no-JS fallback. */}
-              <title>
-                {slot ? `${shape.name} — ${formatValue ? formatValue(slot.value) : slot.value}` : shape.name}
-              </title>
-            </path>
+            />
           );
         })}
         {shapes

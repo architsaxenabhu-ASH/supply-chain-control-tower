@@ -26,6 +26,7 @@ import {
   fetchLearningInsights,
   fetchValidationQueue,
   type ApiApproval,
+  type ApiAuthenticatedUser,
   type ApiAuditEvent,
   type ApiCommitmentDashboard,
   type ApiCountryPerformance,
@@ -35,6 +36,7 @@ import {
   type ApiValidationQueueResponse,
 } from "../../lib/api";
 import type { DashboardNav } from "../dashboards/Dashboards";
+import { SituationRoom, type ResponsibilityDomain, type SituationSpec } from "./SituationRoom";
 
 // Operations Intelligence Center (Phase 6, P1 of this sprint) — the primary
 // management workspace. It does not only show what is wrong: it shows what
@@ -52,8 +54,20 @@ type IntelItem = {
   detail: string;
   pill: string;
   pillClass: string;
-  view?: string;
+  view?: string; // navigate straight to a screen
+  situation?: SituationSpec; // open a Situation Room to investigate
 };
+
+// Map a situation's wording to a responsibility domain.
+function domainFor(text: string): ResponsibilityDomain {
+  const t = text.toLowerCase();
+  if (/(payment|receivable|payable|overdue|credit|collect)/.test(t)) return "finance";
+  if (/(shipment|delay|eta|carrier|customs|logistic)/.test(t)) return "logistics";
+  if (/(expiry|stock|inventory|consignment|batch)/.test(t)) return "inventory";
+  if (/(target|distributor|customer|otif|backorder|order|sales)/.test(t)) return "sales";
+  if (/(plan|projection|shortage|surplus)/.test(t)) return "planning";
+  return "management";
+}
 
 function humanize(value: string | null | undefined): string {
   if (!value) return "";
@@ -96,8 +110,9 @@ function resolvedFor(event: ApiAuditEvent): { label: string; icon: IntelItem["ic
   return null;
 }
 
-export function OperationsIntelligence({ onNavigate }: DashboardNav) {
+export function OperationsIntelligence({ onNavigate, currentUser }: DashboardNav & { currentUser: ApiAuthenticatedUser }) {
   const [lane, setLane] = useState<Lane>("attention");
+  const [openSituation, setOpenSituation] = useState<SituationSpec | null>(null);
   const [actions, setActions] = useState<ApiExecutiveAction[]>([]);
   const [approvals, setApprovals] = useState<ApiApproval[]>([]);
   const [validation, setValidation] = useState<ApiValidationQueueResponse | null>(null);
@@ -142,15 +157,27 @@ export function OperationsIntelligence({ onNavigate }: DashboardNav) {
   }, []);
 
   const attention: IntelItem[] = useMemo(() => {
-    const items: IntelItem[] = actions.map((action, index) => ({
-      id: `action-${index}`,
-      icon: TriangleAlert,
-      title: action.title,
-      detail: action.detail ?? humanize(action.source),
-      pill: action.severity,
-      pillClass: severityClass(action.severity),
-      view: viewForAction(action),
-    }));
+    const items: IntelItem[] = actions.map((action, index) => {
+      const type = humanize(action.action_type) || "Operational risk";
+      return {
+        id: `action-${index}`,
+        icon: TriangleAlert,
+        title: action.title,
+        detail: action.detail ?? humanize(action.source),
+        pill: action.severity,
+        pillClass: severityClass(action.severity),
+        situation: {
+          kind: "negative",
+          type,
+          severity: action.severity,
+          title: action.title,
+          detail: action.detail ?? humanize(action.source),
+          domain: domainFor(`${action.action_type} ${action.title} ${action.source}`),
+          reference: action.reference ?? undefined,
+          workView: viewForAction(action),
+        },
+      };
+    });
     if (approvals.length > 0) {
       items.push({
         id: "approvals",
@@ -195,25 +222,44 @@ export function OperationsIntelligence({ onNavigate }: DashboardNav) {
   const performing: IntelItem[] = useMemo(() => {
     const items: IntelItem[] = [];
     for (const country of countries.filter((c) => (c.value_achievement_pct ?? 0) >= 100).slice(0, 6)) {
+      const detail = `${Math.round(country.value_achievement_pct ?? 0)}% of value target achieved`;
       items.push({
         id: `country-${country.name}`,
         icon: Globe2,
         title: `${country.name} is hitting target`,
-        detail: `${Math.round(country.value_achievement_pct ?? 0)}% of value target achieved`,
+        detail,
         pill: "on target",
         pillClass: "risk-low",
-        view: "commercial",
+        situation: {
+          kind: "positive",
+          type: "Target Achievement",
+          severity: "win",
+          title: `${country.name} is hitting target`,
+          detail,
+          domain: "sales",
+          country: country.name,
+          workView: "commercial",
+        },
       });
     }
     for (const dist of distributors.filter((d) => (d.value_achievement_pct ?? 0) >= 100).slice(0, 4)) {
+      const detail = `${Math.round(dist.value_achievement_pct ?? 0)}% of target`;
       items.push({
         id: `dist-${dist.name}`,
         icon: TrendingUp,
         title: `${dist.name} is performing`,
-        detail: `${Math.round(dist.value_achievement_pct ?? 0)}% of target`,
+        detail,
         pill: "on target",
         pillClass: "risk-low",
-        view: "commercial",
+        situation: {
+          kind: "positive",
+          type: "Distributor Achievement",
+          severity: "win",
+          title: `${dist.name} is performing`,
+          detail,
+          domain: "sales",
+          workView: "commercial",
+        },
       });
     }
     if (commitment?.otif_pct != null && commitment.otif_pct >= 90) {
@@ -273,6 +319,18 @@ export function OperationsIntelligence({ onNavigate }: DashboardNav) {
         <div className="skeleton-row" />
         <div className="skeleton-row" />
       </div>
+    );
+  }
+
+  // Detect → investigate: a selected item opens its Situation Room in place.
+  if (openSituation) {
+    return (
+      <SituationRoom
+        situation={openSituation}
+        currentUser={currentUser}
+        onBack={() => setOpenSituation(null)}
+        onNavigate={onNavigate}
+      />
     );
   }
 
@@ -354,13 +412,16 @@ export function OperationsIntelligence({ onNavigate }: DashboardNav) {
           <ul className="oic-list">
             {activeItems.map((item) => {
               const Icon = item.icon;
-              const clickable = Boolean(item.view);
+              const clickable = Boolean(item.view || item.situation);
               return (
                 <li key={item.id}>
                   <button
                     type="button"
                     className={`oic-item${clickable ? " is-clickable" : ""}`}
-                    onClick={() => (item.view ? onNavigate(item.view) : undefined)}
+                    onClick={() => {
+                      if (item.situation) setOpenSituation(item.situation);
+                      else if (item.view) onNavigate(item.view);
+                    }}
                     disabled={!clickable}
                   >
                     <span className="oic-item-icon">
@@ -378,10 +439,10 @@ export function OperationsIntelligence({ onNavigate }: DashboardNav) {
             })}
           </ul>
         )}
-        {lane === "attention" && activeItems.length > 0 ? (
+        {activeItems.length > 0 && lane !== "resolved" ? (
           <p className="access-note">
-            <Activity size={13} aria-hidden="true" /> Each item opens where it can be worked. Situation Rooms — the full
-            story plus past decisions and outcomes — will launch from here next.
+            <Activity size={13} aria-hidden="true" /> Open any item to enter its Situation Room — the full story, impact,
+            timeline, past decisions, and a direct line into the Decision cockpit.
           </p>
         ) : null}
       </section>

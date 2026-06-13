@@ -2353,7 +2353,9 @@ export function App() {
         {activeView === "inventory-hub" ? <InventoryHub /> : null}
         {activeView === "primary-sales" ? <PrimarySales /> : null}
         {activeView === "secondary-sales" ? <SecondarySales /> : null}
-        {activeView === "dash-ops-intel" ? <OperationsIntelligence onNavigate={setActiveView} /> : null}
+        {activeView === "dash-ops-intel" ? (
+          <OperationsIntelligence onNavigate={setActiveView} currentUser={currentUser} />
+        ) : null}
         {activeView === "dash-planning" ? <PlanningDashboard onNavigate={setActiveView} /> : null}
         {activeView === "dash-snapshot" ? <BusinessSnapshot /> : null}
         {activeView === "dash-primary" ? <PrimarySalesDashboard onNavigate={setActiveView} /> : null}

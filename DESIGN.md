@@ -206,6 +206,29 @@ scorecards, commitment/inventory dashboards, approvals, validation queue, audit
 trail) — no new business logic. Situation Rooms (P2) will launch from these
 items with the full story + past decisions + outcomes.
 
+## Situation Rooms (Phase 6 sprint, P2)
+
+`workspaces/intelligence/SituationRoom.tsx` — management investigation
+workspaces, launched **in place** from Operations Intelligence items (so no
+routing/RBAC seams). The flow is: Operations Intelligence detects → Situation
+Room investigates → Decision Center decides → outcome tracked. Both negative
+situations (delay, shortage, expiry, commitment/receivable/payment/consignment
+risk) and positive ones (target/distributor achievement, recovery, OTIF
+improvement) get a room — the system celebrates wins and investigates problems.
+
+Sections: (1) summary with severity, country/vertical/product, value/volume/
+movement impact; (2) impact analysis (affected countries, customers,
+distributors, inventory, orders, shipments, receivables, payables, categories,
+products); (3) timeline — projected position at Today/+15/+30/+45 scoped to the
+situation; (4) historical context via decision similarity + learning success
+rate; (5) recommended actions by type (advisory only); (6) a direct line into
+the Decision cockpit; (7) product intelligence Country+Vertical → Category →
+Product with value/volume/movement (verticals never benchmarked against each
+other); (8/9/10) governance strip — portfolio scope, escalation, last review
+(escalation chains and review governance are honest placeholders pointing to
+their dedicated upcoming features). Reuses decision/learning/planning engines —
+no duplicate logic.
+
 ## Historical Time Machine — Business Snapshot (Phase 6, P1)
 
 `workspaces/planning/BusinessSnapshot.tsx` (Planning workspace → Time Machine
