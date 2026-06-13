@@ -1180,6 +1180,19 @@
   cursor: pointer;
 }
 
+/* Native dropdown option lists: force theme colours so the popup is never a
+   white block in dark mode (or a dark block in light mode). color-scheme on
+   :root handles most browsers; these cover the rest. The option background
+   must be solid (no transparency), so it reads from the solid bg token. */
+.currency-selector select option,
+.country-selector select option,
+.filter-control select option,
+.lens-switch select option,
+select option {
+  background-color: var(--tower-bg-2, #0b1724);
+  color: var(--tower-text, #e6edf3);
+}
+
 /* ---- Rates popover ---- */
 .rates-anchor { position: relative; }
 .rates-popover {

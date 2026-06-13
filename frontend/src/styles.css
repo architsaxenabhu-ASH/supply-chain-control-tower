@@ -1113,6 +1113,10 @@ td {
 
 /* Supply Chain Control Tower visual system */
 :root {
+  /* Tell the browser this is a dark surface so native controls — select
+     dropdowns, date pickers, scrollbars — paint dark, not white. The light
+     theme overrides this with color-scheme: light. */
+  color-scheme: dark;
   color: #e7f7ff;
   background: var(--tower-bg);
   --tower-bg: #07111d;
