@@ -156,6 +156,27 @@ export function PrimarySales() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [candidates, vertical, status, dateFrom, dateTo, query]);
 
+  // Per-country shipment breakdown by vertical, for the map hover tooltip.
+  const shipmentsByCountryVertical = useMemo(() => {
+    const map: Record<string, Record<string, number>> = {};
+    for (const candidate of candidates) {
+      if (!matchesExceptCountry(candidate)) continue;
+      const country = candidate.destination_country;
+      if (!country) continue;
+      const vert = candidate.shipment_vertical?.trim() || "Unspecified";
+      map[country] = map[country] ?? {};
+      map[country][vert] = (map[country][vert] ?? 0) + 1;
+    }
+    const details: Record<string, { label: string; value: number }[]> = {};
+    for (const [country, verts] of Object.entries(map)) {
+      details[country] = Object.entries(verts)
+        .map(([label, value]) => ({ label, value }))
+        .sort((a, b) => b.value - a.value);
+    }
+    return details;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [candidates, vertical, status, dateFrom, dateTo, query]);
+
   const latest = useMemo(
     () => [...filtered].sort((a, b) => (dateOf(b) || "").localeCompare(dateOf(a) || "")).slice(0, 8),
     [filtered],
@@ -331,8 +352,9 @@ export function PrimarySales() {
           ) : (
             <WorldMap
               values={shipmentsByCountry}
+              details={shipmentsByCountryVertical}
               formatValue={(value) => `${num(value)} shipment${value === 1 ? "" : "s"}`}
-              caption="Import shipments by destination — click a lit country to focus"
+              caption="Import shipments by destination — hover for the vertical split, click to focus"
               activeCountry={countryFilter}
               onSelect={(name) => setCountryFilter(name === countryFilter ? "" : name)}
             />

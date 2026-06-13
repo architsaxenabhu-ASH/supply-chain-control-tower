@@ -167,6 +167,26 @@ export function SecondarySales() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [commitments, vertical, status, dateFrom, dateTo, query, verticalOf]);
 
+  // Per-country customer-order breakdown by vertical, for the map tooltip.
+  const posByCountryVertical = useMemo(() => {
+    const map: Record<string, Record<string, number>> = {};
+    for (const commitment of commitments) {
+      if (!matchesExceptCountry(commitment)) continue;
+      if (!commitment.country) continue;
+      const vert = verticalOf(commitment.material);
+      map[commitment.country] = map[commitment.country] ?? {};
+      map[commitment.country][vert] = (map[commitment.country][vert] ?? 0) + 1;
+    }
+    const details: Record<string, { label: string; value: number }[]> = {};
+    for (const [country, verts] of Object.entries(map)) {
+      details[country] = Object.entries(verts)
+        .map(([label, value]) => ({ label, value }))
+        .sort((a, b) => b.value - a.value);
+    }
+    return details;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [commitments, vertical, status, dateFrom, dateTo, query, verticalOf]);
+
   const urgent = useMemo(
     () =>
       [...filtered]
@@ -300,20 +320,19 @@ export function SecondarySales() {
             </div>
             <span className="cc-panel-meta">{Object.keys(posByCountry).length}</span>
           </div>
-          {Object.keys(posByCountry).length === 0 ? (
-            <p className="empty-state">
-              The map lights up as customer POs are recorded with a country. Commitments are captured from customer
-              orders.
-            </p>
-          ) : (
-            <WorldMap
-              values={posByCountry}
-              formatValue={(value) => `${num(value)} PO${value === 1 ? "" : "s"}`}
-              caption="Customer POs by country — click a lit country to focus"
-              activeCountry={countryFilter}
-              onSelect={(name) => setCountryFilter(name === countryFilter ? "" : name)}
-            />
-          )}
+          <WorldMap
+            values={posByCountry}
+            details={posByCountryVertical}
+            fitToRegion
+            formatValue={(value) => `${num(value)} PO${value === 1 ? "" : "s"}`}
+            caption={
+              Object.keys(posByCountry).length === 0
+                ? "No customer POs yet — the world shows zero; it zooms to your markets as sales are recorded"
+                : "Customer POs — zoomed to where you sell; hover for the vertical split, click to focus"
+            }
+            activeCountry={countryFilter}
+            onSelect={(name) => setCountryFilter(name === countryFilter ? "" : name)}
+          />
         </section>
         <aside className="hub-rail">
           <section className="panel cockpit-panel">

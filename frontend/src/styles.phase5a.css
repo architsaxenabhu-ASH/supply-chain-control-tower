@@ -1071,6 +1071,32 @@
 }
 .map-caption { font-size: 12px; color: var(--tower-muted, #93a3b4); }
 
+/* Hover tooltip with the per-country vertical breakdown (Phase 5K). */
+.map-tooltip {
+  position: absolute;
+  z-index: var(--z-sticky, 20);
+  min-width: 168px;
+  max-width: 240px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--tower-panel-strong, #1b2530);
+  border: 1px solid var(--country-accent);
+  box-shadow: var(--tower-shadow, 0 18px 46px rgba(0, 0, 0, 0.34));
+  pointer-events: none;
+  display: grid;
+  gap: 3px;
+}
+.map-tooltip-name { font-size: 13px; font-weight: 700; color: var(--tower-text, #e6edf3); }
+.map-tooltip-total {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--country-accent);
+  font-variant-numeric: tabular-nums;
+}
+.map-tooltip-rows { display: grid; gap: 4px; margin: 6px 0 0; padding: 6px 0 0; list-style: none; border-top: 1px solid var(--tower-border, #28323e); }
+.map-tooltip-rows li { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; font-size: 12px; color: var(--tower-muted, #93a3b4); }
+.map-tooltip-rows strong { color: var(--tower-text, #e6edf3); font-variant-numeric: tabular-nums; }
+
 /* ---- Donut ---- */
 .donut-wrap {
   display: grid;

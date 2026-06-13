@@ -66,6 +66,7 @@ import {
   RefreshCw,
   ScanText,
   Search,
+  Send,
   ShieldCheck,
   Moon,
   Ship,
@@ -4717,7 +4718,7 @@ function ImportValidationView({
     }
   }
 
-  async function handlePostGoodsReceipt() {
+  async function handlePostGoodsReceipt(channel: "subsidiary" | "direct" = "subsidiary") {
     if (!candidate) {
       setPostingMessage("Create the import validation file first.");
       return;
@@ -4736,17 +4737,25 @@ function ImportValidationView({
       selectedWarehouse,
       newWarehouseName,
     );
-    if (!warehouseName) {
-      setPostingMessage("Select or enter destination warehouse before posting Goods Receipt.");
-      return;
-    }
-    if (!supplierName.trim()) {
-      setPostingMessage("Enter supplier name before posting Goods Receipt.");
-      return;
+    // A direct sale bypasses the subsidiary warehouse, so neither warehouse nor
+    // supplier is required.
+    if (channel === "subsidiary") {
+      if (!warehouseName) {
+        setPostingMessage("Select or enter destination warehouse before posting Goods Receipt.");
+        return;
+      }
+      if (!supplierName.trim()) {
+        setPostingMessage("Enter supplier name before posting Goods Receipt.");
+        return;
+      }
     }
 
     setIsPostingReceipt(true);
-    setPostingMessage("Posting Goods Receipt and increasing inventory...");
+    setPostingMessage(
+      channel === "direct"
+        ? "Recording direct sale (bypasses subsidiary inventory)..."
+        : "Posting Goods Receipt and increasing inventory...",
+    );
     try {
       const message = await onPostGoodsReceipt({
         candidate,
@@ -4754,6 +4763,7 @@ function ImportValidationView({
         posted_by: actorName,
         auth_token: currentUser.session_token,
         supplier_name: supplierName,
+        channel,
       });
       setPostingMessage(message);
     } catch (error) {
@@ -4998,14 +5008,23 @@ function ImportValidationView({
             <p className="status-line">{deliveryMessage}</p>
             <button
               className="primary-action"
-              onClick={handlePostGoodsReceipt}
+              onClick={() => handlePostGoodsReceipt("subsidiary")}
               disabled={isPostingReceipt || !isImportDelivered || !canPostReceipt}
             >
               {isPostingReceipt
                 ? "Posting Goods Receipt"
                 : isImportReceived
                   ? "Goods Receipt posted"
-                  : "3 · Validate and post Goods Receipt"}
+                  : "3 · Subsidiary — post to inventory"}
+            </button>
+            <button
+              className="secondary-action"
+              onClick={() => handlePostGoodsReceipt("direct")}
+              disabled={isPostingReceipt || !isImportDelivered || !canPostReceipt}
+              title="Meril India → customer pass-through; does not add to subsidiary inventory"
+            >
+              <Send size={16} aria-hidden="true" />
+              3 · Direct sale — bypass inventory
             </button>
             <p className="status-line">{postingMessage}</p>
           </div>

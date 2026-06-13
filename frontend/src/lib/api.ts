@@ -507,6 +507,9 @@ export type ApiImportGoodsReceiptPostRequest = {
   posted_by: string;
   auth_token: string;
   supplier_name?: string | null;
+  // "subsidiary" adds the goods to inventory; "direct" is a pass-through sale
+  // that bypasses inventory.
+  channel?: "subsidiary" | "direct";
 };
 
 export type ApiImportApprovalRequest = {

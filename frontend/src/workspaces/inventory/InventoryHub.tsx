@@ -186,6 +186,27 @@ export function InventoryHub() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [batches, vertical, expiryBand, dateFrom, dateTo, query, warehouseCountry, valuation, rev]);
 
+  // Per-country inventory valuation split by vertical, for the map tooltip.
+  const valueByCountryVertical = useMemo(() => {
+    const map: Record<string, Record<string, number>> = {};
+    for (const batch of batches) {
+      if (!matchesExceptCountry(batch)) continue;
+      const country = countryOf(batch.warehouse_location);
+      if (!country) continue;
+      const vert = batch.product_category?.trim() || "Unclassified";
+      map[country] = map[country] ?? {};
+      map[country][vert] = (map[country][vert] ?? 0) + batchValue(batch);
+    }
+    const details: Record<string, { label: string; value: number }[]> = {};
+    for (const [country, verts] of Object.entries(map)) {
+      details[country] = Object.entries(verts)
+        .map(([label, value]) => ({ label, value }))
+        .sort((a, b) => b.value - a.value);
+    }
+    return details;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [batches, vertical, expiryBand, dateFrom, dateTo, query, warehouseCountry, valuation, rev]);
+
   const verticalSlices = useMemo(() => {
     const map = new Map<string, number>();
     for (const batch of filtered) {
@@ -362,8 +383,9 @@ export function InventoryHub() {
           ) : (
             <WorldMap
               values={valueByCountry}
+              details={valueByCountryVertical}
               formatValue={money}
-              caption="Inventory value by country — click a lit country to focus"
+              caption="Inventory value by country — hover for the vertical split, click to focus"
               activeCountry={countryFilter}
               onSelect={(name) => setCountryFilter(name === countryFilter ? "" : name)}
             />

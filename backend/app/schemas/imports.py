@@ -91,6 +91,10 @@ class ImportGoodsReceiptPostRequest(BaseModel):
     posted_by: str
     auth_token: str
     supplier_name: str | None = None
+    # Sale channel: "subsidiary" (default) adds the goods to the subsidiary's
+    # inventory; "direct" is a Meril India → customer pass-through that never
+    # touches subsidiary stock, so it must NOT increase inventory.
+    channel: str = "subsidiary"
 
 
 class ShipmentPlanRequest(BaseModel):

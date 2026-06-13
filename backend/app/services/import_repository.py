@@ -276,7 +276,11 @@ def post_import_goods_receipt(request: ImportGoodsReceiptPostRequest) -> Workflo
         raise ValueError("Mark the shipment as delivered before posting Goods Receipt")
     if request.candidate.status != ImportStatus.ARRIVED:
         raise ValueError("Goods Receipt can be posted only after the shipment is approved and delivered")
-    if not request.warehouse_name.strip():
+    channel = (request.channel or "subsidiary").strip().lower()
+    if channel not in {"subsidiary", "direct"}:
+        channel = "subsidiary"
+    # A direct sale never touches a warehouse, so it is exempt from this check.
+    if channel == "subsidiary" and not request.warehouse_name.strip():
         raise ValueError("Destination warehouse is mandatory")
     if not request.candidate.lines:
         raise ValueError("Import file has no product lines to receive")
@@ -307,6 +311,35 @@ def post_import_goods_receipt(request: ImportGoodsReceiptPostRequest) -> Workflo
         or request.candidate.origin_country
         or "Unknown Supplier"
     )
+
+    # Direct sale: Meril India → customer pass-through. The goods never enter
+    # the subsidiary's warehouse, so we deliberately do NOT post a goods receipt
+    # or increase inventory. We only close the import and leave a clear trace.
+    if channel == "direct":
+        received_candidate = request.candidate.model_copy(update={"status": ImportStatus.RECEIVED})
+        save_import_candidate(received_candidate)
+        data = {
+            "import_file_number": request.candidate.import_file_number,
+            "channel": "direct",
+            "line_count": len(receipt_lines),
+            "posted_by": posted_user.email,
+            "inventory_posted": False,
+        }
+        record_audit_event(
+            action="post_direct_sale",
+            module_name="import",
+            entity_name="import_file",
+            entity_id=request.candidate.import_file_number,
+            actor=posted_user.email,
+            reason="Direct sale (Meril India → customer) — bypassed subsidiary inventory",
+            new_value=data,
+        )
+        return WorkflowResult(
+            status="received",
+            message="Direct sale recorded. These goods bypass subsidiary inventory and are not added to stock.",
+            data=data,
+        )
+
     result = post_goods_receipt(
         CreateGoodsReceiptRequest(
             grn_number=f"GRN-{request.candidate.import_file_number}",
@@ -321,6 +354,8 @@ def post_import_goods_receipt(request: ImportGoodsReceiptPostRequest) -> Workflo
             "import_file_number": request.candidate.import_file_number,
             "warehouse": request.warehouse_name.strip(),
             "posted_by": posted_user.email,
+            "channel": "subsidiary",
+            "inventory_posted": True,
         }
     )
     received_candidate = request.candidate.model_copy(
