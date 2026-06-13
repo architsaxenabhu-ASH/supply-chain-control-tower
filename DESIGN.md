@@ -206,6 +206,25 @@ scorecards, commitment/inventory dashboards, approvals, validation queue, audit
 trail) — no new business logic. Situation Rooms (P2) will launch from these
 items with the full story + past decisions + outcomes.
 
+## Document Intelligence Center (Phase 6 sprint, P3)
+
+`workspaces/documents/DocumentIntelligence.tsx` (Manage → Document
+Intelligence, view `doc-intelligence`). The document → transaction pipeline as a
+first-class surface: **Upload → Detect Country → Document Type → Template →
+Translation Memory → Extract → Human Validation → Transaction**, drawn as a
+stage strip with the **human-validation gate highlighted**. OCR autofills every
+field (country, type, line items, values) but **never creates a transaction** —
+a person with the right permission must validate at the gate before anything
+posts. Per-document inspection shows detected country (from master candidates),
+document type, the applied template (Country · Document Type), and the
+autofilled fields with confidence; "Validate & post" links to the existing
+human-validation screen. Reuses the existing extraction + validation engines.
+
+Translation Memory (net-new, backend `/translation/memory`,
+`services/translation_repository.py`): translate once, store forever, reuse
+automatically; every save audited under module "translation" (App-Manager
+governed). A reuse counter compounds value as phrases recur.
+
 ## Situation Rooms (Phase 6 sprint, P2)
 
 `workspaces/intelligence/SituationRoom.tsx` — management investigation

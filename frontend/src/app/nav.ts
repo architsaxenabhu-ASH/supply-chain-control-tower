@@ -27,6 +27,7 @@ import {
   Package,
   RadioTower,
   Rocket,
+  ScanText,
   ScrollText,
   Send,
   Settings2,
@@ -276,6 +277,21 @@ export const WORKSPACES: WorkspaceDef[] = [
     icon: Inbox,
     section: "manage",
     tabs: [{ id: "my-work", label: "Queues", icon: Inbox, signature: "rise" }],
+  },
+  {
+    id: "doc-intel-zone",
+    label: "Document Intelligence",
+    icon: ScanText,
+    section: "manage",
+    tabs: [
+      {
+        id: "doc-intelligence",
+        label: "Document Intelligence",
+        icon: ScanText,
+        signature: "rise",
+        permissions: ["import_approval", "goods_receipt", "masters"],
+      },
+    ],
   },
   {
     id: "approvals",

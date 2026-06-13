@@ -1709,3 +1709,34 @@ export type ApiSaveCurrencyRatesRequest = {
 export function saveCurrencyRates(payload: ApiSaveCurrencyRatesRequest): Promise<ApiCurrencyRateSet> {
   return postJson<ApiCurrencyRateSet, ApiSaveCurrencyRatesRequest>("/currency/rates", payload);
 }
+
+// ---- Translation Memory (Phase 6 — Document Intelligence) ----
+
+export type ApiTranslationEntry = {
+  key: string;
+  source_text: string;
+  source_language: string;
+  target_text: string;
+  target_language: string;
+  document_type: string | null;
+  times_reused: number;
+  updated_by: string | null;
+  updated_at: string;
+};
+
+export function listTranslationMemory(limit = 200): Promise<ApiTranslationEntry[]> {
+  return getJson<ApiTranslationEntry[]>(`/translation/memory?limit=${limit}`);
+}
+
+export type ApiSaveTranslationRequest = {
+  source_text: string;
+  source_language: string;
+  target_text: string;
+  target_language?: string;
+  document_type?: string | null;
+  actor?: string | null;
+};
+
+export function saveTranslation(payload: ApiSaveTranslationRequest): Promise<ApiTranslationEntry> {
+  return postJson<ApiTranslationEntry, ApiSaveTranslationRequest>("/translation/memory", payload);
+}

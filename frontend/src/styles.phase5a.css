@@ -1434,6 +1434,40 @@
 .situation-governance dt { font-size: 11px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; color: var(--tower-muted, #93a3b4); }
 .situation-governance dd { margin: 0; font-size: 12.5px; color: var(--tower-text, #e6edf3); }
 
+/* Document Intelligence Center (Phase 6). */
+.doc-pipeline { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 2px; }
+.doc-stage { display: inline-flex; align-items: center; gap: 7px; padding: 7px 10px; border-radius: 10px; background: var(--tower-bg-2, #0e151d); }
+.doc-stage-icon { display: grid; place-items: center; color: var(--country-accent); }
+.doc-stage-label { font-size: 12px; font-weight: 600; color: var(--tower-text, #e6edf3); white-space: nowrap; }
+.doc-stage-arrow { margin: 0 3px; color: var(--tower-muted, #93a3b4); font-size: 12px; }
+.doc-stage.is-gate { background: color-mix(in srgb, var(--tower-amber, #fbbf24) 16%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tower-amber, #fbbf24) 50%, transparent); }
+.doc-stage.is-gate .doc-stage-icon { color: var(--tower-amber, #fbbf24); }
+.doc-list { display: grid; gap: 9px; margin: 0; padding: 0; list-style: none; }
+.doc-item { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 14px; border: 1px solid var(--tower-border, #28323e); border-radius: 12px; background: var(--tower-bg-2, #0e151d); color: var(--tower-text, #e6edf3); cursor: pointer; text-align: left; transition: border-color 0.18s var(--ease-out), background 0.18s var(--ease-out); }
+.doc-item:hover { border-color: var(--country-accent); }
+.doc-item.selected { border-color: var(--country-accent); background: color-mix(in srgb, var(--country-accent) 8%, var(--tower-bg-2, #0e151d)); }
+.doc-item:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--country-accent-soft); }
+.doc-item-icon { display: grid; place-items: center; width: 34px; height: 34px; flex: 0 0 auto; border-radius: 9px; background: var(--tower-panel-strong, #1b2530); color: var(--country-accent); }
+.doc-item-body { display: grid; gap: 2px; min-width: 0; flex: 1; }
+.doc-item-body strong { font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.doc-item-body small { font-size: 12px; color: var(--tower-muted, #93a3b4); }
+.doc-detect { display: grid; gap: 9px; margin: 0 0 12px; }
+.doc-detect div { display: grid; gap: 2px; }
+.doc-detect dt { font-size: 11px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; color: var(--tower-muted, #93a3b4); }
+.doc-detect dd { margin: 0; font-size: 13px; color: var(--tower-text, #e6edf3); }
+.doc-fields { display: grid; gap: 7px; margin-bottom: 12px; }
+.doc-field { display: grid; gap: 1px; padding: 8px 11px; border-radius: 9px; background: var(--tower-bg-2, #0e151d); }
+.doc-field-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.doc-field-head span { font-size: 11.5px; color: var(--tower-muted, #93a3b4); }
+.doc-field-head strong { font-size: 12px; font-variant-numeric: tabular-nums; }
+.doc-field-head strong.tone-good { color: var(--tower-emerald, #34d399); }
+.doc-field-head strong.tone-warn { color: var(--tower-amber, #fbbf24); }
+.doc-field-head strong.tone-bad { color: var(--tower-crimson, #f87171); }
+.doc-field-value { font-size: 13px; color: var(--tower-text, #e6edf3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.doc-translate-row { display: grid; grid-template-columns: 80px 1fr; gap: 9px; }
+.doc-translate-form input { width: 100%; }
+.doc-memory { margin-top: 10px; }
+
 /* Planning coverage bar inside a table cell (Phase 6). */
 .planning-coverage { display: flex; align-items: center; gap: 9px; min-width: 120px; }
 .planning-coverage .score-row-track { flex: 1; }
