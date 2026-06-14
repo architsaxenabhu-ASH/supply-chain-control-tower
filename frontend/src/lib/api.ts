@@ -1740,3 +1740,64 @@ export type ApiSaveTranslationRequest = {
 export function saveTranslation(payload: ApiSaveTranslationRequest): Promise<ApiTranslationEntry> {
   return postJson<ApiTranslationEntry, ApiSaveTranslationRequest>("/translation/memory", payload);
 }
+
+// ---- Secondary Sales document bundles (Phase 6F) ----
+
+export type ApiSecondaryDocumentRow = { label: string; value: string };
+export type ApiSecondaryDocument = {
+  document_id: string;
+  filename: string;
+  kind: string;
+  rows: ApiSecondaryDocumentRow[];
+};
+export type ApiSecondaryShipment = {
+  shipment_id: string;
+  customer: string;
+  country: string;
+  order_number: string;
+  shipment_type: string;
+  status: string;
+  documents: ApiSecondaryDocument[];
+  uploaded_by: string | null;
+  uploaded_at: string;
+  validated_by: string | null;
+  validated_at: string | null;
+  note: string | null;
+};
+
+export function listSecondaryShipments(): Promise<ApiSecondaryShipment[]> {
+  return getJson<ApiSecondaryShipment[]>("/secondary-documents/shipments");
+}
+
+export type ApiSaveSecondaryShipmentRequest = {
+  customer: string;
+  country: string;
+  order_number: string;
+  shipment_type?: string;
+  documents: ApiSecondaryDocument[];
+  actor?: string | null;
+};
+
+export function saveSecondaryShipment(payload: ApiSaveSecondaryShipmentRequest): Promise<ApiSecondaryShipment> {
+  return postJson<ApiSecondaryShipment, ApiSaveSecondaryShipmentRequest>("/secondary-documents/shipments", payload);
+}
+
+export function approveSecondaryShipment(
+  shipmentId: string,
+  payload: { actor?: string | null; note?: string | null },
+): Promise<ApiSecondaryShipment> {
+  return postJson<ApiSecondaryShipment, typeof payload>(
+    `/secondary-documents/shipments/${encodeURIComponent(shipmentId)}/approve`,
+    payload,
+  );
+}
+
+export function rejectSecondaryShipment(
+  shipmentId: string,
+  payload: { actor?: string | null; note?: string | null },
+): Promise<ApiSecondaryShipment> {
+  return postJson<ApiSecondaryShipment, typeof payload>(
+    `/secondary-documents/shipments/${encodeURIComponent(shipmentId)}/reject`,
+    payload,
+  );
+}

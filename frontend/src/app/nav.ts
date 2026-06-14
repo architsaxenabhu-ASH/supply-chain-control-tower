@@ -152,6 +152,20 @@ export const WORKSPACES: WorkspaceDef[] = [
         signature: "stamp",
         permissions: ["import_approval", "goods_receipt"],
       },
+      {
+        id: "doc-secondary-upload",
+        label: "Secondary · Upload",
+        icon: FileUp,
+        signature: "flow",
+        permissions: ["shipment_request", "dispatch", "customer_read"],
+      },
+      {
+        id: "doc-secondary-validate",
+        label: "Secondary · Validate",
+        icon: ShieldCheck,
+        signature: "stamp",
+        permissions: ["shipment_approval", "dispatch_approval", "customer_read"],
+      },
     ],
   },
   // 2) Inventory — the central bridge; Primary fills it, Secondary draws it down.

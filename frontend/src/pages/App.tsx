@@ -29,6 +29,8 @@ import { OperationsIntelligence } from "../workspaces/intelligence/OperationsInt
 import { DocumentIntelligence } from "../workspaces/documents/DocumentIntelligence";
 import { PrimaryUpload } from "../workspaces/shipdocs/PrimaryUpload";
 import { PrimaryValidate } from "../workspaces/shipdocs/PrimaryValidate";
+import { SecondaryUpload } from "../workspaces/shipdocs/SecondaryUpload";
+import { SecondaryValidate } from "../workspaces/shipdocs/SecondaryValidate";
 import { CountryProvider, CountrySelector } from "../context/CountryContext";
 import { CurrencyProvider, CurrencyRatesPanel, CurrencySelector } from "../context/CurrencyContext";
 import { formatMoney, getCurrencyRevision, subscribeCurrency } from "../lib/currency";
@@ -2364,6 +2366,8 @@ export function App() {
         ) : null}
         {activeView === "doc-primary-upload" ? <PrimaryUpload currentUser={currentUser} /> : null}
         {activeView === "doc-primary-validate" ? <PrimaryValidate currentUser={currentUser} /> : null}
+        {activeView === "doc-secondary-upload" ? <SecondaryUpload currentUser={currentUser} /> : null}
+        {activeView === "doc-secondary-validate" ? <SecondaryValidate currentUser={currentUser} /> : null}
         {activeView === "dash-planning" ? <PlanningDashboard onNavigate={setActiveView} /> : null}
         {activeView === "dash-snapshot" ? <BusinessSnapshot /> : null}
         {activeView === "dash-primary" ? <PrimarySalesDashboard onNavigate={setActiveView} /> : null}

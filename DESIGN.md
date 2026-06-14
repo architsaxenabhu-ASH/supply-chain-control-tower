@@ -228,13 +228,24 @@ workspace (Operations section, warehouse/ops users) — `workspaces/shipdocs/`:
   Approve → official shipment (via `approveImportCandidate`); inventory still
   waits for goods receipt.
 
+- **Secondary · Upload / Validate** (`doc-secondary-upload` /
+  `doc-secondary-validate`, `SecondaryUpload.tsx` / `SecondaryValidate.tsx`) —
+  the outbound mirror (subsidiary → customer), same shipment-first logic.
+  Header: customer, country, order no., type (standard/consignment/direct).
+  Doc kinds: Customer PO / Invoice / Packing List / POD / Other. Saving creates
+  a **secondary shipment bundle** (backend `/secondary-documents/shipments`,
+  `secondary_documents_repository.py`) in Pending Validation — nothing reaches
+  sales, receivables, commitments, or analytics until validated. Validate
+  mirrors Primary (completeness requires Customer PO + Invoice; Approve →
+  official secondary shipment; Reject; supporting-doc upload). Audited under
+  module "secondary_documents".
+
 The principle: documents belong to shipments — Shipment Management with
 documents attached, not Document Management with shipments attached.
 
-Staged next: Secondary Documents (subsidiary→customer: PO/POD/Invoice),
-shipment timeline + conversation log, country-specific mandatory-document
-checklist enforcement, true supporting-document association to the shipment
-record.
+Staged next: shipment timeline + conversation log, country-specific
+mandatory-document checklist enforcement, true supporting-document association,
+and wiring validated secondary shipments into the live sales/receivables data.
 
 ## Document Intelligence Center (Phase 6 sprint, P3)
 
