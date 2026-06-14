@@ -131,6 +131,29 @@ export const WORKSPACES: WorkspaceDef[] = [
       { id: "goods-tracking", label: "Tracking", icon: RadioTower, signature: "glide" },
     ],
   },
+  // Documents — shipment-first upload + validation (warehouse / operations).
+  {
+    id: "documents-zone",
+    label: "Documents",
+    icon: ScanText,
+    section: "operations",
+    tabs: [
+      {
+        id: "doc-primary-upload",
+        label: "Primary · Upload",
+        icon: FileUp,
+        signature: "rise",
+        permissions: ["goods_receipt", "import_approval"],
+      },
+      {
+        id: "doc-primary-validate",
+        label: "Primary · Validate",
+        icon: ShieldCheck,
+        signature: "stamp",
+        permissions: ["import_approval", "goods_receipt"],
+      },
+    ],
+  },
   // 2) Inventory — the central bridge; Primary fills it, Secondary draws it down.
   {
     id: "inventory-zone",

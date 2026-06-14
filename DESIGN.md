@@ -206,6 +206,36 @@ scorecards, commitment/inventory dashboards, approvals, validation queue, audit
 trail) — no new business logic. Situation Rooms (P2) will launch from these
 items with the full story + past decisions + outcomes.
 
+## Shipment-first Documents workspace (Phase 6F)
+
+The document workflow redesigned around **shipments, not OCR**. New "Documents"
+workspace (Operations section, warehouse/ops users) — `workspaces/shipdocs/`:
+
+- **Primary · Upload** (`doc-primary-upload`, `PrimaryUpload.tsx`) — a 4-step,
+  shipment-first wizard that hides all OCR/template/confidence detail: Step 1
+  select or create a shipment (header: type subsidiary/direct, country,
+  vertical, number → `COUNTRY-VERTICAL-NUMBER`, origin, destination, ETA);
+  Step 2 upload its documents (CI / PL / AWB / Import); Step 3 review the
+  **business data only** read from them; Step 4 **save to the validation
+  queue**. Saving creates nothing official — the shipment is Pending Validation,
+  no inventory/metric/secondary-sales moves. Reuses `uploadDocument` +
+  `assembleImportFromDocuments`.
+- **Primary · Validate** (`doc-primary-validate`, `PrimaryValidate.tsx`) — a
+  shipment-first split screen: documents (left) vs extracted data (right),
+  **document completeness** (required vs present, validation blocked until
+  mandatory docs present), Approve / Request correction / Reject, and a
+  validation-only **supporting-document upload** (photos, emails, certificates).
+  Approve → official shipment (via `approveImportCandidate`); inventory still
+  waits for goods receipt.
+
+The principle: documents belong to shipments — Shipment Management with
+documents attached, not Document Management with shipments attached.
+
+Staged next: Secondary Documents (subsidiary→customer: PO/POD/Invoice),
+shipment timeline + conversation log, country-specific mandatory-document
+checklist enforcement, true supporting-document association to the shipment
+record.
+
 ## Document Intelligence Center (Phase 6 sprint, P3)
 
 `workspaces/documents/DocumentIntelligence.tsx` (Manage → Document
