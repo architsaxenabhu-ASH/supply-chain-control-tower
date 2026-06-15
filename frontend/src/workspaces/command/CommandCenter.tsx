@@ -20,6 +20,7 @@ import {
   type ApiPerformanceScorecard,
 } from "../../lib/api";
 import { CountryEnvironment, useCountry, type EnvironmentVital } from "../../context/CountryContext";
+import { MovementPanel } from "../../components/MovementPanel";
 import { itemVariants, listVariants, prefersReducedMotion } from "../../motion/motion";
 
 const inr = (value: number) => formatMoney(value, { compact: true });
@@ -302,6 +303,9 @@ export function CommandCenter({
           </motion.ul>
         )}
       </section>
+
+      {/* Movement map — four live metrics, time range, Primary/Secondary split */}
+      <MovementPanel title="Shipment movement" />
 
       {/* Sales performance — country + vertical achievement, value + quantity */}
       {(lens === "general_manager" || lens === "country_manager") && (performance.length > 0 || verticals.length > 0) ? (

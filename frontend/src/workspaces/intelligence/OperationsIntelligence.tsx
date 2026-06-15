@@ -37,6 +37,7 @@ import {
 } from "../../lib/api";
 import type { DashboardNav } from "../dashboards/Dashboards";
 import { SituationRoom, type ResponsibilityDomain, type SituationSpec } from "./SituationRoom";
+import { MovementPanel } from "../../components/MovementPanel";
 
 // Operations Intelligence Center (Phase 6, P1 of this sprint) — the primary
 // management workspace. It does not only show what is wrong: it shows what
@@ -369,6 +370,9 @@ export function OperationsIntelligence({ onNavigate, currentUser }: DashboardNav
           </div>
         </div>
       </section>
+
+      {/* Movement map — four live metrics, time range, Primary/Secondary split */}
+      <MovementPanel title="Shipment movement" />
 
       <div className="oic-lanes" role="tablist" aria-label="Operations intelligence lanes">
         {lanes.map((l) => (

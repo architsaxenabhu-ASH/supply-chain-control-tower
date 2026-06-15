@@ -166,6 +166,7 @@ export type ApiShipment = {
   requestor_name: string;
   customer_name: string;
   destination_country: string;
+  city?: string | null;
   priority: "normal" | "urgent";
   required_delivery_date: string;
   status: "draft" | "submitted" | "approved" | "dispatched" | "delivered" | "cancelled";
@@ -223,9 +224,20 @@ export type ApiCustomer = {
   customer_code: string;
   customer_name: string;
   country: string;
+  city?: string | null;
   customer_type: string;
   contact_person: string;
 };
+
+export function createCustomer(payload: {
+  customer_name: string;
+  country: string;
+  city?: string | null;
+  customer_type?: string;
+  contact_person?: string;
+}): Promise<ApiCustomer> {
+  return postJson<ApiCustomer, typeof payload>("/customers", payload);
+}
 
 export type ApiDashboardSummary = {
   total_inventory_value: number;
@@ -691,6 +703,7 @@ export function createShipment(payload: {
   requestor_name: string;
   customer_name: string;
   destination_country: string;
+  city?: string | null;
   priority: "normal" | "urgent";
   required_delivery_date: string;
   auth_token: string;
@@ -1355,6 +1368,19 @@ export function decideApproval(approvalId: string, request: ApiDecideApprovalReq
 
 export function fetchCountryPerformanceV2(): Promise<ApiCountryPerformance[]> {
   return getJson<ApiCountryPerformance[]>("/country-performance-v2");
+}
+
+// Every country the system currently knows about, learned from live data
+// (warehouses, shipments, imports, secondary shipments, rules, master data,
+// user scopes). Used to populate country selectors so they are never empty.
+export function fetchKnownCountries(): Promise<string[]> {
+  return getJson<string[]>("/reference/countries");
+}
+
+// Shipment movement per country (outbound + inbound + secondary), for the
+// management movement maps. Empty object = zero movement (the map shows zero).
+export function fetchMovementByCountry(): Promise<Record<string, number>> {
+  return getJson<Record<string, number>>("/reference/movement-by-country");
 }
 
 export function fetchVerticalPerformance(country?: string): Promise<ApiPerformanceScorecard[]> {

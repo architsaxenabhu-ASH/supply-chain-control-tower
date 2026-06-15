@@ -3,6 +3,7 @@ from datetime import date
 from app.db.local_persistence import load_collection, record_audit_event, save_collection
 from app.schemas.warehouse import (
     AssistantAnswer,
+    CreateCustomerRequest,
     CreateDispatchRequest,
     CreateGoodsReceiptRequest,
     CreateInventoryCountRequest,
@@ -59,6 +60,7 @@ CUSTOMERS = [
         customer_code="CUST-APOLLO",
         customer_name="Apollo Hospital",
         country="India",
+        city="Mumbai",
         customer_type="Hospital",
         contact_person="Procurement Head",
     ),
@@ -66,6 +68,7 @@ CUSTOMERS = [
         customer_code="CUST-MEDANTA",
         customer_name="Medanta Hospital",
         country="India",
+        city="Delhi",
         customer_type="Hospital",
         contact_person="Cath Lab Manager",
     ),
@@ -73,6 +76,7 @@ CUSTOMERS = [
         customer_code="CUST-DHA",
         customer_name="Dubai Health Authority",
         country="UAE",
+        city="Dubai",
         customer_type="Distributor",
         contact_person="Supply Chain Lead",
     ),
@@ -339,6 +343,48 @@ def list_products(search: str | None = None, category: str | None = None) -> lis
 
 def list_customers() -> list[Customer]:
     return CUSTOMERS
+
+
+def _generate_customer_code(name: str) -> str:
+    base = "CUST-" + "".join(ch for ch in name.upper() if ch.isalnum())[:10]
+    code = base if base != "CUST-" else "CUST"
+    existing = {customer.customer_code for customer in CUSTOMERS}
+    if code not in existing:
+        return code
+    suffix = 2
+    while f"{code}-{suffix}" in existing:
+        suffix += 1
+    return f"{code}-{suffix}"
+
+
+def create_customer(request: CreateCustomerRequest) -> Customer:
+    name = request.customer_name.strip()
+    country = request.country.strip()
+    if not name:
+        raise ValueError("Customer name is mandatory.")
+    if not country:
+        raise ValueError("Country is mandatory.")
+    if any(customer.customer_name.lower() == name.lower() for customer in CUSTOMERS):
+        raise ValueError(f"Customer already exists: {name}")
+    customer = Customer(
+        customer_code=_generate_customer_code(name),
+        customer_name=name,
+        country=country,
+        city=(request.city.strip() if request.city else None) or None,
+        customer_type=request.customer_type.strip() or "Customer",
+        contact_person=request.contact_person.strip(),
+    )
+    CUSTOMERS.insert(0, customer)
+    _save_customers()
+    record_audit_event(
+        action="create",
+        module_name="customer_master",
+        entity_name="customer",
+        entity_id=customer.customer_code,
+        actor="system_or_api_user",
+        new_value=customer,
+    )
+    return customer
 
 
 def list_warehouses(country: str | None = None) -> list[WarehouseLocation]:
@@ -619,6 +665,7 @@ def create_shipment_request(request: CreateShipmentRequest) -> ShipmentRequest:
         requestor_name=requesting_user.email,
         customer_name=request.customer_name.strip(),
         destination_country=request.destination_country.strip(),
+        city=(request.city.strip() if request.city else None) or None,
         priority=request.priority.lower(),
         required_delivery_date=request.required_delivery_date,
         status=ShipmentStatus.SUBMITTED if request.submit_for_approval else ShipmentStatus.DRAFT,

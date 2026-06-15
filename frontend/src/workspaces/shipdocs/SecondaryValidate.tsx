@@ -9,6 +9,7 @@ import {
   type ApiAuthenticatedUser,
   type ApiSecondaryShipment,
 } from "../../lib/api";
+import { ConversationLog, ShipmentTimeline } from "./ShipmentInsights";
 
 // Secondary Documents → Validate (Phase 6F). The outbound mirror of Primary
 // Validate. Approving turns the bundle into an official secondary shipment,
@@ -35,6 +36,8 @@ export function SecondaryValidate({ currentUser }: { currentUser: ApiAuthenticat
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ tone: "good" | "bad"; text: string } | null>(null);
   const [supporting, setSupporting] = useState<string[]>([]);
+  const [sendingBack, setSendingBack] = useState(false);
+  const [note, setNote] = useState("");
 
   function load() {
     setLoading(true);
@@ -58,6 +61,10 @@ export function SecondaryValidate({ currentUser }: { currentUser: ApiAuthenticat
     return REQUIRED.map((req) => ({ label: req.label, present: kinds.has(req.kind) }));
   }, [selected]);
   const allRequiredPresent = completeness.every((c) => c.present);
+  const canApprove = allRequiredPresent;
+  const readyDocs = completeness.filter((c) => c.present).map((c) => c.label).join(" and ") || "documents attached";
+  const missingRequired = completeness.filter((c) => !c.present).map((c) => c.label);
+  const blockReason = missingRequired.length ? `add the ${missingRequired.join(" and ")} before approving` : "";
 
   const selectedRows = useMemo(() => {
     if (!selected) return [];
@@ -84,17 +91,25 @@ export function SecondaryValidate({ currentUser }: { currentUser: ApiAuthenticat
     }
   }
 
-  async function handleReject() {
+  async function handleSendBack() {
     if (!selected) return;
     setBusy(true);
     setMessage(null);
+    const reason = note.trim() || "Sent back at validation";
     try {
-      await rejectSecondaryShipment(selected.shipment_id, { actor: currentUser.email, note: "Rejected at validation" });
-      setMessage({ tone: "bad", text: `${selected.shipment_id} rejected. It stays out of business data; the uploader should correct and re-submit.` });
+      await rejectSecondaryShipment(selected.shipment_id, { actor: currentUser.email, note: reason });
+      setMessage({
+        tone: "bad",
+        text: note.trim()
+          ? `Sent back for fixing: "${note.trim()}". It stays out of business data until the uploader corrects and re-submits.`
+          : `${selected.shipment_id} sent back. It stays out of business data until the uploader corrects and re-submits.`,
+      });
+      setSendingBack(false);
+      setNote("");
       setSelectedId(null);
       load();
     } catch (error) {
-      setMessage({ tone: "bad", text: error instanceof Error ? error.message : "Could not reject the shipment." });
+      setMessage({ tone: "bad", text: error instanceof Error ? error.message : "Could not send the shipment back." });
     } finally {
       setBusy(false);
     }
@@ -179,74 +194,115 @@ export function SecondaryValidate({ currentUser }: { currentUser: ApiAuthenticat
               <span className="cc-panel-meta">{selected.country}</span>
             </div>
 
-            <div className="ship-completeness">
-              {completeness.map((c) => (
-                <span key={c.label} className={`dot-pill ${c.present ? "tone-good" : "tone-bad"}`}>
-                  {c.present ? <CheckCircle2 size={13} aria-hidden="true" /> : <XCircle size={13} aria-hidden="true" />}
-                  {c.label}
-                </span>
-              ))}
+            {/* What to do — in plain language */}
+            <div className="validate-guide">
+              <span className="validate-guide-step" aria-hidden="true">✓</span>
+              <p>Open the documents and check the figures match what we read. <strong>Then Approve</strong> — or send it back if something looks wrong.</p>
             </div>
 
-            <div className="ship-split">
-              <div className="ship-split-pane">
-                <h3 className="ship-split-title">Documents</h3>
-                <ul className="ship-doc-list">
-                  {selected.documents.map((doc) => (
-                    <li className="ship-doc-row" key={doc.document_id}>
-                      <FileText size={14} aria-hidden="true" />
-                      <span className="ship-doc-name">{doc.filename}</span>
-                      <span className="tag">{DOC_LABELS[doc.kind] ?? doc.kind}</span>
-                    </li>
-                  ))}
-                  {supporting.map((name) => (
-                    <li className="ship-doc-row" key={name}><Paperclip size={14} aria-hidden="true" /><span className="ship-doc-name">{name}</span><span className="tag">supporting</span></li>
-                  ))}
-                </ul>
-                <label className="ship-support-upload">
-                  <FileUp size={14} aria-hidden="true" /> Attach supporting document (POD photo, email, certificate)
-                  <input type="file" disabled={busy} onChange={(event) => { void handleSupporting(event.target.files?.[0] ?? null); event.target.value = ""; }} />
+            {/* Plain readiness line */}
+            {canApprove ? (
+              <div className="validate-status ok">
+                <CheckCircle2 size={16} aria-hidden="true" />
+                <span>Looks complete — {readyDocs}. Ready to approve.</span>
+              </div>
+            ) : (
+              <div className="validate-status warn">
+                <XCircle size={16} aria-hidden="true" />
+                <span>Not ready yet — {blockReason}.</span>
+              </div>
+            )}
+
+            {/* Two simple actions */}
+            {!sendingBack ? (
+              <div className="validate-decide">
+                <button type="button" className="validate-approve" disabled={busy || !canApprove} onClick={() => void handleApprove()}>
+                  <CheckCircle2 size={18} aria-hidden="true" /> Approve
+                </button>
+                <button type="button" className="validate-back" disabled={busy} onClick={() => setSendingBack(true)}>
+                  Send back for fixing
+                </button>
+              </div>
+            ) : (
+              <div className="validate-sendback">
+                <label className="field-control">
+                  <span>What needs fixing? (optional — helps the uploader)</span>
+                  <textarea rows={2} value={note} onChange={(event) => setNote(event.target.value)} placeholder="e.g. PO number doesn't match the invoice" />
                 </label>
+                <div className="validate-decide">
+                  <button type="button" className="validate-back" disabled={busy} onClick={() => void handleSendBack()}>Send back</button>
+                  <button type="button" className="secondary-action" disabled={busy} onClick={() => { setSendingBack(false); setNote(""); }}>Cancel</button>
+                </div>
+              </div>
+            )}
+
+            {/* Everything technical — tucked away until the user asks for it */}
+            <details className="validate-details">
+              <summary>See the documents and data</summary>
+
+              <ShipmentTimeline status={selected.status} flow="secondary" />
+
+              <div className="ship-completeness">
+                {completeness.map((c) => (
+                  <span key={c.label} className={`dot-pill ${c.present ? "tone-good" : "tone-bad"}`}>
+                    {c.present ? <CheckCircle2 size={13} aria-hidden="true" /> : <XCircle size={13} aria-hidden="true" />}
+                    {c.label}
+                  </span>
+                ))}
               </div>
 
-              <div className="ship-split-pane">
-                <h3 className="ship-split-title">Extracted data</h3>
-                {selectedRows.length === 0 ? (
-                  <p className="empty-state">No business data captured from these documents.</p>
-                ) : (
-                  <table>
-                    <thead>
-                      <tr><th>Field</th><th>Value</th><th>From</th></tr>
-                    </thead>
-                    <tbody>
-                      {selectedRows.slice(0, 24).map((row, index) => (
-                        <tr key={`${row.label}-${index}`}>
-                          <td>{row.label}</td>
-                          <td>{row.value}</td>
-                          <td><span className="muted-cell">{row.document}</span></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-            </div>
+              <div className="ship-split">
+                <div className="ship-split-pane">
+                  <h3 className="ship-split-title">Documents</h3>
+                  <ul className="ship-doc-list">
+                    {selected.documents.map((doc) => (
+                      <li className="ship-doc-row" key={doc.document_id}>
+                        <FileText size={14} aria-hidden="true" />
+                        <span className="ship-doc-name">{doc.filename}</span>
+                        <span className="tag">{DOC_LABELS[doc.kind] ?? doc.kind}</span>
+                      </li>
+                    ))}
+                    {supporting.map((name) => (
+                      <li className="ship-doc-row" key={name}><Paperclip size={14} aria-hidden="true" /><span className="ship-doc-name">{name}</span><span className="tag">supporting</span></li>
+                    ))}
+                  </ul>
+                  <label className="ship-support-upload">
+                    <FileUp size={14} aria-hidden="true" /> Attach supporting document (POD photo, email, certificate)
+                    <input type="file" disabled={busy} onChange={(event) => { void handleSupporting(event.target.files?.[0] ?? null); event.target.value = ""; }} />
+                  </label>
+                </div>
 
-            <div className="review-form-actions ship-validate-actions">
-              <button type="button" className="review-decide-save" disabled={busy || !allRequiredPresent} onClick={() => void handleApprove()}>
-                <CheckCircle2 size={15} aria-hidden="true" /> Approve → official shipment
-              </button>
-              <button type="button" className="secondary-action" disabled={busy} onClick={() => void handleReject()}>Reject</button>
-            </div>
-            {!allRequiredPresent ? (
-              <p className="access-note"><small>Validation cannot complete until the mandatory documents above are present.</small></p>
-            ) : null}
+                <div className="ship-split-pane">
+                  <h3 className="ship-split-title">What we read from the documents</h3>
+                  {selectedRows.length === 0 ? (
+                    <p className="empty-state">No business data captured from these documents.</p>
+                  ) : (
+                    <table>
+                      <thead>
+                        <tr><th>Field</th><th>Value</th><th>From</th></tr>
+                      </thead>
+                      <tbody>
+                        {selectedRows.slice(0, 24).map((row, index) => (
+                          <tr key={`${row.label}-${index}`}>
+                            <td>{row.label}</td>
+                            <td>{row.value}</td>
+                            <td><span className="muted-cell">{row.document}</span></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </div>
+            </details>
+
+            <ConversationLog shipmentId={selected.shipment_id} />
           </section>
         ) : (
           <aside className="panel cockpit-panel">
             <div className="signal-empty">
               <ShieldCheck size={20} aria-hidden="true" />
-              <p>Select a customer shipment to check its documents and data, then approve or reject.</p>
+              <p>Pick a customer shipment on the left. We'll show you what to do — check it, then Approve or send it back.</p>
             </div>
           </aside>
         )}

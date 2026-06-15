@@ -308,6 +308,7 @@ export function PrimarySalesDashboard({ onNavigate }: DashboardNav) {
     : delays > 0
       ? `${delays} shipment${delays === 1 ? " is" : "s are"} past ETA and need chasing; ${awaiting} more ${awaiting === 1 ? "has" : "have"} landed and ${awaiting === 1 ? "is" : "are"} waiting to be received into stock.`
       : `${inbound} shipment${inbound === 1 ? "" : "s"} in motion and ${awaiting} waiting to be received — nothing is overdue right now.`;
+  const mapMovement = dash ? Object.values(dash.by_country).reduce((sum, value) => sum + value, 0) : 0;
 
   return (
     <div className="ops-stage">
@@ -329,7 +330,7 @@ export function PrimarySalesDashboard({ onNavigate }: DashboardNav) {
           { icon: PlaneLanding, label: "Open shipments", hint: "see what is inbound", view: "primary-sales", count: inbound },
           { icon: RadioTower, label: "Chase delays", hint: "shipments past ETA", view: "goods-tracking", count: delays, tone: "bad" },
           { icon: ClipboardCheck, label: "Record update", hint: "assemble & post a shipment", view: "import-validation" },
-          { icon: FileUp, label: "Documents", hint: "upload CI / PL / AWB", view: "documents" },
+          { icon: FileUp, label: "Documents", hint: "upload CI / PL / AWB", view: "doc-primary-upload" },
         ]}
       />
       <div className="hub-columns">
@@ -339,20 +340,17 @@ export function PrimarySalesDashboard({ onNavigate }: DashboardNav) {
               <Globe2 size={16} aria-hidden="true" />
               <h2>Inbound shipments by destination</h2>
             </div>
+            <span className="cc-panel-meta">{num(mapMovement)} in motion</span>
           </div>
-          {dash && Object.keys(dash.by_country).length > 0 ? (
-            <WorldMap
-              values={dash.by_country}
-              formatValue={(v) => `${num(v)} shipment${v === 1 ? "" : "s"}`}
-              caption="Open import shipments by destination country"
-            />
-          ) : (
-            <EmptyStory
-              icon={Globe2}
-              title="The map lights up as imports arrive"
-              hint="Assemble an import shipment with a destination country and it appears here, sized by how many shipments are heading to each subsidiary."
-            />
-          )}
+          <WorldMap
+            values={dash?.by_country ?? {}}
+            formatValue={(v) => `${num(v)} shipment${v === 1 ? "" : "s"}`}
+            caption={
+              mapMovement > 0
+                ? "Open import shipments by destination country"
+                : "No shipment movement yet — the map shows zero; it lights up as imports arrive"
+            }
+          />
         </section>
         <aside className="hub-rail">
           <section className="panel cockpit-panel">

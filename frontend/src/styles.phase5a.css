@@ -1158,6 +1158,23 @@
 .map-tooltip-rows { display: grid; gap: 4px; margin: 6px 0 0; padding: 6px 0 0; list-style: none; border-top: 1px solid var(--tower-border, #28323e); }
 .map-tooltip-rows li { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; font-size: 12px; color: var(--tower-muted, #93a3b4); }
 .map-tooltip-rows strong { color: var(--tower-text, #e6edf3); font-variant-numeric: tabular-nums; }
+.map-tooltip-sub { font-size: 11px; color: var(--tower-muted, #93a3b4); }
+
+/* Interactive drill-down map (Phase 6J) — zoom, glow, city nodes, breadcrumb. */
+.map-country.is-zoomed { stroke: var(--country-accent); stroke-width: 1.4; filter: drop-shadow(0 0 6px var(--country-accent-glow, rgba(56, 189, 248, 0.5))); }
+.map-country.is-dimmed { opacity: 0.26; }
+.map-breadcrumb { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--tower-muted, #93a3b4); }
+.map-breadcrumb button { border: 0; background: none; color: var(--country-accent); font-size: 12.5px; font-weight: 600; cursor: pointer; padding: 2px 0; }
+.map-breadcrumb button:hover { text-decoration: underline; }
+.map-breadcrumb-current { color: var(--tower-text, #e6edf3); font-weight: 700; }
+.map-city-dot { fill: var(--country-accent); stroke: #06121d; stroke-width: 0.6; cursor: pointer; }
+.map-city { animation: map-city-in 0.4s var(--ease-out, ease) both; animation-delay: 0.35s; cursor: pointer; }
+.map-city.is-selected .map-city-dot { stroke: #ffffff; stroke-width: 1.3; }
+.map-city-label { fill: var(--tower-text, #e6edf3); font-size: 9px; font-weight: 700; text-anchor: middle; paint-order: stroke; stroke: var(--tower-bg, #0a0f15); stroke-width: 2.5px; pointer-events: none; }
+@keyframes map-city-in { from { opacity: 0; } to { opacity: 1; } }
+.map-city-readout { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 4px; padding: 9px 12px; border: 1px solid var(--country-accent); border-radius: 10px; background: var(--tower-bg-2, #0e151d); font-size: 12.5px; }
+.map-city-readout strong { color: var(--tower-text, #e6edf3); }
+.map-city-readout-val { color: var(--country-accent); font-weight: 700; }
 
 /* ---- Donut ---- */
 .donut-wrap {
@@ -1450,6 +1467,11 @@
 .ship-upload-card input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .ship-upload-label { font-size: 13px; font-weight: 700; }
 .ship-upload-hint { font-size: 12px; color: var(--country-accent); }
+/* Drag-and-drop file picker (Phase 6I). */
+.dropzone { outline: none; }
+.dropzone:focus-visible { border-color: var(--country-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--country-accent) 30%, transparent); }
+.dropzone.is-over { border-color: var(--country-accent); border-style: solid; background: color-mix(in srgb, var(--country-accent) 12%, var(--tower-bg-2, #0e151d)); }
+.dropzone.is-disabled { opacity: 0.55; cursor: progress; }
 .ship-doc-list { display: grid; gap: 7px; margin: 14px 0 0; padding: 0; list-style: none; }
 .ship-doc-row { display: flex; align-items: center; gap: 9px; padding: 9px 12px; border-radius: 10px; background: var(--tower-bg-2, #0e151d); font-size: 13px; }
 .ship-doc-row svg { color: var(--country-accent); flex: 0 0 auto; }
@@ -1473,6 +1495,84 @@
 .ship-support-upload:hover { border-color: var(--country-accent); color: var(--tower-text, #e6edf3); }
 .ship-support-upload input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .ship-validate-actions { flex-wrap: wrap; }
+
+/* Simplified validation (Phase 6I) — tell the user what to do, two buttons. */
+.validate-guide { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 12px; padding: 12px 14px; border-radius: 12px; background: color-mix(in srgb, var(--country-accent) 10%, var(--tower-bg-2, #0e151d)); border: 1px solid color-mix(in srgb, var(--country-accent) 30%, transparent); }
+.validate-guide-step { flex: none; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--country-accent); color: #06121d; font-weight: 800; font-size: 13px; }
+.validate-guide p { margin: 0; font-size: 14px; line-height: 1.45; color: var(--tower-text, #e6edf3); }
+.validate-status { display: flex; align-items: center; gap: 9px; margin-bottom: 14px; padding: 11px 14px; border-radius: 11px; font-size: 13.5px; font-weight: 600; }
+.validate-status.ok { color: #bbf7d0; background: color-mix(in srgb, #22c55e 14%, transparent); border: 1px solid color-mix(in srgb, #22c55e 32%, transparent); }
+.validate-status.warn { color: #fde68a; background: color-mix(in srgb, #f59e0b 14%, transparent); border: 1px solid color-mix(in srgb, #f59e0b 32%, transparent); }
+.validate-decide { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.validate-approve { display: inline-flex; align-items: center; gap: 8px; padding: 13px 24px; border: 0; border-radius: 12px; background: #22c55e; color: #052e16; font-size: 15px; font-weight: 800; cursor: pointer; }
+.validate-approve:hover:not(:disabled) { background: #16a34a; }
+.validate-approve:disabled { opacity: 0.45; cursor: not-allowed; }
+.validate-back { padding: 13px 18px; border: 1px solid var(--tower-border-strong, #3a4654); border-radius: 12px; background: transparent; color: var(--tower-text, #e6edf3); font-size: 14px; font-weight: 600; cursor: pointer; }
+.validate-back:hover:not(:disabled) { border-color: #ef4444; color: #fecaca; }
+.validate-sendback { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--tower-border, #26303b); border-radius: 12px; background: var(--tower-bg-2, #0e151d); }
+.validate-sendback textarea { width: 100%; resize: vertical; }
+.validate-details { margin-top: 16px; border-top: 1px solid var(--tower-border, #26303b); padding-top: 12px; }
+.validate-details > summary { cursor: pointer; font-size: 13px; font-weight: 700; color: var(--country-accent); list-style: none; padding: 4px 0; user-select: none; }
+.validate-details > summary::-webkit-details-marker { display: none; }
+.validate-details > summary::before { content: "▸ "; }
+.validate-details[open] > summary::before { content: "▾ "; }
+.validate-details > summary:hover { color: var(--tower-text, #e6edf3); }
+
+/* Shipment timeline (Phase 6F enhancement) — where a shipment is in its life. */
+.ship-timeline { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 14px; padding: 13px 12px; border: 1px solid var(--tower-border, #26303b); border-radius: 12px; background: var(--tower-bg-2, #0e151d); }
+.ship-tl-step { position: relative; display: flex; flex-direction: column; align-items: center; gap: 7px; flex: 1 1 0; min-width: 62px; text-align: center; }
+.ship-tl-step::before { content: ""; position: absolute; top: 6px; left: -50%; width: 100%; height: 2px; background: var(--tower-border, #26303b); z-index: 0; }
+.ship-tl-step:first-child::before { display: none; }
+.ship-tl-step.done::before, .ship-tl-step.current::before { background: var(--country-accent); }
+.ship-tl-dot { position: relative; z-index: 1; width: 13px; height: 13px; border-radius: 50%; background: var(--tower-bg, #0a0f15); border: 2px solid var(--tower-border-strong, #3a4654); }
+.ship-tl-step.done .ship-tl-dot { background: var(--country-accent); border-color: var(--country-accent); }
+.ship-tl-step.current .ship-tl-dot { background: var(--country-accent); border-color: var(--country-accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--country-accent) 28%, transparent); }
+.ship-tl-label { font-size: 10.5px; line-height: 1.25; color: var(--tower-muted, #93a3b4); }
+.ship-tl-step.current .ship-tl-label { color: var(--tower-text, #e6edf3); font-weight: 700; }
+.ship-tl-rejected { align-self: center; margin-left: 8px; padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; color: #fecaca; background: color-mix(in srgb, #ef4444 18%, transparent); }
+
+/* Country document checklist (Phase 6F enhancement). */
+.ship-checklist { margin-bottom: 14px; padding: 12px; border: 1px solid var(--tower-border, #26303b); border-radius: 12px; background: var(--tower-bg-2, #0e151d); }
+.ship-checklist-head { display: flex; align-items: center; gap: 7px; margin-bottom: 9px; font-size: 12px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; color: var(--tower-muted, #93a3b4); }
+.ship-checklist-head .tag { margin-left: auto; text-transform: none; letter-spacing: 0; }
+.ship-checklist-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.ship-checklist-item { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 9px; font-size: 12.5px; border: 1px solid var(--tower-border, #26303b); }
+.ship-checklist-item.ok { color: #bbf7d0; border-color: color-mix(in srgb, #22c55e 35%, transparent); }
+.ship-checklist-item.missing { color: #fecaca; border-color: color-mix(in srgb, #ef4444 35%, transparent); }
+.ship-checklist-item small { color: var(--tower-muted, #93a3b4); text-transform: uppercase; font-size: 10px; letter-spacing: 0.04em; }
+
+/* Conversation log (Phase 6F enhancement) — every action, with who and when. */
+.ship-log { list-style: none; margin: 14px 0 0; padding: 0; display: flex; flex-direction: column; }
+.ship-log-row { position: relative; display: flex; gap: 12px; padding: 0 0 14px 4px; }
+.ship-log-dot { position: relative; flex: none; width: 10px; height: 10px; margin-top: 4px; border-radius: 50%; background: var(--country-accent); }
+.ship-log-row:not(:last-child) .ship-log-dot::after { content: ""; position: absolute; top: 12px; left: 4px; width: 2px; height: calc(100% + 6px); background: var(--tower-border, #26303b); }
+.ship-log-body { display: flex; flex-direction: column; gap: 2px; }
+.ship-log-body strong { font-size: 13px; color: var(--tower-text, #e6edf3); }
+.ship-log-body small { font-size: 11.5px; color: var(--tower-muted, #93a3b4); }
+
+/* Shipment movement panel (Phase 6I) — four metrics, time range, country split. */
+.move-controls { margin-bottom: 12px; }
+.move-seg { display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 4px; border: 1px solid var(--tower-border, #26303b); border-radius: 12px; background: var(--tower-bg-2, #0e151d); }
+.move-seg button { padding: 6px 12px; border: 0; border-radius: 8px; background: transparent; color: var(--tower-muted, #93a3b4); font-size: 12.5px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.move-seg button:hover { color: var(--tower-text, #e6edf3); }
+.move-seg button.active { background: var(--country-accent); color: #06121d; }
+.move-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+@media (max-width: 760px) { .move-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.move-stat { display: flex; flex-direction: column; gap: 3px; padding: 12px; text-align: left; border: 1px solid var(--tower-border, #26303b); border-radius: 12px; background: var(--tower-bg-2, #0e151d); cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s; }
+.move-stat:hover { border-color: var(--tower-border-strong, #3a4654); }
+.move-stat.active { border-color: var(--country-accent); box-shadow: inset 0 0 0 1px var(--country-accent); }
+.move-stat-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--tower-muted, #93a3b4); }
+.move-stat strong { font-size: 21px; font-weight: 800; color: var(--tower-text, #e6edf3); line-height: 1.1; }
+.move-stat-split { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--tower-muted, #93a3b4); }
+.move-stat-dot { opacity: 0.5; }
+.move-detail { margin-top: 14px; border: 1px solid var(--tower-border, #26303b); border-radius: 12px; overflow: hidden; }
+.move-detail-head, .move-detail-row { display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap: 8px; padding: 9px 12px; align-items: center; }
+.move-detail-head { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--tower-muted, #93a3b4); background: var(--tower-bg-2, #0e151d); }
+.move-detail-head span { display: inline-flex; align-items: center; gap: 5px; }
+.move-detail-row { border-top: 1px solid var(--tower-border, #26303b); font-size: 13px; }
+.move-detail-row > span { color: var(--tower-muted, #b6c2cf); }
+.move-detail-row strong { color: var(--tower-text, #e6edf3); }
+.move-detail-country { font-weight: 600; color: var(--tower-text, #e6edf3) !important; }
 
 /* Document Intelligence Center (Phase 6). */
 .doc-pipeline { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 2px; }

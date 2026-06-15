@@ -10,6 +10,7 @@ import {
   type ApiImportFileCandidate,
 } from "../../lib/api";
 import type { DocumentRecord, DocumentType } from "../../types/domain";
+import { DropZone } from "../../components/DropZone";
 
 // Primary Documents → Upload (Phase 6F). Shipment-first: every document belongs
 // to a shipment. The upload user never sees OCR config, templates, confidence,
@@ -285,18 +286,16 @@ export function PrimaryUpload({ currentUser }: { currentUser: ApiAuthenticatedUs
           </div>
           <div className="ship-upload-grid">
             {DOC_KINDS.map((kind) => (
-              <label className="ship-upload-card" key={kind.id}>
+              <DropZone
+                key={kind.id}
+                className="ship-upload-card"
+                disabled={uploading !== null}
+                ariaLabel={`Upload ${kind.label}`}
+                onFile={(file) => void handleUpload(kind.id, file)}
+              >
                 <span className="ship-upload-label">{kind.label}</span>
-                <input
-                  type="file"
-                  onChange={(event) => {
-                    void handleUpload(kind.id, event.target.files?.[0] ?? null);
-                    event.target.value = "";
-                  }}
-                  disabled={uploading !== null}
-                />
-                <span className="ship-upload-hint">{uploading === kind.id ? "Reading…" : "Choose file"}</span>
-              </label>
+                <span className="ship-upload-hint">{uploading === kind.id ? "Reading…" : "Drag & drop, or click to choose"}</span>
+              </DropZone>
             ))}
           </div>
           {uploads.length > 0 ? (

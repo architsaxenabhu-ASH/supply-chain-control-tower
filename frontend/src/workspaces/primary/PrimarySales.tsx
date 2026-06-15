@@ -345,20 +345,18 @@ export function PrimarySales() {
             </div>
             <span className="cc-panel-meta">{Object.keys(shipmentsByCountry).length}</span>
           </div>
-          {Object.keys(shipmentsByCountry).length === 0 ? (
-            <p className="empty-state">
-              The map lights up as import shipments are assembled in Import Validation with a destination country.
-            </p>
-          ) : (
-            <WorldMap
-              values={shipmentsByCountry}
-              details={shipmentsByCountryVertical}
-              formatValue={(value) => `${num(value)} shipment${value === 1 ? "" : "s"}`}
-              caption="Import shipments by destination — hover for the vertical split, click to focus"
-              activeCountry={countryFilter}
-              onSelect={(name) => setCountryFilter(name === countryFilter ? "" : name)}
-            />
-          )}
+          <WorldMap
+            values={shipmentsByCountry}
+            details={shipmentsByCountryVertical}
+            formatValue={(value) => `${num(value)} shipment${value === 1 ? "" : "s"}`}
+            caption={
+              Object.keys(shipmentsByCountry).length === 0
+                ? "No import movement yet — the map shows zero; it lights up as shipments are assembled with a destination country"
+                : "Import shipments by destination — hover for the vertical split, click to focus"
+            }
+            activeCountry={countryFilter}
+            onSelect={(name) => setCountryFilter(name === countryFilter ? "" : name)}
+          />
         </section>
         <aside className="hub-rail">
           <section className="panel cockpit-panel">

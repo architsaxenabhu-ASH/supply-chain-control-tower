@@ -31,6 +31,7 @@ import { PrimaryUpload } from "../workspaces/shipdocs/PrimaryUpload";
 import { PrimaryValidate } from "../workspaces/shipdocs/PrimaryValidate";
 import { SecondaryUpload } from "../workspaces/shipdocs/SecondaryUpload";
 import { SecondaryValidate } from "../workspaces/shipdocs/SecondaryValidate";
+import { MovementPanel } from "../components/MovementPanel";
 import { CountryProvider, CountrySelector } from "../context/CountryContext";
 import { CurrencyProvider, CurrencyRatesPanel, CurrencySelector } from "../context/CurrencyContext";
 import { formatMoney, getCurrencyRevision, subscribeCurrency } from "../lib/currency";
@@ -92,6 +93,7 @@ import {
   approveShipment,
   askAssistant,
   confirmDispatch,
+  createCustomer,
   createShipment,
   evaluateImportChecklist,
   fetchAuditChainStatus,
@@ -109,6 +111,7 @@ import {
   fetchInventoryCounts,
   fetchLearningInsights,
   fetchCountryPerformanceV2,
+  fetchKnownCountries,
   fetchExecutiveDashboard,
   fetchInventoryDashboard,
   fetchImportDashboard,
@@ -243,6 +246,7 @@ type Shipment = {
   requestor: string;
   customer: string;
   destination: string;
+  city?: string;
   priority: "Normal" | "Urgent";
   requiredDate: string;
   status: "Draft" | "Submitted" | "Approved" | "Dispatched" | "Delivered" | "Cancelled";
@@ -283,6 +287,7 @@ type Customer = {
   code: string;
   name: string;
   country: string;
+  city: string;
   type: string;
   contact: string;
 };
@@ -446,6 +451,7 @@ const fallbackCustomers: Customer[] = [
     code: "CUST-APOLLO",
     name: "Apollo Hospital",
     country: "India",
+    city: "Mumbai",
     type: "Hospital",
     contact: "Procurement Head",
   },
@@ -453,6 +459,7 @@ const fallbackCustomers: Customer[] = [
     code: "CUST-DHA",
     name: "Dubai Health Authority",
     country: "UAE",
+    city: "Dubai",
     type: "Distributor",
     contact: "Supply Chain Lead",
   },
@@ -1077,6 +1084,7 @@ function mapShipment(shipment: ApiShipment): Shipment {
     requestor: shipment.requestor_name,
     customer: shipment.customer_name,
     destination: shipment.destination_country,
+    city: shipment.city ?? "",
     priority: shipment.priority === "urgent" ? "Urgent" : "Normal",
     requiredDate: shipment.required_delivery_date,
     status: toTitleCase(shipment.status) as Shipment["status"],
@@ -1135,6 +1143,7 @@ function mapCustomer(customer: ApiCustomer): Customer {
     code: customer.customer_code,
     name: customer.customer_name,
     country: customer.country,
+    city: customer.city ?? "",
     type: customer.customer_type,
     contact: customer.contact_person,
   };
@@ -1337,13 +1346,26 @@ export function App() {
       setCountryOptions([]);
       return;
     }
-    const scope = currentUser.country_scope ?? [];
-    fetchCountryPerformanceV2()
-      .then((rows) => {
-        const names = rows.map((row) => row.name).filter(Boolean);
-        setCountryOptions(scope.length ? names.filter((name) => scope.includes(name)) : names);
-      })
-      .catch(() => setCountryOptions(scope));
+    // "All" / "Global" etc. are sentinels meaning "no country restriction",
+    // not real countries — strip them so such users are treated as global.
+    const sentinels = new Set(["all", "all countries", "global", "none", "n/a", "na", "-"]);
+    const scope = (currentUser.country_scope ?? [])
+      .map((name) => name.trim())
+      .filter((name) => name && !sentinels.has(name.toLowerCase()));
+    // A scoped user (e.g. Country Incharge) sees exactly the countries assigned
+    // to them. A global / Admin user sees every country the system knows about,
+    // learned from live data — so the selector is never empty.
+    if (scope.length) {
+      setCountryOptions(scope);
+      return;
+    }
+    fetchKnownCountries()
+      .then((names) => setCountryOptions(names.filter(Boolean)))
+      .catch(() =>
+        fetchCountryPerformanceV2()
+          .then((rows) => setCountryOptions(rows.map((row) => row.name).filter(Boolean)))
+          .catch(() => setCountryOptions([])),
+      );
   }, [currentUser]);
 
   useEffect(() => {
@@ -1730,6 +1752,13 @@ export function App() {
     const shipment = await createShipment(payload);
     await refreshWarehouseSnapshot(`Connected to backend / ${shipment.shipment_id} created`);
     return `${shipment.shipment_id} created and submitted for approval.`;
+  }
+
+  async function handleCreateCustomer(payload: Parameters<typeof createCustomer>[0]) {
+    const created = await createCustomer(payload);
+    const apiCustomers = await fetchCustomers();
+    setCustomers(apiCustomers.map(mapCustomer));
+    return `${created.customer_name} added to the customer master.`;
   }
 
   async function handleApproveShipment(shipment: Shipment) {
@@ -2491,7 +2520,7 @@ export function App() {
         {activeView === "receipts" ? <ReceiptsView receipts={receipts} /> : null}
         {activeView === "counts" ? <CountsView counts={counts} /> : null}
         {activeView === "expiry" ? <ExpiryView inventory={inventory} /> : null}
-        {activeView === "customers" ? <CustomersView customers={customers} /> : null}
+        {activeView === "customers" ? <CustomersView customers={customers} onCreateCustomer={handleCreateCustomer} /> : null}
         {activeView === "security" ? <AccessCenter currentUser={currentUser} /> : null}
         {activeView === "audit" ? <AuditView auditEvents={auditEvents} /> : null}
         {activeView === "learning" ? <LearningCenterView insights={learningInsights} /> : null}
@@ -3228,7 +3257,7 @@ function GoodsTrackingView({
   }
   const missingDocs = openImports.filter((candidate) => !candidate.invoice_number || candidate.packing_list_document_ids.length === 0).length;
   if (missingDocs > 0) {
-    risks.push({ severity: "warn", message: `${missingDocs} open shipment(s) missing invoice or packing list`, action: "Open documents", view: "documents" });
+    risks.push({ severity: "warn", message: `${missingDocs} open shipment(s) missing invoice or packing list`, action: "Open Documents", view: "doc-primary-upload" });
   }
   if (expiryRisk > 0) {
     risks.push({ severity: "danger", message: `${expiryRisk} inventory batch(es) expiring within 90 days`, action: "Review expiry", view: "expiry" });
@@ -3295,6 +3324,8 @@ function GoodsTrackingView({
         <MetricCard label="Dispatched" value={String(dispatchedOpen)} detail="Out for delivery" />
         <MetricCard label="Delivered" value={String(deliveredCount)} detail="Customer confirmed" />
       </section>
+
+      <MovementPanel title="Shipment movement — live tracking" />
 
       <div className="learning-grid">
         <Panel title="Goods status pipeline" meta="Live funnel">
@@ -3893,7 +3924,7 @@ function PlatformProgressView({
             <SummaryItem label="Planned modules" value={String(stats.planned)} />
           </div>
           <div className="form-action-row">
-            <button className="primary-action" onClick={() => onNavigate("documents")}>
+            <button className="primary-action" onClick={() => onNavigate("doc-primary-upload")}>
               <FileUp size={17} aria-hidden="true" />
               Start document flow
             </button>
@@ -6072,6 +6103,7 @@ function ShipmentsView({
   const firstBatchKey = availableBatches[0] ? inventoryBatchKey(availableBatches[0]) : "";
   const [customerName, setCustomerName] = useState(firstCustomer);
   const [destinationCountry, setDestinationCountry] = useState(customers[0]?.country ?? "");
+  const [city, setCity] = useState(customers[0]?.city ?? "");
   const [priority, setPriority] = useState<"normal" | "urgent">("normal");
   const [requiredDate, setRequiredDate] = useState(getDateStamp());
   const [selectedBatchKey, setSelectedBatchKey] = useState(firstBatchKey);
@@ -6096,6 +6128,7 @@ function ShipmentsView({
   useEffect(() => {
     if (selectedCustomer) {
       setDestinationCountry(selectedCustomer.country);
+      setCity(selectedCustomer.city ?? "");
     }
   }, [selectedCustomer]);
 
@@ -6136,6 +6169,7 @@ function ShipmentsView({
         requestor_name: currentUser.email,
         customer_name: customerName,
         destination_country: destinationCountry,
+        city: city.trim() || null,
         priority,
         required_delivery_date: requiredDate,
         auth_token: currentUser.session_token,
@@ -6197,6 +6231,14 @@ function ShipmentsView({
               <input
                 value={destinationCountry}
                 onChange={(event) => setDestinationCountry(event.target.value)}
+              />
+            </label>
+            <label className="field-control">
+              <span>Destination city</span>
+              <input
+                value={city}
+                onChange={(event) => setCity(event.target.value)}
+                placeholder="e.g. Mumbai"
               />
             </label>
             <label className="field-control">
@@ -6719,9 +6761,50 @@ function ExpiryView({ inventory }: { inventory: InventoryBatch[] }) {
   );
 }
 
-function CustomersView({ customers }: { customers: Customer[] }) {
+function CustomersView({
+  customers,
+  onCreateCustomer,
+}: {
+  customers: Customer[];
+  onCreateCustomer: (payload: Parameters<typeof createCustomer>[0]) => Promise<string>;
+}) {
   const markets = new Set(customers.map((customer) => customer.country)).size;
   const typeCount = new Set(customers.map((customer) => customer.type)).size;
+
+  const [name, setName] = useState("");
+  const [country, setCountry] = useState("");
+  const [city, setCity] = useState("");
+  const [type, setType] = useState("Hospital");
+  const [contact, setContact] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("Add a customer with its city so it appears on the map.");
+
+  async function handleAdd() {
+    if (!name.trim() || !country.trim()) {
+      setMessage("Customer name and country are required.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const result = await onCreateCustomer({
+        customer_name: name.trim(),
+        country: country.trim(),
+        city: city.trim() || null,
+        customer_type: type.trim() || "Customer",
+        contact_person: contact.trim(),
+      });
+      setMessage(result);
+      setName("");
+      setCountry("");
+      setCity("");
+      setContact("");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not add the customer.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="ops-stage">
       <section className="cockpit-hero">
@@ -6752,6 +6835,44 @@ function CustomersView({ customers }: { customers: Customer[] }) {
           </div>
         </div>
       </section>
+
+      <section className="panel cockpit-panel">
+        <div className="panel-heading">
+          <div className="worklist-title">
+            <Plus size={16} aria-hidden="true" />
+            <h2>Add a customer</h2>
+          </div>
+        </div>
+        <div className="shipment-form-grid">
+          <label className="field-control">
+            <span>Customer name</span>
+            <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Apollo Hospital" />
+          </label>
+          <label className="field-control">
+            <span>Country</span>
+            <input value={country} onChange={(event) => setCountry(event.target.value)} placeholder="India" />
+          </label>
+          <label className="field-control">
+            <span>City</span>
+            <input value={city} onChange={(event) => setCity(event.target.value)} placeholder="Mumbai" />
+          </label>
+          <label className="field-control">
+            <span>Type</span>
+            <input value={type} onChange={(event) => setType(event.target.value)} placeholder="Hospital / Distributor" />
+          </label>
+          <label className="field-control">
+            <span>Contact person</span>
+            <input value={contact} onChange={(event) => setContact(event.target.value)} placeholder="Procurement Head" />
+          </label>
+          <div className="learning-form-actions">
+            <button className="primary-action" onClick={handleAdd} disabled={busy}>
+              <Plus size={17} aria-hidden="true" /> {busy ? "Adding" : "Add customer"}
+            </button>
+            <p className="status-line">{message}</p>
+          </div>
+        </div>
+      </section>
+
       <section className="panel cockpit-panel">
         <div className="panel-heading">
           <div className="worklist-title">
@@ -6762,8 +6883,7 @@ function CustomersView({ customers }: { customers: Customer[] }) {
         </div>
         {customers.length === 0 ? (
           <p className="empty-state">
-            Customers are learned from your own documents — create a shipment request or approve an
-            import and the customer is remembered here for reuse.
+            No customers yet — add one above, or they're remembered automatically when you create a shipment.
           </p>
         ) : (
           <table>
@@ -6772,6 +6892,7 @@ function CustomersView({ customers }: { customers: Customer[] }) {
                 <th>Customer Code</th>
                 <th>Name</th>
                 <th>Country</th>
+                <th>City</th>
                 <th>Type</th>
                 <th>Contact</th>
               </tr>
@@ -6782,6 +6903,7 @@ function CustomersView({ customers }: { customers: Customer[] }) {
                   <td>{customer.code}</td>
                   <td>{customer.name}</td>
                   <td>{customer.country}</td>
+                  <td>{customer.city || "—"}</td>
                   <td>{customer.type}</td>
                   <td>{customer.contact}</td>
                 </tr>

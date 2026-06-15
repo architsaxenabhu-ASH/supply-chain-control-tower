@@ -244,7 +244,7 @@ export function DocumentIntelligence({ onNavigate, currentUser }: DashboardNav &
               <ScanText size={16} aria-hidden="true" />
               <h2>Documents</h2>
             </div>
-            <button type="button" className="secondary-action" onClick={() => onNavigate("documents")}>
+            <button type="button" className="secondary-action" onClick={() => onNavigate("doc-primary-upload")}>
               <FileUp size={15} aria-hidden="true" /> Upload
             </button>
           </div>

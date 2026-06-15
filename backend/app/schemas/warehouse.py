@@ -31,8 +31,17 @@ class Customer(BaseModel):
     customer_code: str
     customer_name: str
     country: str
+    city: str | None = None
     customer_type: str
     contact_person: str
+
+
+class CreateCustomerRequest(BaseModel):
+    customer_name: str
+    country: str
+    city: str | None = None
+    customer_type: str = "Customer"
+    contact_person: str = ""
 
 
 class WarehouseLocation(BaseModel):
@@ -77,6 +86,7 @@ class ShipmentRequest(BaseModel):
     requestor_name: str
     customer_name: str
     destination_country: str
+    city: str | None = None
     priority: str
     required_delivery_date: date
     status: ShipmentStatus
@@ -200,6 +210,7 @@ class CreateShipmentRequest(BaseModel):
     requestor_name: str
     customer_name: str
     destination_country: str
+    city: str | None = None
     priority: str
     required_delivery_date: date
     lines: list[CreateShipmentLineRequest]

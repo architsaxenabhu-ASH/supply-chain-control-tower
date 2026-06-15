@@ -37,6 +37,7 @@ from app.api.routes import (
     returns,
     masters,
     products,
+    reference,
     secondary_documents,
     security,
     shipments,
@@ -51,6 +52,7 @@ api_router.include_router(audit.router, prefix="/audit", tags=["audit"])
 api_router.include_router(currency.router, prefix="/currency", tags=["currency"])
 api_router.include_router(translation.router, prefix="/translation", tags=["translation"])
 api_router.include_router(secondary_documents.router, prefix="/secondary-documents", tags=["secondary-documents"])
+api_router.include_router(reference.router, prefix="/reference", tags=["reference"])
 api_router.include_router(masters.router, prefix="/masters", tags=["masters"])
 api_router.include_router(products.router, prefix="/products", tags=["products"])
 api_router.include_router(customers.router, prefix="/customers", tags=["customers"])

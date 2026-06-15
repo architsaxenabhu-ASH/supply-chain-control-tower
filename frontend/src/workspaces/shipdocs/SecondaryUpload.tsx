@@ -10,6 +10,7 @@ import {
   type ApiSecondaryShipment,
 } from "../../lib/api";
 import type { DocumentRecord, DocumentType } from "../../types/domain";
+import { DropZone } from "../../components/DropZone";
 
 // Secondary Documents → Upload (Phase 6F). The outbound mirror of Primary
 // Upload: subsidiary → customer. Same shipment-first logic — every document
@@ -219,18 +220,16 @@ export function SecondaryUpload({ currentUser }: { currentUser: ApiAuthenticated
           </div>
           <div className="ship-upload-grid">
             {DOC_KINDS.map((kind) => (
-              <label className="ship-upload-card" key={kind.id}>
+              <DropZone
+                key={kind.id}
+                className="ship-upload-card"
+                disabled={uploading !== null}
+                ariaLabel={`Upload ${kind.label}`}
+                onFile={(file) => void handleUpload(kind, file)}
+              >
                 <span className="ship-upload-label">{kind.label}</span>
-                <input
-                  type="file"
-                  onChange={(event) => {
-                    void handleUpload(kind, event.target.files?.[0] ?? null);
-                    event.target.value = "";
-                  }}
-                  disabled={uploading !== null}
-                />
-                <span className="ship-upload-hint">{uploading === kind.id ? "Reading…" : "Choose file"}</span>
-              </label>
+                <span className="ship-upload-hint">{uploading === kind.id ? "Reading…" : "Drag & drop, or click to choose"}</span>
+              </DropZone>
             ))}
           </div>
           {uploads.length > 0 ? (

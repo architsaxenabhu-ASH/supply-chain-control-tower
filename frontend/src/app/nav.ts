@@ -99,39 +99,8 @@ const SECONDARY_PERMS = ["shipment_request", "shipment_approval", "dispatch", "c
 
 export const WORKSPACES: WorkspaceDef[] = [
   // ============================ OPERATIONS ============================
-  // 1) Primary Sales — Meril India → Subsidiary (buying stock in).
-  {
-    id: "primary-sales-zone",
-    label: "Primary Sales",
-    icon: PlaneLanding,
-    section: "operations",
-    tabs: [
-      {
-        id: "primary-sales",
-        label: "Planning",
-        icon: CalendarRange,
-        signature: "glide",
-        permissions: PRIMARY_PERMS,
-      },
-      {
-        id: "import-validation",
-        label: "Operations",
-        icon: ClipboardCheck,
-        signature: "rise",
-        permissions: PRIMARY_PERMS,
-      },
-      {
-        id: "payables",
-        label: "Finance",
-        icon: HandCoins,
-        signature: "flow",
-        permissions: ["reports_export", "audit", "import_approval", "goods_receipt"],
-      },
-      { id: "documents", label: "Documents", icon: FileUp, signature: "rise", permissions: PRIMARY_PERMS },
-      { id: "goods-tracking", label: "Tracking", icon: RadioTower, signature: "glide" },
-    ],
-  },
-  // Documents — shipment-first upload + validation (warehouse / operations).
+  // Documents — shipment-first upload + validation; sits above the flow
+  // workspaces because every shipment begins as documents.
   {
     id: "documents-zone",
     label: "Documents",
@@ -166,6 +135,37 @@ export const WORKSPACES: WorkspaceDef[] = [
         signature: "stamp",
         permissions: ["shipment_approval", "dispatch_approval", "customer_read"],
       },
+    ],
+  },
+  // 1) Primary Sales — Meril India → Subsidiary (buying stock in).
+  {
+    id: "primary-sales-zone",
+    label: "Primary Sales",
+    icon: PlaneLanding,
+    section: "operations",
+    tabs: [
+      {
+        id: "primary-sales",
+        label: "Planning",
+        icon: CalendarRange,
+        signature: "glide",
+        permissions: PRIMARY_PERMS,
+      },
+      {
+        id: "import-validation",
+        label: "Operations",
+        icon: ClipboardCheck,
+        signature: "rise",
+        permissions: PRIMARY_PERMS,
+      },
+      {
+        id: "payables",
+        label: "Finance",
+        icon: HandCoins,
+        signature: "flow",
+        permissions: ["reports_export", "audit", "import_approval", "goods_receipt"],
+      },
+      { id: "goods-tracking", label: "Tracking", icon: RadioTower, signature: "glide" },
     ],
   },
   // 2) Inventory — the central bridge; Primary fills it, Secondary draws it down.

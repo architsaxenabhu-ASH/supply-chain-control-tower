@@ -14,8 +14,9 @@ import {
 } from "../../lib/api";
 import { useCountry } from "../../context/CountryContext";
 import { FilterBar } from "../../components/FilterBar";
-import { WorldMap } from "../../components/WorldMap";
+import { WorldMap, type MapCity } from "../../components/WorldMap";
 import { DonutChart } from "../../components/DonutChart";
+import { cityCoords, cityFromLabel } from "../../lib/cityGeo";
 
 // Inventory workspace (Phase 5C): stock and risk, not sales.
 // Answers "What do we have?" — available / reserved / allocated units,
@@ -207,6 +208,35 @@ export function InventoryHub() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [batches, vertical, expiryBand, dateFrom, dateTo, query, warehouseCountry, valuation, rev]);
 
+  // City-level inventory nodes — warehouses placed by their city, sized by
+  // value. Real data: warehouse name → city, country from the warehouse master.
+  const cityNodes = useMemo<MapCity[]>(() => {
+    const agg = new Map<string, { country: string; city: string; lon: number; lat: number; value: number; volume: number }>();
+    for (const batch of batches) {
+      if (!matchesExceptCountry(batch)) continue;
+      const country = countryOf(batch.warehouse_location);
+      const cityName = cityFromLabel(batch.warehouse_location);
+      const coords = cityCoords(cityName);
+      if (!country || !coords) continue;
+      const key = batch.warehouse_location.toLowerCase();
+      const node = agg.get(key) ?? { country, city: cityName, lon: coords[0], lat: coords[1], value: 0, volume: 0 };
+      node.value += batchValue(batch);
+      node.volume += batch.quantity_available;
+      agg.set(key, node);
+    }
+    return [...agg.values()].map((n) => ({
+      country: n.country,
+      city: n.city,
+      lon: n.lon,
+      lat: n.lat,
+      value: n.value,
+      valueLabel: money(n.value),
+      volume: `${num(n.volume)} units`,
+      status: "In stock",
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [batches, vertical, expiryBand, dateFrom, dateTo, query, warehouseCountry, valuation, rev]);
+
   const verticalSlices = useMemo(() => {
     const map = new Map<string, number>();
     for (const batch of filtered) {
@@ -375,21 +405,19 @@ export function InventoryHub() {
             </div>
             <span className="cc-panel-meta">{Object.keys(valueByCountry).length}</span>
           </div>
-          {Object.keys(valueByCountry).length === 0 ? (
-            <p className="empty-state">
-              The map lights up when warehouses are linked to countries. Warehouse locations are learned from goods
-              receipts and the warehouse master.
-            </p>
-          ) : (
-            <WorldMap
-              values={valueByCountry}
-              details={valueByCountryVertical}
-              formatValue={money}
-              caption="Inventory value by country — hover for the vertical split, click to focus"
-              activeCountry={countryFilter}
-              onSelect={(name) => setCountryFilter(name === countryFilter ? "" : name)}
-            />
-          )}
+          <WorldMap
+            values={valueByCountry}
+            details={valueByCountryVertical}
+            cities={cityNodes}
+            formatValue={money}
+            caption={
+              Object.keys(valueByCountry).length === 0
+                ? "No stock positioned yet — the map shows zero; it lights up as warehouses are linked to countries"
+                : "Inventory value by country — click a country to zoom in and see warehouse cities; hover for detail"
+            }
+            activeCountry={countryFilter}
+            onSelect={(name) => setCountryFilter(name === countryFilter ? "" : name)}
+          />
         </section>
         <aside className="hub-rail">
           <section className="panel cockpit-panel">

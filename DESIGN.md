@@ -243,9 +243,105 @@ workspace (Operations section, warehouse/ops users) — `workspaces/shipdocs/`:
 The principle: documents belong to shipments — Shipment Management with
 documents attached, not Document Management with shipments attached.
 
-Staged next: shipment timeline + conversation log, country-specific
-mandatory-document checklist enforcement, true supporting-document association,
-and wiring validated secondary shipments into the live sales/receivables data.
+**Validation insights (Phase 6F enhancements)** — shared `ShipmentInsights.tsx`
+used by both Primary and Secondary Validate:
+
+- **Shipment timeline** — a stage strip (Created → Documents uploaded →
+  Validated → Dispatched → In transit → Arrived → Received → Completed) with the
+  current stage derived from the shipment's status, so a validator always sees
+  where a shipment sits in its life. Rejected shipments are flagged distinctly.
+- **Conversation log** — every action on the shipment (uploads, validations,
+  corrections, approvals, rejections) read from the tamper-evident audit trail,
+  filtered to that shipment's id, newest first, with who and when.
+- **Country-specific document checklist** (Primary) — `evaluateImportChecklist`
+  decides extra required documents from country + vertical + material; missing
+  mandatory documents **block validation** for known combinations, while unknown
+  combinations stay informational ("learning") so the user is never hard-locked.
+  Attached supporting documents feed back into the present-document set.
+
+Staged next: true supporting-document association (first-class child records
+rather than session-only), a secondary-side checklist, and wiring validated
+secondary shipments into the live sales/receivables data.
+
+## Reference lookups & always-on movement map (Phase 6H)
+
+Two cross-cutting fixes so the UI conveys state visually and selectors are never
+empty — both backed by data the system has *learned*, nothing hardcoded.
+
+- **Known countries** (`/reference/countries`, `services/reference_repository.py`)
+  unions every country seen in live data (warehouses, customers, shipments,
+  imports, secondary shipments, country document rules, master data, user
+  scopes), minus sentinels like "All". The top-bar country selector
+  (`CountrySelector`) now fills from this: scoped users see their countries,
+  global/Admin users see all — so it is never just "Global view".
+- **Movement by country** (`/reference/movement-by-country`) counts shipments
+  touching each country (outbound + inbound + secondary). Empty = zero.
+- **Maps are always visible, with a zero state.** `components/WorldMap.tsx` is no
+  longer hidden behind empty-state text. The Command Center and Operations
+  Intelligence dashboards gained a movement map; the Primary dashboard, Primary
+  Sales, and Inventory maps now render the world even at zero, with a caption
+  that says the map "shows zero" until movement appears. The map lights and sizes
+  countries by magnitude and never hardcodes the country list (atlas geometry is
+  matched to learned country names).
+
+## Movement visual + simpler document console (Phase 6I)
+
+Driven by the user's direction (see memory `app-simplicity-for-non-scm-users`):
+convey operations *visually*, and make every screen usable by someone with no
+supply-chain background.
+
+- **MovementPanel** (`components/MovementPanel.tsx`, computed by `lib/movement.ts`)
+  — four live metrics per country (active **shipments**, **units**, **weight**,
+  **value**), each split **Primary (inbound) vs Secondary (outbound)**. A metric
+  toggle recolours the map; a **time-range setting** (In motion now / This month
+  / Last 3 / Last 6 / This year / All time) switches between what's moving now
+  and what moved in a period. Value uses the currency engine; everything
+  recomputes from live records (import candidates + shipments + inventory
+  batches) — nothing hardcoded. A country detail table gives the "tracking in
+  detail" view. Shown on the Command Center, Operations Intelligence, and the
+  Goods Tracking tab.
+- **Drag-and-drop upload** — `components/DropZone.tsx` wraps a hidden file input
+  so each document slot accepts a click *or* a dropped file. Used in Primary and
+  Secondary upload wizards.
+- **Simplified validation** — Primary/Secondary Validate now lead with a plain
+  "what to do" line, a one-line readiness verdict ("Looks complete — ready to
+  approve" / "Not ready — add the Packing List"), and just **two** actions:
+  **Approve** and **Send back for fixing** (one optional note replaces the old
+  Reject + Request-correction pair). All technical detail (timeline,
+  completeness, country checklist, documents, extracted data) moves behind a
+  single "See the documents and data" toggle (progressive disclosure).
+
+## Interactive operational map (Phase 6J)
+
+`components/WorldMap.tsx` upgraded from a static choropleth to a drill-down
+**World → Country → City** map, so management can read operations off the map
+without opening screens.
+
+- **Click a country → smooth zoom** (a CSS transform on the country layer, so
+  geometry never re-projects and the motion stays fluid). The selected country
+  gets an accent **glow**; the rest of the world **dims but stays visible** for
+  context. `fitToRegion` now uses the same transform to auto-frame lit countries.
+- **Breadcrumb / back controls** — `World ▸ Country ▸ City`, each segment a
+  button, so context is never lost.
+- **City nodes** — pulsing, activity-sized nodes, **only rendered after a
+  country is zoomed into** (the performance requirement), positioned by a
+  geographic city-coordinate reference (`lib/cityGeo.ts`, atlas-style reference,
+  not business data). Placed in a screen-space overlay so they stay crisp at any
+  zoom and fade in as the zoom settles.
+- **Enhanced tooltip** — Country / City, Value, Volume, Movement, Status; stays
+  while hovering; no native browser tooltip (aria-label only). Selecting a city
+  pins a persistent read-out.
+- **Real city data today:** the **Inventory** map feeds warehouse cities
+  (`InventoryHub` → warehouse name → city via `cityFromLabel`, country from the
+  warehouse master, value/volume per node). Zoom into India → Mumbai + Delhi
+  nodes sized by inventory value. Country-level zoom works on every map
+  (Movement, Primary, Secondary) for free.
+
+Data still to capture before the remaining layers light up: a **city field on
+shipments / imports / customers** (currently only `destination_country`), needed
+for Primary transit routes + ETA animation, Secondary customer-city pins, and
+city-level shipment counts. The framework is ready; it lights up as that data is
+captured.
 
 ## Document Intelligence Center (Phase 6 sprint, P3)
 
