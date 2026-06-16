@@ -1789,6 +1789,9 @@ export type ApiSecondaryShipment = {
   validated_by: string | null;
   validated_at: string | null;
   note: string | null;
+  deleted_by?: string | null;
+  deleted_at?: string | null;
+  delete_reason?: string | null;
 };
 
 export function listSecondaryShipments(): Promise<ApiSecondaryShipment[]> {
@@ -1824,6 +1827,17 @@ export function rejectSecondaryShipment(
 ): Promise<ApiSecondaryShipment> {
   return postJson<ApiSecondaryShipment, typeof payload>(
     `/secondary-documents/shipments/${encodeURIComponent(shipmentId)}/reject`,
+    payload,
+  );
+}
+
+// Soft delete — marks the shipment deleted (with who/when/why); never removed.
+export function deleteSecondaryShipment(
+  shipmentId: string,
+  payload: { actor?: string | null; note?: string | null },
+): Promise<ApiSecondaryShipment> {
+  return postJson<ApiSecondaryShipment, typeof payload>(
+    `/secondary-documents/shipments/${encodeURIComponent(shipmentId)}/delete`,
     payload,
   );
 }

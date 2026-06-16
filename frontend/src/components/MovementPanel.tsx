@@ -101,6 +101,21 @@ export function MovementPanel({ title = "Shipment movement", showDetail = true }
     [result, metric],
   );
 
+  // Persistent side-panel content for the selected country.
+  const sidePanel = useMemo(() => {
+    const out: Record<string, { label: string; value: string }[]> = {};
+    for (const [name, cm] of Object.entries(result.byCountry)) {
+      out[name] = [
+        { label: "Shipments", value: formatUnits(cm.total.shipments) },
+        { label: "Units", value: formatUnits(cm.total.units) },
+        { label: "Value", value: formatDisplay(cm.total.value) },
+        { label: "Inbound", value: formatUnits(cm.primary.shipments) },
+        { label: "Outbound", value: formatUnits(cm.secondary.shipments) },
+      ];
+    }
+    return out;
+  }, [result]);
+
   const isActive = window === "active";
   const countLabel = isActive ? "Active shipments" : "Shipments moved";
   const windowLabel = WINDOWS.find((w) => w.id === window)?.label ?? "";
@@ -176,6 +191,7 @@ export function MovementPanel({ title = "Shipment movement", showDetail = true }
       <WorldMap
         values={values}
         details={details}
+        sidePanel={sidePanel}
         activeCountry={country}
         formatValue={(v) => formatMetric(metric, v)}
         caption={

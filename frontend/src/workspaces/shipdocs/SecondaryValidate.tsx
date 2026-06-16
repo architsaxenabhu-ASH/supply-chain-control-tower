@@ -3,6 +3,7 @@ import { CheckCircle2, FileText, FileUp, ListChecks, Paperclip, ShieldCheck, XCi
 
 import {
   approveSecondaryShipment,
+  deleteSecondaryShipment,
   listSecondaryShipments,
   rejectSecondaryShipment,
   uploadDocument,
@@ -37,7 +38,9 @@ export function SecondaryValidate({ currentUser }: { currentUser: ApiAuthenticat
   const [message, setMessage] = useState<{ tone: "good" | "bad"; text: string } | null>(null);
   const [supporting, setSupporting] = useState<string[]>([]);
   const [sendingBack, setSendingBack] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [note, setNote] = useState("");
+  const isAdmin = currentUser.role_name === "Admin";
 
   function load() {
     setLoading(true);
@@ -110,6 +113,24 @@ export function SecondaryValidate({ currentUser }: { currentUser: ApiAuthenticat
       load();
     } catch (error) {
       setMessage({ tone: "bad", text: error instanceof Error ? error.message : "Could not send the shipment back." });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!selected) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      await deleteSecondaryShipment(selected.shipment_id, { actor: currentUser.email, note: note.trim() || "Deleted" });
+      setMessage({ tone: "bad", text: `${selected.shipment_id} deleted. It is kept in the audit trail (deleted by ${currentUser.email}) and stays out of all business data.` });
+      setDeleting(false);
+      setNote("");
+      setSelectedId(null);
+      load();
+    } catch (error) {
+      setMessage({ tone: "bad", text: error instanceof Error ? error.message : "Could not delete the shipment." });
     } finally {
       setBusy(false);
     }
@@ -213,8 +234,20 @@ export function SecondaryValidate({ currentUser }: { currentUser: ApiAuthenticat
               </div>
             )}
 
-            {/* Two simple actions */}
-            {!sendingBack ? (
+            {/* Two simple actions (+ soft delete for admin / the uploader) */}
+            {deleting ? (
+              <div className="validate-sendback">
+                <label className="field-control">
+                  <span>Reason for deleting (kept in the audit trail)</span>
+                  <textarea rows={2} value={note} onChange={(event) => setNote(event.target.value)} placeholder="e.g. Duplicate upload" />
+                </label>
+                <div className="validate-decide">
+                  <button type="button" className="validate-delete" disabled={busy} onClick={() => void handleDelete()}>Delete shipment</button>
+                  <button type="button" className="secondary-action" disabled={busy} onClick={() => { setDeleting(false); setNote(""); }}>Cancel</button>
+                </div>
+                <p className="access-note"><small>Soft delete — the record and its history are never removed, only marked deleted.</small></p>
+              </div>
+            ) : !sendingBack ? (
               <div className="validate-decide">
                 <button type="button" className="validate-approve" disabled={busy || !canApprove} onClick={() => void handleApprove()}>
                   <CheckCircle2 size={18} aria-hidden="true" /> Approve
@@ -222,6 +255,9 @@ export function SecondaryValidate({ currentUser }: { currentUser: ApiAuthenticat
                 <button type="button" className="validate-back" disabled={busy} onClick={() => setSendingBack(true)}>
                   Send back for fixing
                 </button>
+                {isAdmin || selected.uploaded_by === currentUser.email ? (
+                  <button type="button" className="validate-delete-link" disabled={busy} onClick={() => { setDeleting(true); setNote(""); }}>Delete</button>
+                ) : null}
               </div>
             ) : (
               <div className="validate-sendback">

@@ -109,9 +109,14 @@ export type WorldMapProps = {
   details?: Record<string, MapDetailRow[]>;
   /** City-level nodes; only rendered once a country is zoomed into (performance). */
   cities?: MapCity[];
+  /** Persistent side-panel rows per country, shown when a country is selected. */
+  sidePanel?: Record<string, { label: string; value: string; tone?: "good" | "bad" | "warn" }[]>;
   /** Auto-frame to the lit countries when nothing is clicked. */
   fitToRegion?: boolean;
 };
+
+const VIEW_CX = WIDTH / 2;
+const VIEW_CY = HEIGHT / 2;
 
 type Hover =
   | { kind: "country"; title: string; total: string; rows: { label: string; value: string }[]; x: number; y: number }
@@ -126,12 +131,14 @@ export function WorldMap({
   onSelect,
   details,
   cities,
+  sidePanel,
   fitToRegion,
 }: WorldMapProps) {
   const figureRef = useRef<HTMLElement | null>(null);
   const [hover, setHover] = useState<Hover>(null);
   const [zoomed, setZoomed] = useState<string | null>(null);
   const [selectedCity, setSelectedCity] = useState<MapCity | null>(null);
+  const [userZoom, setUserZoom] = useState(1);
 
   const { byShape, max, detailByShape } = useMemo(() => {
     const map = new Map<string, { original: string; value: number }>();
@@ -201,6 +208,7 @@ export function WorldMap({
     setZoomed(shape.name);
     setSelectedCity(null);
     setHover(null);
+    setUserZoom(1);
     if (slot && onSelect) onSelect(slot.original);
   }
 
@@ -208,13 +216,24 @@ export function WorldMap({
     setZoomed(null);
     setSelectedCity(null);
     setHover(null);
+    setUserZoom(1);
   }
 
+  // Manual zoom is layered on top of the fit-to-focus transform, scaling around
+  // the viewport centre so the controls always behave the same anywhere on the
+  // map (no dead zones near the edges).
   const transformStyle = {
-    transform: `translate(${t.x}px, ${t.y}px) scale(${t.k})`,
+    transform: `translate(${VIEW_CX}px, ${VIEW_CY}px) scale(${userZoom}) translate(${-VIEW_CX}px, ${-VIEW_CY}px) translate(${t.x}px, ${t.y}px) scale(${t.k})`,
     transformOrigin: "0px 0px",
-    transition: "transform 0.7s cubic-bezier(0.22, 1, 0.36, 1)",
+    transition: "transform 0.5s cubic-bezier(0.22, 1, 0.36, 1)",
   } as const;
+
+  const panelRows = useMemo(() => {
+    if (!zoomed || !sidePanel) return null;
+    const z = normalise(zoomed);
+    for (const [name, rows] of Object.entries(sidePanel)) if (normalise(name) === z) return rows;
+    return null;
+  }, [zoomed, sidePanel]);
 
   return (
     <figure className="world-map-figure" ref={figureRef} onMouseLeave={() => setHover(null)}>
@@ -276,8 +295,10 @@ export function WorldMap({
             {cityList.map((c) => {
               const p = WORLD_PROJECTION([c.lon, c.lat]);
               if (!p) return null;
-              const sx = t.k * p[0] + t.x;
-              const sy = t.k * p[1] + t.y;
+              const bx = t.k * p[0] + t.x;
+              const by = t.k * p[1] + t.y;
+              const sx = VIEW_CX + userZoom * (bx - VIEW_CX);
+              const sy = VIEW_CY + userZoom * (by - VIEW_CY);
               const r = 4 + 9 * Math.sqrt((c.value || 0) / maxCity);
               const isSel = selectedCity?.city === c.city;
               return (
@@ -299,6 +320,28 @@ export function WorldMap({
           </g>
         ) : null}
       </svg>
+
+      {/* Always-visible zoom controls — an HTML overlay, never clipped by the map */}
+      <div className="map-zoom-controls" role="group" aria-label="Zoom controls">
+        <button type="button" onClick={() => setUserZoom((z) => Math.min(z * 1.4, 6))} aria-label="Zoom in">+</button>
+        <button type="button" onClick={() => setUserZoom((z) => Math.max(z / 1.4, 0.6))} aria-label="Zoom out">−</button>
+        <button type="button" onClick={backToWorld} aria-label="Reset view" title="Reset to world view">⤾</button>
+      </div>
+
+      {/* Persistent side panel — the selected country's numbers, not just a tooltip */}
+      {panelRows ? (
+        <aside className="map-side-panel">
+          <h4>{zoomed}</h4>
+          <ul>
+            {panelRows.map((row) => (
+              <li key={row.label} className={row.tone ? `tone-${row.tone}` : ""}>
+                <span>{row.label}</span>
+                <strong>{row.value}</strong>
+              </li>
+            ))}
+          </ul>
+        </aside>
+      ) : null}
 
       {/* Enhanced tooltip — stays while hovering; no native browser tooltip */}
       {hover ? (

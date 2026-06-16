@@ -7,6 +7,7 @@ from app.schemas.secondary_documents import (
 )
 from app.services.secondary_documents_repository import (
     approve_secondary_shipment,
+    delete_secondary_shipment,
     list_secondary_shipments,
     reject_secondary_shipment,
     save_secondary_shipment,
@@ -40,5 +41,13 @@ def approve(shipment_id: str, request: DecideSecondaryShipmentRequest) -> Second
 def reject(shipment_id: str, request: DecideSecondaryShipmentRequest) -> SecondaryShipment:
     try:
         return reject_secondary_shipment(shipment_id, request)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/shipments/{shipment_id}/delete", response_model=SecondaryShipment)
+def soft_delete(shipment_id: str, request: DecideSecondaryShipmentRequest) -> SecondaryShipment:
+    try:
+        return delete_secondary_shipment(shipment_id, request)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

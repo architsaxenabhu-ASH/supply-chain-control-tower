@@ -26,13 +26,17 @@ class SecondaryShipment(BaseModel):
     country: str
     order_number: str
     shipment_type: str = "standard"
-    status: str = "pending_validation"  # pending_validation | validated | rejected
+    status: str = "pending_validation"  # pending_validation | validated | rejected | deleted
     documents: list[SecondaryDocument] = Field(default_factory=list)
     uploaded_by: str | None = None
     uploaded_at: str
     validated_by: str | None = None
     validated_at: str | None = None
     note: str | None = None
+    # Soft delete — the record is never removed, only marked, for the audit trail.
+    deleted_by: str | None = None
+    deleted_at: str | None = None
+    delete_reason: str | None = None
 
 
 class SaveSecondaryShipmentRequest(BaseModel):

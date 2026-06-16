@@ -11,6 +11,8 @@ import {
   type ApiImportFileCandidate,
 } from "../../lib/api";
 import { ConversationLog, ShipmentTimeline } from "./ShipmentInsights";
+import { computeShipmentAnalytics } from "../../lib/shipmentAnalytics";
+import { formatDisplay, formatUnits } from "../../lib/currency";
 
 // Primary Documents → Validate (Phase 6F). Shipment-first validation. The
 // validator sees the shipment, its documents, and the extracted data side by
@@ -147,6 +149,7 @@ export function PrimaryValidate({ currentUser }: { currentUser: ApiAuthenticated
     : checklistBlocking
       ? `${selected?.destination_country ?? "this country"} needs more documents — open “See the documents and data” below`
       : "";
+  const analytics = selected ? computeShipmentAnalytics(selected) : null;
 
   async function handleApprove() {
     if (!selected) return;
@@ -290,6 +293,20 @@ export function PrimaryValidate({ currentUser }: { currentUser: ApiAuthenticated
                 <span>Not ready yet — {blockReason}.</span>
               </div>
             )}
+
+            {/* Shipment at a glance — computed from the documents (B3 intelligence) */}
+            {analytics ? (
+              <div className="ship-analytics">
+                <div className="ship-analytics-cell"><span>Total value</span><strong>{formatDisplay(analytics.totalValue)}</strong></div>
+                <div className="ship-analytics-cell"><span>Quantity</span><strong>{formatUnits(analytics.totalQuantity)}</strong></div>
+                <div className="ship-analytics-cell"><span>SKUs</span><strong>{analytics.totalSkus}</strong></div>
+                <div className="ship-analytics-cell"><span>Batches</span><strong>{analytics.totalBatches}</strong></div>
+                <div className="ship-analytics-cell"><span>Gross weight</span><strong>{analytics.grossWeightKg ? `${formatUnits(analytics.grossWeightKg)} kg` : "—"}</strong></div>
+                <div className="ship-analytics-cell"><span>Boxes</span><strong>{analytics.boxCount || "—"}</strong></div>
+                <div className="ship-analytics-cell"><span>Earliest expiry</span><strong>{analytics.earliestExpiry ?? "—"}</strong></div>
+                <div className="ship-analytics-cell"><span>Latest expiry</span><strong>{analytics.latestExpiry ?? "—"}</strong></div>
+              </div>
+            ) : null}
 
             {/* Two simple actions */}
             {!sendingBack ? (

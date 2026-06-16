@@ -330,7 +330,7 @@ export function PrimarySalesDashboard({ onNavigate }: DashboardNav) {
           { icon: PlaneLanding, label: "Open shipments", hint: "see what is inbound", view: "primary-sales", count: inbound },
           { icon: RadioTower, label: "Chase delays", hint: "shipments past ETA", view: "goods-tracking", count: delays, tone: "bad" },
           { icon: ClipboardCheck, label: "Record update", hint: "assemble & post a shipment", view: "import-validation" },
-          { icon: FileUp, label: "Documents", hint: "upload CI / PL / AWB", view: "doc-primary-upload" },
+          { icon: FileUp, label: "Documents", hint: "upload CI / PL / AWB", view: "upload-center" },
         ]}
       />
       <div className="hub-columns">

@@ -27,6 +27,8 @@ import { PlanningDashboard } from "../workspaces/planning/PlanningDashboard";
 import { BusinessSnapshot } from "../workspaces/planning/BusinessSnapshot";
 import { OperationsIntelligence } from "../workspaces/intelligence/OperationsIntelligence";
 import { DocumentIntelligence } from "../workspaces/documents/DocumentIntelligence";
+import { UploadCenter } from "../workspaces/shipdocs/UploadCenter";
+import { ValidationCenter } from "../workspaces/shipdocs/ValidationCenter";
 import { PrimaryUpload } from "../workspaces/shipdocs/PrimaryUpload";
 import { PrimaryValidate } from "../workspaces/shipdocs/PrimaryValidate";
 import { SecondaryUpload } from "../workspaces/shipdocs/SecondaryUpload";
@@ -2393,6 +2395,8 @@ export function App() {
         {activeView === "doc-intelligence" ? (
           <DocumentIntelligence onNavigate={setActiveView} currentUser={currentUser} />
         ) : null}
+        {activeView === "upload-center" ? <UploadCenter currentUser={currentUser} /> : null}
+        {activeView === "validation-center" ? <ValidationCenter onNavigate={setActiveView} /> : null}
         {activeView === "doc-primary-upload" ? <PrimaryUpload currentUser={currentUser} /> : null}
         {activeView === "doc-primary-validate" ? <PrimaryValidate currentUser={currentUser} /> : null}
         {activeView === "doc-secondary-upload" ? <SecondaryUpload currentUser={currentUser} /> : null}
@@ -3257,7 +3261,7 @@ function GoodsTrackingView({
   }
   const missingDocs = openImports.filter((candidate) => !candidate.invoice_number || candidate.packing_list_document_ids.length === 0).length;
   if (missingDocs > 0) {
-    risks.push({ severity: "warn", message: `${missingDocs} open shipment(s) missing invoice or packing list`, action: "Open Documents", view: "doc-primary-upload" });
+    risks.push({ severity: "warn", message: `${missingDocs} open shipment(s) missing invoice or packing list`, action: "Open Upload Center", view: "upload-center" });
   }
   if (expiryRisk > 0) {
     risks.push({ severity: "danger", message: `${expiryRisk} inventory batch(es) expiring within 90 days`, action: "Review expiry", view: "expiry" });
@@ -3924,7 +3928,7 @@ function PlatformProgressView({
             <SummaryItem label="Planned modules" value={String(stats.planned)} />
           </div>
           <div className="form-action-row">
-            <button className="primary-action" onClick={() => onNavigate("doc-primary-upload")}>
+            <button className="primary-action" onClick={() => onNavigate("upload-center")}>
               <FileUp size={17} aria-hidden="true" />
               Start document flow
             </button>

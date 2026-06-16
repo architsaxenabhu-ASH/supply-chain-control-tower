@@ -23,8 +23,11 @@ def _save(records: list[SecondaryShipment]) -> None:
     save_collection("secondary_shipments", records, lambda record: record.shipment_id)
 
 
-def list_secondary_shipments() -> list[SecondaryShipment]:
-    return sorted(_load(), key=lambda record: record.uploaded_at, reverse=True)
+def list_secondary_shipments(include_deleted: bool = False) -> list[SecondaryShipment]:
+    records = _load()
+    if not include_deleted:
+        records = [record for record in records if record.status != "deleted"]
+    return sorted(records, key=lambda record: record.uploaded_at, reverse=True)
 
 
 def get_secondary_shipment(shipment_id: str) -> SecondaryShipment | None:
@@ -111,3 +114,34 @@ def approve_secondary_shipment(shipment_id: str, request: DecideSecondaryShipmen
 
 def reject_secondary_shipment(shipment_id: str, request: DecideSecondaryShipmentRequest) -> SecondaryShipment:
     return _decide(shipment_id, request, "rejected", "secondary_shipment_rejected")
+
+
+def delete_secondary_shipment(shipment_id: str, request: DecideSecondaryShipmentRequest) -> SecondaryShipment:
+    """Soft delete — the bundle is marked deleted (with who/when/why) but is never
+    removed, so the audit trail stays intact."""
+    records = _load()
+    existing = next((record for record in records if record.shipment_id == shipment_id), None)
+    if existing is None:
+        raise ValueError(f"Secondary shipment not found: {shipment_id}")
+    if existing.status == "deleted":
+        raise ValueError("This shipment is already deleted.")
+    updated = existing.model_copy(
+        update={
+            "status": "deleted",
+            "deleted_by": request.actor,
+            "deleted_at": datetime.now(UTC).isoformat(),
+            "delete_reason": request.note,
+        }
+    )
+    _save([updated, *[record for record in records if record.shipment_id != shipment_id]])
+    record_audit_event(
+        action="secondary_shipment_deleted",
+        module_name="secondary_documents",
+        entity_name="secondary_shipment",
+        entity_id=shipment_id,
+        actor=request.actor,
+        reason=request.note,
+        old_value={"status": existing.status},
+        new_value={"status": "deleted"},
+    )
+    return updated
