@@ -31,7 +31,12 @@ ROLE_DEFINITIONS = [
     RoleDefinition(
         role_name="Admin",
         description="System setup and full control",
-        permissions=["masters", "security", "imports", "inventory", "shipments", "audit"],
+        permissions=["masters", "security", "imports", "inventory", "shipments", "audit", "executive_view"],
+    ),
+    RoleDefinition(
+        role_name="Executive",
+        description="Board / CEO / Managing Director / General Manager — live observation only",
+        permissions=["executive_view"],
     ),
     RoleDefinition(
         role_name="Country Incharge",

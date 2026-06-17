@@ -61,9 +61,10 @@ import type { Signature } from "../motion/motion";
 // A small Manage group holds cross-cutting admin (queues, approvals,
 // decisions, access, setup).
 
-export type SectionId = "operations" | "dashboards" | "manage";
+export type SectionId = "executive" | "operations" | "dashboards" | "manage";
 
 export const SECTIONS: { id: SectionId; label: string }[] = [
+  { id: "executive", label: "Live Center" },
   { id: "operations", label: "Operations" },
   { id: "dashboards", label: "Dashboards" },
   { id: "manage", label: "Manage" },
@@ -98,6 +99,21 @@ const INVENTORY_PERMS = ["goods_receipt", "inventory_approval", "inventory_value
 const SECONDARY_PERMS = ["shipment_request", "shipment_approval", "dispatch", "customer_read"];
 
 export const WORKSPACES: WorkspaceDef[] = [
+  // =========================== LIVE CENTER ===========================
+  // Executive Live Operations Center (Phase 7A) — observe-only, leadership.
+  // Three live maps answering: what's entering, what we hold, what's leaving.
+  // Gated by `executive_view` (Board / CEO / MD / GM; Admin sees all).
+  {
+    id: "exec-live",
+    label: "Live Center",
+    icon: RadioTower,
+    section: "executive",
+    tabs: [
+      { id: "exec-primary", label: "Primary Sales", icon: PlaneLanding, signature: "glide", permissions: ["executive_view"] },
+      { id: "exec-inventory", label: "Inventory", icon: Warehouse, signature: "rise", permissions: ["executive_view"] },
+      { id: "exec-secondary", label: "Secondary Sales", icon: Send, signature: "flow", permissions: ["executive_view"] },
+    ],
+  },
   // ============================ OPERATIONS ============================
   // Documents — shipment-first upload + validation; sits above the flow
   // workspaces because every shipment begins as documents.

@@ -6,6 +6,7 @@ import type { GeometryCollection, Topology } from "topojson-specification";
 import worldTopo from "world-atlas/countries-110m.json";
 
 import { cityCoords } from "../lib/cityGeo";
+import { prefersReducedMotion } from "../motion/motion";
 
 // An interactive operational map (Phase 6J). World → Country → City drill-down:
 // click a country to smoothly zoom in (the rest of the world dims but stays for
@@ -70,6 +71,10 @@ function normalise(name: string): string {
 const FEATURE_BY_NAME = new Map<string, NamedFeature>();
 for (const shape of WORLD_SHAPES) FEATURE_BY_NAME.set(normalise(shape.name), shape.feature);
 
+// Projected country centroids — used to draw animated routes between countries.
+const CENTROID_BY_NAME = new Map<string, [number, number]>();
+for (const shape of WORLD_SHAPES) CENTROID_BY_NAME.set(normalise(shape.name), [shape.cx, shape.cy]);
+
 type Transform = { x: number; y: number; k: number };
 
 function transformForFeatures(features: NamedFeature[]): Transform {
@@ -82,6 +87,10 @@ function transformForFeatures(features: NamedFeature[]): Transform {
 }
 
 export type MapDetailRow = { label: string; value: number };
+
+// An animated route between two countries — drawn only at world level, and only
+// when there is real in-motion activity to represent.
+export type MapRoute = { from: string; to: string; intensity?: number; mode?: "air" | "sea" };
 
 // A city receiving activity, placed by its geographic coordinates.
 export type MapCity = {
@@ -107,6 +116,10 @@ export type WorldMapProps = {
   onSelect?: (country: string) => void;
   /** Per-country breakdown shown in the hover tooltip, keyed like `values`. */
   details?: Record<string, MapDetailRow[]>;
+  /** Pre-formatted hover rows per country; takes precedence over `details`. */
+  tooltips?: Record<string, { label: string; value: string }[]>;
+  /** Animated routes between countries; only drawn at world level (performance). */
+  routes?: MapRoute[];
   /** City-level nodes; only rendered once a country is zoomed into (performance). */
   cities?: MapCity[];
   /** Persistent side-panel rows per country, shown when a country is selected. */
@@ -130,19 +143,23 @@ export function WorldMap({
   activeCountry,
   onSelect,
   details,
+  tooltips,
+  routes,
   cities,
   sidePanel,
   fitToRegion,
 }: WorldMapProps) {
+  const reduced = prefersReducedMotion();
   const figureRef = useRef<HTMLElement | null>(null);
   const [hover, setHover] = useState<Hover>(null);
   const [zoomed, setZoomed] = useState<string | null>(null);
   const [selectedCity, setSelectedCity] = useState<MapCity | null>(null);
   const [userZoom, setUserZoom] = useState(1);
 
-  const { byShape, max, detailByShape } = useMemo(() => {
+  const { byShape, max, detailByShape, tooltipByShape } = useMemo(() => {
     const map = new Map<string, { original: string; value: number }>();
     const det = new Map<string, MapDetailRow[]>();
+    const tip = new Map<string, { label: string; value: string }[]>();
     let top = 0;
     for (const [original, value] of Object.entries(values)) {
       if (!original || !Number.isFinite(value) || value <= 0) continue;
@@ -154,8 +171,34 @@ export function WorldMap({
     for (const [original, rows] of Object.entries(details ?? {})) {
       det.set(normalise(original), rows);
     }
-    return { byShape: map, max: top, detailByShape: det };
-  }, [values, details]);
+    for (const [original, rows] of Object.entries(tooltips ?? {})) {
+      tip.set(normalise(original), rows);
+    }
+    return { byShape: map, max: top, detailByShape: det, tooltipByShape: tip };
+  }, [values, details, tooltips]);
+
+  // Resolve route name-pairs to projected arc paths; world level only.
+  const resolvedRoutes = useMemo(() => {
+    if (!routes || routes.length === 0) return [];
+    const out: { d: string; mode: "air" | "sea"; dur: number }[] = [];
+    for (const r of routes) {
+      const a = CENTROID_BY_NAME.get(normalise(r.from));
+      const b = CENTROID_BY_NAME.get(normalise(r.to));
+      if (!a || !b) continue;
+      const [x0, y0] = a;
+      const [x1, y1] = b;
+      const dist = Math.hypot(x1 - x0, y1 - y0);
+      if (dist < 2) continue;
+      const cx = (x0 + x1) / 2;
+      const cy = (y0 + y1) / 2 - dist * 0.3;
+      out.push({
+        d: `M ${x0} ${y0} Q ${cx} ${cy} ${x1} ${y1}`,
+        mode: r.mode ?? "air",
+        dur: Math.max(3.5, 8 - (r.intensity ?? 1)),
+      });
+    }
+    return out;
+  }, [routes]);
 
   // What the map is focused on: a clicked country, else the lit region, else
   // the whole world. The focus drives a smooth transform-zoom.
@@ -191,7 +234,11 @@ export function WorldMap({
   }
 
   function hoverCountry(event: React.MouseEvent, shape: CountryShape, slot: { value: number }) {
-    const rows = (detailByShape.get(normalise(shape.name)) ?? []).map((r) => ({ label: r.label, value: fmt(r.value) }));
+    const key = normalise(shape.name);
+    const preformatted = tooltipByShape.get(key);
+    const rows = preformatted
+      ? preformatted
+      : (detailByShape.get(key) ?? []).map((r) => ({ label: r.label, value: fmt(r.value) }));
     setHover({ kind: "country", title: shape.name, total: fmt(slot.value), rows, ...pointer(event) });
   }
 
@@ -278,6 +325,30 @@ export function WorldMap({
               />
             );
           })}
+          {/* Animated shipment routes — world level only; movement = real activity */}
+          {!zoomed && resolvedRoutes.length > 0 ? (
+            <g className="map-route-layer" aria-hidden="true">
+              {resolvedRoutes.map((r, i) => (
+                <g key={`route-${i}`} className={`map-route mode-${r.mode}`}>
+                  <path
+                    id={`exec-route-${i}`}
+                    className="map-route-path"
+                    d={r.d}
+                    fill="none"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                  {!reduced ? (
+                    <circle className="map-route-mover" r={2.6}>
+                      <animateMotion dur={`${r.dur}s`} repeatCount="indefinite" rotate="auto">
+                        <mpath href={`#exec-route-${i}`} />
+                      </animateMotion>
+                    </circle>
+                  ) : null}
+                </g>
+              ))}
+            </g>
+          ) : null}
+
           {/* Country activity dots — only at world level */}
           {!zoomed
             ? WORLD_SHAPES.filter((shape) => byShape.has(normalise(shape.name))).map((shape) => (

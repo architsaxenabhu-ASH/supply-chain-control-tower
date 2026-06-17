@@ -34,6 +34,7 @@ import { PrimaryValidate } from "../workspaces/shipdocs/PrimaryValidate";
 import { SecondaryUpload } from "../workspaces/shipdocs/SecondaryUpload";
 import { SecondaryValidate } from "../workspaces/shipdocs/SecondaryValidate";
 import { MovementPanel } from "../components/MovementPanel";
+import { ExecutiveLiveCenter } from "../workspaces/executive/ExecutiveLiveCenter";
 import { CountryProvider, CountrySelector } from "../context/CountryContext";
 import { CurrencyProvider, CurrencyRatesPanel, CurrencySelector } from "../context/CurrencyContext";
 import { formatMoney, getCurrencyRevision, subscribeCurrency } from "../lib/currency";
@@ -2371,6 +2372,9 @@ export function App() {
           animate="animate"
           exit="exit"
         >
+        {activeView === "exec-primary" ? <ExecutiveLiveCenter lane="primary" /> : null}
+        {activeView === "exec-inventory" ? <ExecutiveLiveCenter lane="inventory" /> : null}
+        {activeView === "exec-secondary" ? <ExecutiveLiveCenter lane="secondary" /> : null}
         {activeView === "command-center" ? (
           <CommandCenter currentUser={currentUser} onNavigate={setActiveView} />
         ) : null}
