@@ -4,7 +4,33 @@
 // rate (published ~16:00 CET) or a manual, audited override.
 
 export const BASE_CURRENCY = "INR";
-export const PINNED_CURRENCIES = ["EUR", "USD", BASE_CURRENCY];
+export const PINNED_CURRENCIES = ["EUR", "USD", "GBP", "AED", BASE_CURRENCY];
+
+// Built-in reference rates (1 INR = X currency), used ONLY as a fallback when no
+// live/ECB rate table has loaded yet (offline, or the rate service is
+// unreachable). Live rates always take precedence once cached. These keep the
+// currency switcher working everywhere — figures genuinely re-denominate instead
+// of silently staying in the base currency. Approximate, mid-2026 levels.
+const FALLBACK_RATES: Record<string, number> = {
+  INR: 1,
+  EUR: 0.0111, // ≈ ₹90 / €1
+  USD: 0.012, // ≈ ₹83 / $1
+  GBP: 0.0095, // ≈ ₹105 / £1
+  AED: 0.044, // ≈ ₹22.7 / AED 1
+  SAR: 0.045,
+  JPY: 1.78,
+  CNY: 0.087,
+  BRL: 0.06,
+  TRY: 0.39,
+  SGD: 0.016,
+  CHF: 0.0105,
+  CAD: 0.0163,
+  AUD: 0.0182,
+  PLN: 0.0475,
+};
+
+/** Currencies that always work in the switcher, even offline. */
+export const FALLBACK_CURRENCIES = Object.keys(FALLBACK_RATES);
 
 // Country → currency is geography/finance reference data (like the world map
 // shapes), matched dynamically against whatever countries the application has
@@ -159,13 +185,20 @@ export function getDisplayCurrency(): string {
   return displayCurrency;
 }
 
+const FALLBACK_TABLE: RateTable = { base: BASE_CURRENCY, rates: FALLBACK_RATES };
+
 function resolveTable(book: RateBook, date: string): RateTable | null {
   const exact = tables.get(tableKey(book, date));
   if (exact) return exact;
   // Remember the gap so the provider can lock this date's rate, then fall back
-  // to the active reference table so figures still read sensibly meanwhile.
+  // to the active reference table so figures still read sensibly meanwhile, and
+  // finally to the built-in reference rates so conversion always works.
   if (date && date !== activeDate) missingDates.add(tableKey(book, date));
-  return tables.get(tableKey(book, activeDate)) ?? tables.get(tableKey("primary", activeDate)) ?? null;
+  return (
+    tables.get(tableKey(book, activeDate)) ??
+    tables.get(tableKey("primary", activeDate)) ??
+    FALLBACK_TABLE
+  );
 }
 
 function rateFor(table: RateTable | null, code: string): number | null {

@@ -18,6 +18,7 @@ import {
 } from "../lib/api";
 import {
   BASE_CURRENCY,
+  FALLBACK_CURRENCIES,
   PINNED_CURRENCIES,
   RATE_BOOKS,
   currencyForCountry,
@@ -158,7 +159,7 @@ export function CurrencyProvider({ activeView, children }: { activeView?: string
   }, []);
 
   const availableCurrencies = useMemo(() => {
-    const codes = new Set<string>(PINNED_CURRENCIES);
+    const codes = new Set<string>([...PINNED_CURRENCIES, ...FALLBACK_CURRENCIES]);
     for (const code of Object.keys(primarySet?.rates ?? {})) codes.add(code);
     for (const code of Object.keys(secondarySet?.rates ?? {})) codes.add(code);
     return [...codes].sort();

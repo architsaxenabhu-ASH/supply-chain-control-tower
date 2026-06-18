@@ -45,29 +45,31 @@ import {
 import type { ApiAuthenticatedUser } from "../lib/api";
 import type { Signature } from "../motion/motion";
 
-// Workspace navigation registry (Phase 5H). Single source of truth for the
-// management OS information architecture. Permissions (never role names)
-// drive visibility; Admin bypasses everything. Adding a screen = one tab
-// entry here + its render branch in App.tsx.
+// Workspace navigation registry. Single source of truth for the platform's
+// information architecture. Permissions (never role names) drive visibility;
+// Admin bypasses everything. Adding a screen = one tab entry here + its render
+// branch in App.tsx.
 //
-// The IA mirrors the real subsidiary operating model:
+// Phase 7B — the platform is organised around how users THINK, not by module or
+// department. There are exactly four top-level tabs, each answering one
+// question:
 //
-//     Primary Sales  →  Inventory  →  Secondary Sales
-//   (buy stock in)     (the bridge)   (sell stock out)
+//   Overview    — "What is happening?"            (live observation, leadership)
+//   Management  — "Why is it happening?"          (analysis & intelligence)
+//   Operations  — "What work needs to be done?"   (execute business processes)
+//   My Work     — "What do I personally need to do?" (personal, email-driven)
 //
-// Two top-level sections frame everything:
-//   Operations — the three flow workspaces, each with role-shaped sub-tabs.
-//   Dashboards — five summaries that roll those operations up.
-// A small Manage group holds cross-cutting admin (queues, approvals,
-// decisions, access, setup).
+// Every existing workspace lives under exactly one of these four. Within a tab,
+// workspaces may carry an optional `group` label (e.g. Governance) to cluster
+// related screens.
 
-export type SectionId = "executive" | "operations" | "dashboards" | "manage";
+export type SectionId = "overview" | "management" | "operations" | "mywork";
 
-export const SECTIONS: { id: SectionId; label: string }[] = [
-  { id: "executive", label: "Live Center" },
-  { id: "operations", label: "Operations" },
-  { id: "dashboards", label: "Dashboards" },
-  { id: "manage", label: "Manage" },
+export const SECTIONS: { id: SectionId; label: string; icon: NavIcon; question: string }[] = [
+  { id: "overview", label: "Overview", icon: RadioTower, question: "What is happening?" },
+  { id: "management", label: "Management", icon: LineChart, question: "Why is it happening?" },
+  { id: "operations", label: "Operations", icon: Boxes, question: "What work needs to be done?" },
+  { id: "mywork", label: "My Work", icon: Inbox, question: "What do I personally need to do?" },
 ];
 
 export type NavIcon = ComponentType<{
@@ -90,6 +92,8 @@ export type WorkspaceDef = {
   label: string;
   icon: NavIcon;
   section: SectionId;
+  /** Optional sub-cluster within a tab, e.g. "Governance" inside Operations. */
+  group?: string;
   tabs: TabDef[];
 };
 
@@ -99,19 +103,19 @@ const INVENTORY_PERMS = ["goods_receipt", "inventory_approval", "inventory_value
 const SECONDARY_PERMS = ["shipment_request", "shipment_approval", "dispatch", "customer_read"];
 
 export const WORKSPACES: WorkspaceDef[] = [
-  // =========================== LIVE CENTER ===========================
-  // Executive Live Operations Center (Phase 7A) — observe-only, leadership.
-  // Three live maps answering: what's entering, what we hold, what's leaving.
-  // Gated by `executive_view` (Board / CEO / MD / GM; Admin sees all).
+  // ============================= OVERVIEW =============================
+  // "What is happening?" — Executive Live Operations Center (Phase 7A),
+  // observe-only, for leadership. Three live maps answering: what's entering,
+  // what we hold, what's leaving. Gated by `executive_view` (Board / CEO / MD /
+  // GM; Admin sees all).
   {
     id: "exec-live",
     label: "Live Center",
     icon: RadioTower,
-    section: "executive",
+    section: "overview",
     tabs: [
-      { id: "exec-primary", label: "Primary Sales", icon: PlaneLanding, signature: "glide", permissions: ["executive_view"] },
-      { id: "exec-inventory", label: "Inventory", icon: Warehouse, signature: "rise", permissions: ["executive_view"] },
-      { id: "exec-secondary", label: "Secondary Sales", icon: Send, signature: "flow", permissions: ["executive_view"] },
+      // One page; Primary / Inventory / Secondary are MODES switched inside it.
+      { id: "exec-overview", label: "Live Center", icon: RadioTower, signature: "glide", permissions: ["executive_view"] },
     ],
   },
   // ============================ OPERATIONS ============================
@@ -266,19 +270,22 @@ export const WORKSPACES: WorkspaceDef[] = [
       },
     ],
   },
-  // ============================ DASHBOARDS ============================
+  // ============================ MANAGEMENT ============================
+  // "Why is it happening?" — analysis & intelligence. (Phase 7B will reshape
+  // these fixed dashboards into a chooseable Analysis Marketplace; for now each
+  // is reachable as its own workspace under the Management tab.)
   {
     id: "ops-intel-zone",
     label: "Ops Intelligence",
     icon: Activity,
-    section: "dashboards",
+    section: "management",
     tabs: [{ id: "dash-ops-intel", label: "Operations Intelligence", icon: Activity, signature: "rise" }],
   },
   {
     id: "dash-planning-zone",
     label: "Planning",
     icon: CalendarRange,
-    section: "dashboards",
+    section: "management",
     tabs: [
       { id: "dash-planning", label: "Planning", icon: CalendarRange, signature: "sweep" },
       { id: "dash-snapshot", label: "Time Machine", icon: History, signature: "path" },
@@ -288,28 +295,28 @@ export const WORKSPACES: WorkspaceDef[] = [
     id: "dash-primary-zone",
     label: "Primary Sales",
     icon: PlaneLanding,
-    section: "dashboards",
+    section: "management",
     tabs: [{ id: "dash-primary", label: "Primary Sales", icon: PlaneLanding, signature: "glide" }],
   },
   {
     id: "dash-inventory-zone",
     label: "Inventory",
     icon: Warehouse,
-    section: "dashboards",
+    section: "management",
     tabs: [{ id: "dash-inventory", label: "Inventory", icon: Warehouse, signature: "rise" }],
   },
   {
     id: "dash-secondary-zone",
     label: "Secondary Sales",
     icon: Send,
-    section: "dashboards",
+    section: "management",
     tabs: [{ id: "dash-secondary", label: "Secondary Sales", icon: Send, signature: "flow" }],
   },
   {
     id: "dash-business-zone",
     label: "Business",
     icon: Globe2,
-    section: "dashboards",
+    section: "management",
     tabs: [
       { id: "dash-business", label: "Business", icon: Globe2, signature: "network" },
       { id: "command-center", label: "Command Center", icon: Gauge, signature: "rise" },
@@ -320,22 +327,27 @@ export const WORKSPACES: WorkspaceDef[] = [
     id: "dash-finance-zone",
     label: "Finance",
     icon: Wallet,
-    section: "dashboards",
+    section: "management",
     tabs: [{ id: "dash-finance", label: "Finance", icon: Wallet, signature: "flow" }],
   },
-  // ============================== MANAGE ==============================
+  // ============================== MY WORK =============================
+  // "What do I personally need to do?" — personal, email-permission driven.
   {
     id: "mywork",
     label: "My Work",
     icon: Inbox,
-    section: "manage",
+    section: "mywork",
     tabs: [{ id: "my-work", label: "Queues", icon: Inbox, signature: "rise" }],
   },
+  // ===================== OPERATIONS · GOVERNANCE ======================
+  // Admin / App Manager setup that sits inside the Operations tab as a
+  // distinct Governance cluster (gated by masters / security / audit perms).
   {
     id: "doc-intel-zone",
     label: "Document Intelligence",
     icon: ScanText,
-    section: "manage",
+    section: "operations",
+    group: "Governance",
     tabs: [
       {
         id: "doc-intelligence",
@@ -350,7 +362,7 @@ export const WORKSPACES: WorkspaceDef[] = [
     id: "approvals",
     label: "Approvals",
     icon: Stamp,
-    section: "manage",
+    section: "mywork",
     tabs: [
       {
         id: "approvals",
@@ -371,7 +383,7 @@ export const WORKSPACES: WorkspaceDef[] = [
     id: "decisions",
     label: "Decisions",
     icon: Compass,
-    section: "manage",
+    section: "management",
     tabs: [
       { id: "decision-center", label: "Decision Center", icon: Compass, signature: "path" },
       { id: "learning", label: "Learning", icon: BrainCircuit, signature: "path" },
@@ -382,7 +394,8 @@ export const WORKSPACES: WorkspaceDef[] = [
     id: "access",
     label: "Access",
     icon: ShieldCheck,
-    section: "manage",
+    section: "operations",
+    group: "Governance",
     tabs: [
       { id: "security", label: "Users & Roles", icon: ShieldCheck, signature: "fade", permissions: ["security"] },
       { id: "audit", label: "Audit", icon: History, signature: "path", permissions: ["audit"] },
@@ -392,7 +405,8 @@ export const WORKSPACES: WorkspaceDef[] = [
     id: "setup",
     label: "Setup",
     icon: Settings2,
-    section: "manage",
+    section: "operations",
+    group: "Governance",
     tabs: [
       { id: "products", label: "Products", icon: Package, signature: "rise", permissions: ["masters"] },
       {
@@ -450,12 +464,25 @@ export function visibleWorkspaces(user: ApiAuthenticatedUser | null): WorkspaceD
  *  dropping any section the user can't see at all. */
 export function visibleSections(
   user: ApiAuthenticatedUser | null,
-): { id: SectionId; label: string; workspaces: WorkspaceDef[] }[] {
+): { id: SectionId; label: string; icon: NavIcon; question: string; workspaces: WorkspaceDef[] }[] {
   const visible = visibleWorkspaces(user);
   return SECTIONS.map((section) => ({
     ...section,
     workspaces: visible.filter((workspace) => workspace.section === section.id),
   })).filter((section) => section.workspaces.length > 0);
+}
+
+/** The first screen the user can open inside a given primary tab (section).
+ *  Used when a top-level tab is clicked, so it lands on that tab's first
+ *  accessible workspace. Returns null when the tab is empty for this user. */
+export function firstViewOfSection(user: ApiAuthenticatedUser | null, sectionId: SectionId): string | null {
+  const section = visibleSections(user).find((candidate) => candidate.id === sectionId);
+  if (!section) return null;
+  for (const workspace of section.workspaces) {
+    const tabs = visibleTabs(user, workspace);
+    if (tabs.length > 0) return tabs[0].id;
+  }
+  return null;
 }
 
 /** The first screen this user is actually allowed to open — used as a safe

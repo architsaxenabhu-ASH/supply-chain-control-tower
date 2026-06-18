@@ -198,6 +198,121 @@
   background: var(--country-accent);
 }
 
+/* ---- Primary intent tabs (Phase 7B) ----
+   The four top-level questions: Overview / Management / Operations / My Work.
+   Prominent, always visible; selecting one reveals that tab's workspaces in the
+   rail below. A single accent bar slides between the active tab (layoutId). */
+.primary-tabs {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.primary-tab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  min-height: 50px;
+  padding: 8px 12px 8px 14px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: var(--tower-bg-2, #0e151d);
+  color: var(--tower-muted, #93a3b4);
+  cursor: pointer;
+  text-align: left;
+  overflow: hidden;
+  transition: background 0.18s var(--ease-out), color 0.18s var(--ease-out),
+    border-color 0.18s var(--ease-out), transform 0.15s var(--ease-out);
+}
+.primary-tab:hover {
+  color: var(--tower-text, #e6edf3);
+  border-color: var(--tower-border, #28323e);
+  transform: translateX(2px);
+}
+.primary-tab:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--country-accent-soft);
+}
+.primary-tab.active {
+  color: var(--tower-text, #e6edf3);
+  border-color: color-mix(in srgb, var(--country-accent) 55%, transparent);
+  background: var(--country-accent-soft);
+}
+.primary-tab-glow {
+  position: absolute;
+  left: 0;
+  top: 9px;
+  bottom: 9px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--country-accent);
+  z-index: 2;
+}
+.primary-tab-icon {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  border-radius: 9px;
+  background: var(--tower-panel-strong, #1b2530);
+  color: inherit;
+}
+.primary-tab.active .primary-tab-icon {
+  color: var(--country-accent);
+  background: color-mix(in srgb, var(--country-accent) 16%, var(--tower-panel-strong, #1b2530));
+}
+.primary-tab-text {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+.primary-tab-label {
+  font-size: 13.5px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+.primary-tab-q {
+  font-size: 10.5px;
+  color: var(--tower-muted, #93a3b4);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.primary-tab.active .primary-tab-q { color: var(--country-accent); }
+
+/* Sub-cluster header inside a tab (e.g. Governance inside Operations). */
+.ws-group-label {
+  margin: 10px 0 2px 12px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--tower-muted, #93a3b4);
+  opacity: 0.7;
+}
+@media (max-width: 1100px) {
+  .primary-tabs {
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(150px, 1fr);
+    overflow-x: auto;
+    scrollbar-width: none;
+    margin-bottom: 8px;
+  }
+  .primary-tabs::-webkit-scrollbar { display: none; }
+  .primary-tab { min-height: 44px; }
+  .primary-tab-q { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .primary-tab { transition: none; }
+  .primary-tab:hover { transform: none; }
+}
+
 /* ---- Workspace tab strip ---- */
 .ws-tabs {
   display: flex;
@@ -1109,10 +1224,31 @@
 /* ---- World map ---- */
 .world-map-figure { position: relative; margin: 0; display: grid; gap: 10px; }
 /* Always-visible zoom controls + side panel (Phase 6C item A). */
-.map-zoom-controls { position: absolute; bottom: 40px; right: 14px; display: flex; flex-direction: column; gap: 6px; z-index: 6; }
-.map-zoom-controls button { width: 32px; height: 32px; display: grid; place-items: center; border: 1px solid var(--tower-border-strong, #3a4654); border-radius: 9px; background: var(--tower-panel-strong, #1b2530); color: var(--tower-text, #e6edf3); font-size: 17px; font-weight: 700; line-height: 1; cursor: pointer; transition: transform 140ms var(--ease-out, ease), border-color 140ms ease; }
-.map-zoom-controls button:hover { border-color: var(--country-accent); }
-.map-zoom-controls button:active { transform: scale(0.92); }
+.map-zoom-controls {
+  position: absolute; bottom: 16px; right: 16px; z-index: 6;
+  display: flex; flex-direction: column; gap: 0;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--tower-border-strong, #3a4654);
+  background: color-mix(in srgb, var(--tower-panel-strong, #1b2530) 80%, transparent);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+.map-zoom-controls button {
+  width: 36px; height: 36px; display: grid; place-items: center;
+  border: 0; border-bottom: 1px solid var(--tower-border, #28323e);
+  border-radius: 0;
+  background: transparent;
+  color: var(--tower-text, #e6edf3);
+  font-size: 18px; font-weight: 700; line-height: 1; cursor: pointer;
+  transition: background 140ms var(--ease-out, ease), color 140ms ease;
+}
+.map-zoom-controls button:last-child { border-bottom: 0; }
+.map-zoom-controls button:hover { background: var(--country-accent-soft); color: var(--country-accent); }
+.map-zoom-controls button:active { background: color-mix(in srgb, var(--country-accent) 24%, transparent); }
+/* In the Overview the legend + mode title explain the map, so the caption is
+   redundant; hiding it frees the lower corners for the legend and controls. */
+.exec-map-wrap .map-caption { display: none; }
 .map-side-panel { position: absolute; top: 14px; right: 14px; width: 208px; max-height: calc(100% - 28px); overflow: auto; padding: 12px 14px; border: 1px solid var(--country-accent); border-radius: 12px; background: color-mix(in srgb, var(--tower-panel-strong, #1b2530) 92%, transparent); backdrop-filter: blur(7px); z-index: 5; animation: uc-file-in 280ms var(--ease-out, ease); }
 .map-side-panel h4 { margin: 0 0 9px; font-size: 13px; font-weight: 800; color: var(--country-accent); }
 .map-side-panel ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
@@ -1150,6 +1286,8 @@
 /* Hover tooltip with the per-country vertical breakdown (Phase 5K). */
 .map-tooltip {
   position: absolute;
+  left: 0;
+  top: 0;
   z-index: var(--z-sticky, 20);
   min-width: 168px;
   max-width: 240px;
@@ -1161,6 +1299,12 @@
   pointer-events: none;
   display: grid;
   gap: 3px;
+  will-change: transform;
+  animation: map-tooltip-in 120ms var(--ease-out, ease);
+}
+@keyframes map-tooltip-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 .map-tooltip-name { font-size: 13px; font-weight: 700; color: var(--tower-text, #e6edf3); }
 .map-tooltip-total {
@@ -1744,6 +1888,8 @@
 @media (prefers-reduced-motion: reduce) {
   .map-dot-pulse { animation: none; opacity: 0; }
   .map-country { transition: none; }
+  .map-tooltip { animation: none; }
+  .exec-figure-tick { animation: none; }
 }
 
 /* ============================================================
@@ -2083,9 +2229,7 @@ select option {
   --cat-finance: #fbbf24;
   --cat-system: #94a3b8;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 14px;
-  min-height: calc(100vh - 210px);
 }
 
 /* ---- Current position header ---- */
@@ -2119,6 +2263,13 @@ select option {
 .exec-figure { display: grid; }
 .exec-figure strong { font-size: 26px; font-weight: 800; line-height: 1; color: var(--tower-text, #e6edf3); font-variant-numeric: tabular-nums; }
 .exec-figure span { font-size: 11px; color: var(--tower-muted, #93a3b4); margin-top: 3px; }
+/* A quick, GPU-cheap tick whenever a headline figure's text changes (currency
+   switch or a live heartbeat update). */
+.exec-figure-tick { animation: exec-figure-tick 260ms var(--ease-out, ease); }
+@keyframes exec-figure-tick {
+  from { opacity: 0.45; transform: translateY(-3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 .exec-position-chips { display: flex; flex-wrap: wrap; gap: 7px; }
 .exec-chip {
   display: inline-flex; align-items: center; gap: 5px;
@@ -2154,13 +2305,14 @@ select option {
 /* ---- Map + feed body ---- */
 .exec-body { display: grid; grid-template-columns: minmax(0, 1fr) 326px; gap: 14px; min-height: 0; }
 .exec-map-wrap {
-  position: relative; min-height: 0;
+  position: relative; min-height: 440px;
   border: 1px solid var(--tower-border-strong, #3a4654);
   border-radius: 16px;
   background: radial-gradient(120% 90% at 50% -10%, color-mix(in srgb, var(--country-accent) 8%, transparent), transparent 60%), var(--tower-panel-strong, #1b2530);
   padding: 12px;
   overflow: hidden;
 }
+.exec-body .exec-feed { max-height: 520px; }
 .exec-map-zero {
   position: absolute; inset: 0; margin: auto;
   width: max-content; height: max-content;
@@ -2234,6 +2386,206 @@ select option {
 .cat-system { background-color: var(--cat-system); color: var(--cat-system); }
 .exec-feed-cat.cat-primary, .exec-feed-cat.cat-inventory, .exec-feed-cat.cat-secondary, .exec-feed-cat.cat-finance, .exec-feed-cat.cat-system { background-color: transparent; }
 
+/* ---- Mode toggle (animated stat-tabs) + headline (Phase 7B) ---- */
+.exec-modes {
+  justify-self: center;
+  display: inline-flex;
+  gap: 6px;
+  padding: 5px;
+  border-radius: 14px;
+  background: var(--tower-bg-2, #0e151d);
+  border: 1px solid var(--tower-border, #28323e);
+}
+.exec-mode {
+  position: relative;
+  display: inline-flex; align-items: center; gap: 9px;
+  padding: 8px 16px;
+  border: 0; border-radius: 10px;
+  background: transparent;
+  color: var(--tower-muted, #93a3b4);
+  cursor: pointer;
+  text-align: left;
+  transition: color 0.18s var(--ease-out);
+}
+.exec-mode:hover { color: var(--tower-text, #e6edf3); }
+.exec-mode:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--country-accent-soft); }
+.exec-mode-glow {
+  position: absolute; inset: 0;
+  border-radius: 10px;
+  background: var(--country-accent-soft);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--country-accent) 50%, transparent);
+  z-index: 0;
+}
+.exec-mode-icon { position: relative; z-index: 1; display: grid; place-items: center; }
+.exec-mode-text { position: relative; z-index: 1; display: grid; gap: 2px; }
+.exec-mode-title { font-size: 12.5px; font-weight: 800; letter-spacing: 0.01em; line-height: 1.05; }
+.exec-mode-stat { font-size: 10.5px; font-weight: 600; color: var(--tower-muted, #93a3b4); font-variant-numeric: tabular-nums; line-height: 1.05; }
+.exec-mode.active { color: var(--country-accent); }
+.exec-mode.active .exec-mode-stat { color: color-mix(in srgb, var(--country-accent) 80%, var(--tower-text, #e6edf3)); }
+.exec-head-status { display: inline-flex; align-items: center; gap: 9px; }
+.exec-sample {
+  font-size: 10px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--tower-amber, #fbbf24);
+  padding: 4px 9px; border-radius: 999px;
+  border: 1px dashed color-mix(in srgb, var(--tower-amber, #fbbf24) 50%, transparent);
+  background: color-mix(in srgb, var(--tower-amber, #fbbf24) 10%, transparent);
+  white-space: nowrap;
+}
+.exec-headline {
+  margin: -2px 2px 0;
+  font-size: 14px; font-weight: 600;
+  color: var(--tower-text, #e6edf3);
+}
+
+/* Per-mode identity colour — the whole Overview adopts the active mode's accent
+   (map choropleth, charts, KPIs, toggle). Elements with their own transitions
+   tween between colours as the mode changes. */
+.exec-live.mode-primary {
+  --country-accent: #38bdf8; --country-accent-strong: #38bdf8;
+  --country-accent-soft: rgba(56, 189, 248, 0.16); --country-accent-glow: rgba(56, 189, 248, 0.3);
+}
+.exec-live.mode-inventory {
+  --country-accent: #a78bfa; --country-accent-strong: #a78bfa;
+  --country-accent-soft: rgba(167, 139, 250, 0.16); --country-accent-glow: rgba(167, 139, 250, 0.3);
+}
+.exec-live.mode-secondary {
+  --country-accent: #34d399; --country-accent-strong: #34d399;
+  --country-accent-soft: rgba(52, 211, 153, 0.16); --country-accent-glow: rgba(52, 211, 153, 0.3);
+}
+
+/* Staggered entrance + premium hover lift on cards. */
+.exec-rise { animation: exec-rise 420ms var(--ease-out, ease) both; }
+@keyframes exec-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.exec-kpi, .exec-chart {
+  transition: transform 0.18s var(--ease-out), border-color 0.18s var(--ease-out), box-shadow 0.18s var(--ease-out);
+}
+.exec-kpi:hover, .exec-chart:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--country-accent) 40%, var(--tower-border-strong, #3a4654));
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.26);
+}
+
+/* Map value legend (choropleth scale). */
+.exec-map-legend {
+  position: absolute; left: 16px; bottom: 16px; z-index: 5;
+  display: grid; gap: 5px;
+  padding: 9px 11px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--tower-panel-strong, #1b2530) 82%, transparent);
+  border: 1px solid var(--tower-border, #28323e);
+  backdrop-filter: blur(7px);
+  pointer-events: none;
+}
+.exec-map-legend-title { font-size: 10.5px; font-weight: 700; color: var(--tower-text, #e6edf3); }
+.exec-map-legend-bar { width: 132px; height: 8px; border-radius: 999px; background: linear-gradient(90deg, var(--map-land, #1e2a36), var(--country-accent)); }
+.exec-map-legend-scale { display: flex; justify-content: space-between; font-size: 9.5px; color: var(--tower-muted, #93a3b4); }
+
+/* Trend hover crosshair. */
+.trend-plot { cursor: crosshair; }
+.trend-guide { stroke: var(--country-accent); stroke-width: 1; opacity: 0.55; stroke-dasharray: 3 3; }
+.trend-hot { fill: var(--country-accent); stroke: var(--tower-panel-strong, #1b2530); stroke-width: 2; }
+.trend-tip {
+  position: absolute; top: 4px; transform: translateX(-50%);
+  display: grid; justify-items: center; gap: 1px;
+  padding: 4px 9px; border-radius: 8px;
+  background: var(--tower-panel-strong, #1b2530);
+  border: 1px solid var(--country-accent);
+  pointer-events: none; white-space: nowrap;
+  box-shadow: var(--tower-shadow, 0 10px 26px rgba(0, 0, 0, 0.3));
+}
+.trend-tip strong { font-size: 12px; color: var(--tower-text, #e6edf3); font-variant-numeric: tabular-nums; }
+.trend-tip span { font-size: 9.5px; color: var(--tower-muted, #93a3b4); }
+
+/* ---- KPI cards ---- */
+.exec-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.exec-kpi {
+  display: grid;
+  gap: 7px;
+  padding: 14px 15px 13px;
+  border: 1px solid var(--tower-border-strong, #3a4654);
+  border-radius: 14px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--country-accent) 5%, var(--tower-panel-strong, #1b2530)), var(--tower-panel-strong, #1b2530));
+}
+.exec-kpi-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.exec-kpi-label { font-size: 11.5px; font-weight: 700; letter-spacing: 0.02em; color: var(--tower-muted, #93a3b4); }
+.exec-kpi-delta { display: inline-flex; align-items: center; gap: 2px; font-size: 11px; font-weight: 800; font-variant-numeric: tabular-nums; padding: 2px 6px; border-radius: 999px; white-space: nowrap; }
+.exec-kpi-delta.is-up { color: #6ee7b7; background: rgba(52, 211, 153, 0.12); }
+.exec-kpi-delta.is-down { color: #fca5a5; background: rgba(248, 113, 113, 0.12); }
+.exec-kpi-delta.is-note { color: var(--tower-muted, #93a3b4); background: transparent; font-weight: 700; font-size: 10.5px; }
+.exec-kpi-value { font-size: 27px; font-weight: 800; line-height: 1; color: var(--tower-text, #e6edf3); font-variant-numeric: tabular-nums; }
+.exec-kpi .sparkline { width: 100%; height: 36px; display: block; }
+.exec-kpi-hint { margin: 0; font-size: 11.5px; line-height: 1.4; color: var(--tower-muted, #93a3b4); }
+.exec-kpi.tone-warn { border-color: color-mix(in srgb, var(--tower-amber, #fbbf24) 40%, var(--tower-border-strong, #3a4654)); }
+.exec-kpi.tone-bad { border-color: color-mix(in srgb, var(--tower-crimson, #f87171) 45%, var(--tower-border-strong, #3a4654)); }
+
+/* ---- Charts row ---- */
+.exec-charts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.exec-chart {
+  display: grid;
+  gap: 11px;
+  align-content: start;
+  padding: 15px 16px 16px;
+  border: 1px solid var(--tower-border-strong, #3a4654);
+  border-radius: 16px;
+  background: var(--tower-panel-strong, #1b2530);
+}
+.exec-chart-wide { grid-column: 1 / -1; }
+.exec-chart-head h3 { margin: 0; display: flex; align-items: center; gap: 7px; font-size: 13.5px; font-weight: 800; color: var(--tower-text, #e6edf3); }
+.exec-chart-head h3 svg { color: var(--country-accent); }
+.exec-chart-cap { margin: 0; font-size: 12px; line-height: 1.45; color: var(--tower-muted, #93a3b4); border-top: 1px solid var(--tower-border, #28323e); padding-top: 10px; }
+
+/* ---- Trend area chart ---- */
+.trend { display: grid; gap: 8px; }
+.trend-plot { position: relative; width: 100%; height: 200px; }
+.trend-svg { width: 100%; height: 100%; display: block; }
+.trend-grid { stroke: var(--tower-border, #28323e); stroke-width: 1; stroke-dasharray: 2 5; opacity: 0.6; }
+.trend-area { stroke: none; }
+.trend-line { stroke: var(--country-accent); stroke-width: 2.25; stroke-linejoin: round; stroke-linecap: round; }
+.trend-overlay { stroke: var(--tower-muted, #93a3b4); stroke-width: 1.5; stroke-dasharray: 4 4; opacity: 0.85; }
+.trend-last { fill: var(--country-accent); stroke: var(--tower-panel-strong, #1b2530); stroke-width: 2; }
+.trend-ymax { position: absolute; top: 2px; right: 4px; font-size: 10.5px; color: var(--tower-muted, #93a3b4); font-variant-numeric: tabular-nums; background: color-mix(in srgb, var(--tower-panel-strong, #1b2530) 80%, transparent); padding: 1px 5px; border-radius: 5px; }
+.trend-x { display: flex; justify-content: space-between; font-size: 10px; color: var(--tower-muted, #93a3b4); font-variant-numeric: tabular-nums; }
+.trend-x span.is-hidden { visibility: hidden; }
+.trend-legend { display: flex; gap: 16px; font-size: 11px; color: var(--tower-muted, #93a3b4); }
+.trend-legend-item { display: inline-flex; align-items: center; gap: 6px; }
+.trend-swatch { width: 16px; height: 0; border-top-width: 2px; border-top-style: solid; }
+.trend-swatch-line { border-top-color: var(--country-accent); }
+.trend-swatch-dash { border-top-style: dashed; border-top-color: var(--tower-muted, #93a3b4); }
+
+/* ---- BarMeter (ranked horizontal bars) ---- */
+.barmeter { list-style: none; margin: 0; padding: 0; display: grid; gap: 11px; }
+.barmeter-row { display: grid; gap: 5px; }
+.barmeter-head { display: flex; align-items: baseline; gap: 8px; }
+.barmeter-rank { width: 16px; flex: none; font-size: 10.5px; font-weight: 800; color: var(--tower-muted, #93a3b4); }
+.barmeter-label { font-size: 12.5px; font-weight: 600; color: var(--tower-text, #e6edf3); }
+.barmeter-value { margin-left: auto; font-size: 12.5px; font-weight: 700; color: var(--tower-text, #e6edf3); font-variant-numeric: tabular-nums; }
+.barmeter-track { height: 8px; border-radius: 999px; background: var(--tower-bg-2, #0e151d); overflow: hidden; }
+.barmeter-fill { display: block; height: 100%; border-radius: 999px; background: color-mix(in srgb, var(--country-accent) 55%, transparent); animation: barmeter-grow 600ms var(--ease-out, ease); }
+.barmeter-fill.is-top { background: var(--country-accent); }
+@keyframes barmeter-grow { from { width: 0; } }
+.barmeter-sub { margin-left: 24px; font-size: 11px; color: var(--tower-muted, #93a3b4); }
+
+@media (max-width: 1200px) {
+  .exec-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 1080px) {
+  .exec-charts { grid-template-columns: 1fr; }
+  .exec-chart-wide { grid-column: auto; }
+  .exec-modes { justify-self: stretch; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .barmeter-fill { animation: none; }
+  .exec-mode { transition: none; }
+}
+
 /* ---- Animated shipment routes on the map ---- */
 .map-route-path {
   stroke: var(--country-accent);
@@ -2257,4 +2609,6 @@ select option {
   .exec-ticker-track { animation: none !important; }
   .exec-live-dot { animation: none; }
   .exec-feed-item { animation: none; }
+  .exec-rise { animation: none; }
+  .exec-kpi:hover, .exec-chart:hover { transform: none; box-shadow: none; }
 }

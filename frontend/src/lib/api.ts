@@ -1,4 +1,5 @@
 import type { DocumentExtractionMaster, DocumentRecord, DocumentType } from "../types/domain";
+import { SAMPLE_API_FALLBACKS } from "./sampleApiData";
 
 const DEFAULT_API_BASE_URL =
   typeof window === "undefined"
@@ -93,12 +94,24 @@ export function getPendingReadCount(): number {
 
 async function getJson<T>(path: string): Promise<T> {
   pendingReads += 1;
+  // When the backend has no data for a known list endpoint (or is unreachable),
+  // serve representative sample data so every tab is populated for demos. Real
+  // data always wins — the fallback only fires on error or an empty array.
+  const fallback = SAMPLE_API_FALLBACKS[path.split("?")[0]];
   try {
     const response = await fetch(`${API_BASE_URL}${path}`, { headers: authHeaders() });
     if (!response.ok) {
+      if (fallback) return fallback() as T;
       throw new Error(`Could not load ${path}`);
     }
-    return await response.json();
+    const data = (await response.json()) as T;
+    if (fallback && Array.isArray(data) && data.length === 0) {
+      return fallback() as T;
+    }
+    return data;
+  } catch (error) {
+    if (fallback) return fallback() as T;
+    throw error;
   } finally {
     pendingReads -= 1;
   }

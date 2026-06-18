@@ -42,12 +42,14 @@ import {
   ALL_TABS,
   canAccessView,
   firstAccessibleView,
+  firstViewOfSection,
   hasPermission,
   tabOfView,
   visibleTabs,
   visibleSections,
   workspaceOfView,
   type NavIcon,
+  type SectionId,
   type WorkspaceDef,
 } from "../app/nav";
 import { EASE_OUT_QUINT, prefersReducedMotion, signatureVariants, type Signature } from "../motion/motion";
@@ -1933,6 +1935,12 @@ export function App() {
   const activeWorkspace = workspaceOfView(activeView);
   const activeTab = tabOfView(activeView);
   const railSections = useMemo(() => visibleSections(currentUser), [currentUser]);
+  // Phase 7B: four intent-tabs drive the top level. The active primary tab is
+  // the section the current workspace belongs to; the rail below it lists only
+  // that tab's workspaces (clustered by optional group, e.g. Governance).
+  const activeSection: SectionId | undefined = activeWorkspace?.section;
+  const activeRailSection =
+    railSections.find((section) => section.id === activeSection) ?? railSections[0];
   // Which stage of the Primary → Inventory → Secondary flow the user is in,
   // so the sidebar pulse highlights where they are.
   const flowStage: "primary" | "inventory" | "secondary" | null = activeWorkspace?.id.includes("primary")
@@ -2045,6 +2053,18 @@ export function App() {
     const remembered = lastTabByWorkspace.current[workspace.id];
     const target = tabs.find((tab) => tab.id === remembered) ?? tabs[0];
     setActiveView(target.id);
+  };
+  const lastWorkspaceBySection = useRef<Record<string, string>>({});
+  useEffect(() => {
+    if (activeSection && activeWorkspace) {
+      lastWorkspaceBySection.current[activeSection] = activeView;
+    }
+  }, [activeSection, activeWorkspace, activeView]);
+  const openSection = (sectionId: SectionId) => {
+    if (sectionId === activeSection) return;
+    const remembered = lastWorkspaceBySection.current[sectionId];
+    const target = (remembered && canAccessView(currentUser, remembered) ? remembered : null) ?? firstViewOfSection(currentUser, sectionId);
+    if (target) setActiveView(target);
   };
   const reducedMotion = prefersReducedMotion();
 
@@ -2251,40 +2271,78 @@ export function App() {
             </div>
           ))}
         </div>
-        <nav className="ws-rail" aria-label="Workspaces">
-          {railSections.map((section) => (
-            <div className="ws-section" key={section.id}>
-              <p className="ws-section-label">{section.label}</p>
-              {section.workspaces.map((workspace) => {
-                const isActive = workspace.id === activeWorkspace?.id;
-                return (
-                  <button
-                    className={isActive ? "ws-item active" : "ws-item"}
-                    key={workspace.id}
-                    onClick={() => openWorkspace(workspace)}
-                    aria-current={isActive ? "page" : undefined}
-                    title={workspace.label}
-                    data-signature={workspace.tabs[0]?.signature ?? "fade"}
-                  >
-                    <workspace.icon size={18} aria-hidden="true" />
-                    <span className="ws-item-label">{workspace.label}</span>
-                    {isActive && !reducedMotion ? (
-                      <motion.span className="ws-item-pip" layoutId="ws-item-pip" aria-hidden="true" />
-                    ) : isActive ? (
-                      <span className="ws-item-pip" aria-hidden="true" />
-                    ) : null}
-                  </button>
-                );
-              })}
-            </div>
-          ))}
+        <nav className="primary-tabs" aria-label="Primary navigation">
+          {railSections.map((section) => {
+            const PrimaryIcon = section.icon;
+            const isActive = section.id === activeSection;
+            return (
+              <button
+                type="button"
+                key={section.id}
+                className={isActive ? "primary-tab active" : "primary-tab"}
+                onClick={() => openSection(section.id)}
+                aria-current={isActive ? "page" : undefined}
+                data-section={section.id}
+                title={section.question}
+              >
+                {isActive && !reducedMotion ? (
+                  <motion.span className="primary-tab-glow" layoutId="primary-tab-glow" aria-hidden="true" />
+                ) : null}
+                <span className="primary-tab-icon">
+                  <PrimaryIcon size={17} aria-hidden="true" />
+                </span>
+                <span className="primary-tab-text">
+                  <span className="primary-tab-label">{section.label}</span>
+                  <span className="primary-tab-q">{section.question}</span>
+                </span>
+              </button>
+            );
+          })}
+        </nav>
+
+        <nav className="ws-rail" aria-label={`${activeRailSection?.label ?? "Workspace"} screens`}>
+          {activeRailSection?.workspaces.flatMap((workspace, index, list) => {
+            const isActive = workspace.id === activeWorkspace?.id;
+            const prevGroup = index > 0 ? list[index - 1].group : undefined;
+            const showGroupHeader = Boolean(workspace.group) && workspace.group !== prevGroup;
+            const button = (
+              <button
+                className={isActive ? "ws-item active" : "ws-item"}
+                key={workspace.id}
+                onClick={() => openWorkspace(workspace)}
+                aria-current={isActive ? "page" : undefined}
+                title={workspace.label}
+                data-signature={workspace.tabs[0]?.signature ?? "fade"}
+              >
+                <workspace.icon size={18} aria-hidden="true" />
+                <span className="ws-item-label">{workspace.label}</span>
+                {isActive && !reducedMotion ? (
+                  <motion.span className="ws-item-pip" layoutId="ws-item-pip" aria-hidden="true" />
+                ) : isActive ? (
+                  <span className="ws-item-pip" aria-hidden="true" />
+                ) : null}
+              </button>
+            );
+            return showGroupHeader
+              ? [
+                  <p className="ws-group-label" key={`group-${workspace.group}`}>
+                    {workspace.group}
+                  </p>,
+                  button,
+                ]
+              : [button];
+          })}
         </nav>
       </aside>
 
       <section className="workspace">
         <header className="topbar">
           <div>
-            <p className="eyebrow">{activeWorkspace?.label ?? "Medical Device Supply Chain"}</p>
+            <p className="eyebrow">
+              {activeRailSection
+                ? `${activeRailSection.label} · ${activeRailSection.question}`
+                : activeWorkspace?.label ?? "Medical Device Supply Chain"}
+            </p>
             <h1>{activeNav.label}</h1>
           </div>
           <div className="topbar-actions">
@@ -2372,9 +2430,7 @@ export function App() {
           animate="animate"
           exit="exit"
         >
-        {activeView === "exec-primary" ? <ExecutiveLiveCenter lane="primary" /> : null}
-        {activeView === "exec-inventory" ? <ExecutiveLiveCenter lane="inventory" /> : null}
-        {activeView === "exec-secondary" ? <ExecutiveLiveCenter lane="secondary" /> : null}
+        {activeView === "exec-overview" ? <ExecutiveLiveCenter /> : null}
         {activeView === "command-center" ? (
           <CommandCenter currentUser={currentUser} onNavigate={setActiveView} />
         ) : null}

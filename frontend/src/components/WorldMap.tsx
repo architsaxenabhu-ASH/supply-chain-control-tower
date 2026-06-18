@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { geoNaturalEarth1, geoPath } from "d3-geo";
 import { feature } from "topojson-client";
 import type { Feature, FeatureCollection, Geometry } from "geojson";
@@ -131,9 +131,11 @@ export type WorldMapProps = {
 const VIEW_CX = WIDTH / 2;
 const VIEW_CY = HEIGHT / 2;
 
+// Tooltip *content* only. Position is tracked separately (in a ref + rAF) so the
+// cursor can move without re-rendering the whole map on every pixel.
 type Hover =
-  | { kind: "country"; title: string; total: string; rows: { label: string; value: string }[]; x: number; y: number }
-  | { kind: "city"; title: string; sub: string; rows: { label: string; value: string }[]; x: number; y: number }
+  | { kind: "country"; title: string; total: string; rows: { label: string; value: string }[] }
+  | { kind: "city"; title: string; sub: string; rows: { label: string; value: string }[] }
   | null;
 
 export function WorldMap({
@@ -155,6 +157,21 @@ export function WorldMap({
   const [zoomed, setZoomed] = useState<string | null>(null);
   const [selectedCity, setSelectedCity] = useState<MapCity | null>(null);
   const [userZoom, setUserZoom] = useState(1);
+
+  // Tooltip position lives outside React state: a ref holds the latest cursor
+  // point and a single rAF nudges only the tooltip element. This keeps mouse
+  // movement off the React render path entirely, so the map never re-renders
+  // while you simply glide the cursor across it.
+  const posRef = useRef({ x: 0, y: 0 });
+  const tooltipRef = useRef<HTMLDivElement | null>(null);
+  const rafRef = useRef<number | null>(null);
+
+  useEffect(
+    () => () => {
+      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+    },
+    [],
+  );
 
   const { byShape, max, detailByShape, tooltipByShape } = useMemo(() => {
     const map = new Map<string, { original: string; value: number }>();
@@ -233,22 +250,58 @@ export function WorldMap({
     return { x: event.clientX - (rect?.left ?? 0), y: event.clientY - (rect?.top ?? 0) };
   }
 
+  // Apply the latest cursor point to the tooltip element directly (no re-render),
+  // flipping it to the other side of the cursor near the right/bottom edges so it
+  // never overflows the map.
+  function positionTooltip() {
+    rafRef.current = null;
+    const el = tooltipRef.current;
+    const fig = figureRef.current;
+    if (!el || !fig) return;
+    const { x, y } = posRef.current;
+    const w = fig.clientWidth;
+    const h = fig.clientHeight;
+    const tw = el.offsetWidth;
+    const th = el.offsetHeight;
+    let tx = x + 16;
+    let ty = y + 16;
+    if (tx + tw > w - 8) tx = x - tw - 16;
+    if (tx < 8) tx = 8;
+    if (ty + th > h - 8) ty = y - th - 16;
+    if (ty < 8) ty = 8;
+    el.style.transform = `translate(${tx}px, ${ty}px)`;
+  }
+
+  function scheduleTooltip() {
+    if (rafRef.current == null) rafRef.current = requestAnimationFrame(positionTooltip);
+  }
+
+  function trackPointer(event: React.MouseEvent) {
+    if (!hover) return; // only follow the cursor while a tooltip is visible
+    posRef.current = pointer(event);
+    scheduleTooltip();
+  }
+
   function hoverCountry(event: React.MouseEvent, shape: CountryShape, slot: { value: number }) {
+    posRef.current = pointer(event);
     const key = normalise(shape.name);
     const preformatted = tooltipByShape.get(key);
     const rows = preformatted
       ? preformatted
       : (detailByShape.get(key) ?? []).map((r) => ({ label: r.label, value: fmt(r.value) }));
-    setHover({ kind: "country", title: shape.name, total: fmt(slot.value), rows, ...pointer(event) });
+    setHover({ kind: "country", title: shape.name, total: fmt(slot.value), rows });
+    scheduleTooltip();
   }
 
   function hoverCity(event: React.MouseEvent, c: MapCity) {
+    posRef.current = pointer(event);
     const rows: { label: string; value: string }[] = [];
     if (c.volume) rows.push({ label: "Volume", value: c.volume });
     if (c.movement) rows.push({ label: "Movement", value: c.movement });
     if (c.status) rows.push({ label: "Status", value: c.status });
     rows.push({ label: "Value", value: c.valueLabel ?? fmt(c.value) });
-    setHover({ kind: "city", title: c.city, sub: c.country, rows, ...pointer(event) });
+    setHover({ kind: "city", title: c.city, sub: c.country, rows });
+    scheduleTooltip();
   }
 
   function handleCountryClick(shape: CountryShape, slot: { original: string } | undefined) {
@@ -272,7 +325,8 @@ export function WorldMap({
   const transformStyle = {
     transform: `translate(${VIEW_CX}px, ${VIEW_CY}px) scale(${userZoom}) translate(${-VIEW_CX}px, ${-VIEW_CY}px) translate(${t.x}px, ${t.y}px) scale(${t.k})`,
     transformOrigin: "0px 0px",
-    transition: "transform 0.5s cubic-bezier(0.22, 1, 0.36, 1)",
+    transition: reduced ? "none" : "transform 0.5s cubic-bezier(0.22, 1, 0.36, 1)",
+    willChange: "transform",
   } as const;
 
   const panelRows = useMemo(() => {
@@ -283,7 +337,12 @@ export function WorldMap({
   }, [zoomed, sidePanel]);
 
   return (
-    <figure className="world-map-figure" ref={figureRef} onMouseLeave={() => setHover(null)}>
+    <figure
+      className="world-map-figure"
+      ref={figureRef}
+      onMouseMove={trackPointer}
+      onMouseLeave={() => setHover(null)}
+    >
       {/* Breadcrumb / back controls — never lose context */}
       {zoomed ? (
         <nav className="map-breadcrumb" aria-label="Map location">
@@ -320,8 +379,7 @@ export function WorldMap({
                 style={slot ? { fill: `color-mix(in srgb, var(--country-accent) ${intensity}%, var(--map-land))` } : undefined}
                 onClick={() => handleCountryClick(shape, slot)}
                 onMouseEnter={slot ? (event) => hoverCountry(event, shape, slot) : undefined}
-                onMouseMove={slot ? (event) => hoverCountry(event, shape, slot) : undefined}
-                onMouseLeave={() => setHover(null)}
+                onMouseLeave={slot ? () => setHover(null) : undefined}
               />
             );
           })}
@@ -376,9 +434,11 @@ export function WorldMap({
                 <g
                   key={c.city}
                   className={`map-city${isSel ? " is-selected" : ""}`}
-                  transform={`translate(${sx}, ${sy})`}
+                  style={{
+                    transform: `translate(${sx}px, ${sy}px)`,
+                    transition: reduced ? undefined : "transform 0.5s cubic-bezier(0.22, 1, 0.36, 1)",
+                  }}
                   onMouseEnter={(event) => hoverCity(event, c)}
-                  onMouseMove={(event) => hoverCity(event, c)}
                   onMouseLeave={() => setHover(null)}
                   onClick={() => setSelectedCity(c)}
                 >
@@ -417,11 +477,9 @@ export function WorldMap({
       {/* Enhanced tooltip — stays while hovering; no native browser tooltip */}
       {hover ? (
         <div
+          ref={tooltipRef}
           className="map-tooltip"
-          style={{
-            left: Math.min(hover.x + 14, (figureRef.current?.clientWidth ?? WIDTH) - 8),
-            top: hover.y + 14,
-          }}
+          style={{ transform: `translate(${posRef.current.x + 16}px, ${posRef.current.y + 16}px)` }}
           role="status"
         >
           <strong className="map-tooltip-name">{hover.title}</strong>

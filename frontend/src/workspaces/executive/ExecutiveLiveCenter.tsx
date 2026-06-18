@@ -1,126 +1,95 @@
 import { useEffect, useMemo, useState } from "react";
-import { PlaneLanding, RadioTower, Send, Warehouse } from "lucide-react";
+import { motion } from "framer-motion";
+import {
+  ArrowDownRight,
+  ArrowUpRight,
+  BarChart3,
+  PieChart,
+  PlaneLanding,
+  Send,
+  TrendingUp,
+  Warehouse,
+} from "lucide-react";
 
 import { WorldMap } from "../../components/WorldMap";
+import { DonutChart } from "../../components/DonutChart";
+import { BarMeter } from "../../components/charts/BarMeter";
+import { Sparkline } from "../../components/charts/Sparkline";
+import { TrendArea } from "../../components/charts/TrendArea";
 import { useCountry } from "../../context/CountryContext";
-import { formatDisplay, formatUnits, getCurrencyRevision, subscribeCurrency } from "../../lib/currency";
-import {
-  buildInventoryLane,
-  buildPrimaryLane,
-  buildSecondaryLane,
-  type ExecLane,
-  type LaneId,
-} from "../../lib/executiveLive";
-import { buildLiveStream, type LiveCategory } from "../../lib/liveTicker";
-import {
-  fetchAuditEvents,
-  fetchCustomerCommitments,
-  fetchCustomers,
-  fetchImportCandidates,
-  fetchInventoryBatches,
-  fetchMovements,
-  fetchShipments,
-  fetchWarehouses,
-  type ApiAuditEvent,
-  type ApiCustomer,
-  type ApiCustomerCommitment,
-  type ApiImportFileCandidate,
-  type ApiInventoryBatch,
-  type ApiMovementEvent,
-  type ApiShipment,
-  type ApiWarehouseLocation,
-} from "../../lib/api";
+import { getCurrencyRevision, subscribeCurrency } from "../../lib/currency";
+import { prefersReducedMotion } from "../../motion/motion";
+import { buildSampleEvents, buildSampleLane, SAMPLE_NOTICE, type Kpi, type LaneId } from "../../lib/sampleBusinessData";
 import { LiveTicker } from "./LiveTicker";
 import { ActivityFeed } from "./ActivityFeed";
 
-// Executive Live Operations Center (Phase 7A). One observe-only screen per lane:
-// a live world map, the single "current position" an owner reads in 30 seconds,
-// a Bloomberg-style ticker, and a live activity feed — all from real platform
-// data, refreshed on a steady heartbeat. No reports, no tables, no data entry.
+// Overview — the live business observation center (Phase 7B redesign).
+//
+// One page, three MODES (Primary Sales / Inventory / Secondary Sales) switched
+// from an animated stat-toggle that also shows each mode's headline number. The
+// whole page adopts the active mode's identity colour. Each mode reads in ~30
+// seconds: a current-position headline, four KPI cards (value + trend + delta +
+// plain-language reading), a live world map with a value legend, a charts row
+// (trend, ranking, composition — each interpreted), a filterable feed and a
+// continuous ticker. Figures come from the representative international sample
+// dataset and convert with the live currency.
 
-const REFRESH_MS = 20_000;
+const MODES: { id: LaneId; title: string; question: string; metric: string; icon: typeof PlaneLanding }[] = [
+  { id: "primary", title: "Primary Sales", question: "What is entering the business?", metric: "Inbound value", icon: PlaneLanding },
+  { id: "inventory", title: "Inventory", question: "What do we currently own?", metric: "Stock value", icon: Warehouse },
+  { id: "secondary", title: "Secondary Sales", question: "What is leaving the business?", metric: "Revenue out", icon: Send },
+];
 
-const LANES: Record<LaneId, { title: string; question: string; icon: typeof PlaneLanding; category: LiveCategory }> = {
-  primary: { title: "Primary Sales", question: "What is entering the business?", icon: PlaneLanding, category: "primary" },
-  inventory: { title: "Inventory", question: "What do we currently own?", icon: Warehouse, category: "inventory" },
-  secondary: { title: "Secondary Sales", question: "What is leaving the business?", icon: Send, category: "secondary" },
-};
+function KpiCard({ kpi, index }: { kpi: Kpi; index: number }) {
+  const up = kpi.delta >= 0;
+  return (
+    <article className={`exec-kpi exec-rise tone-${kpi.tone}`} style={{ animationDelay: `${index * 60}ms` }}>
+      <div className="exec-kpi-top">
+        <span className="exec-kpi-label">{kpi.label}</span>
+        {kpi.deltaLabel ? (
+          <span className="exec-kpi-delta is-note">{kpi.deltaLabel}</span>
+        ) : (
+          <span className={`exec-kpi-delta ${up ? "is-up" : "is-down"}`}>
+            {up ? <ArrowUpRight size={13} aria-hidden="true" /> : <ArrowDownRight size={13} aria-hidden="true" />}
+            {Math.abs(kpi.delta)}%
+          </span>
+        )}
+      </div>
+      <strong className="exec-kpi-value exec-figure-tick" key={kpi.value}>
+        {kpi.value}
+      </strong>
+      <Sparkline points={kpi.spark} tone={kpi.tone} />
+      <p className="exec-kpi-hint">{kpi.hint}</p>
+    </article>
+  );
+}
 
-export function ExecutiveLiveCenter({ lane }: { lane: LaneId }) {
-  const meta = LANES[lane];
+export function ExecutiveLiveCenter({ lane = "primary" }: { lane?: LaneId }) {
   const { country } = useCountry();
+  const reduced = prefersReducedMotion();
+  const [mode, setMode] = useState<LaneId>(lane);
+  useEffect(() => setMode(lane), [lane]);
 
-  const [imports, setImports] = useState<ApiImportFileCandidate[]>([]);
-  const [batches, setBatches] = useState<ApiInventoryBatch[]>([]);
-  const [shipments, setShipments] = useState<ApiShipment[]>([]);
-  const [customers, setCustomers] = useState<ApiCustomer[]>([]);
-  const [warehouses, setWarehouses] = useState<ApiWarehouseLocation[]>([]);
-  const [commitments, setCommitments] = useState<ApiCustomerCommitment[]>([]);
-  const [audit, setAudit] = useState<ApiAuditEvent[]>([]);
-  const [movements, setMovements] = useState<ApiMovementEvent[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
+  // Re-format figures when the display currency changes (value recomputes).
   const [rev, setRev] = useState(0);
-
   useEffect(() => subscribeCurrency(() => setRev(getCurrencyRevision())), []);
 
-  // Steady heartbeat: load now, then re-load every REFRESH_MS so the screen
-  // stays live without the executive doing anything.
-  useEffect(() => {
-    let active = true;
-    const guard = <T,>(setter: (value: T) => void) => (value: T) => {
-      if (active) setter(value);
-    };
-
-    async function load(first: boolean) {
-      if (first) setLoading(true);
-      const tasks: Promise<unknown>[] = [
-        fetchAuditEvents(120).then(guard(setAudit)),
-        fetchMovements().then(guard(setMovements)),
-      ];
-      if (lane === "primary") {
-        tasks.push(fetchImportCandidates().then(guard(setImports)));
-        tasks.push(fetchWarehouses().then(guard(setWarehouses)));
-      } else if (lane === "inventory") {
-        tasks.push(fetchInventoryBatches().then(guard(setBatches)));
-        tasks.push(fetchWarehouses().then(guard(setWarehouses)));
-        tasks.push(fetchShipments().then(guard(setShipments)));
-      } else {
-        tasks.push(fetchShipments().then(guard(setShipments)));
-        tasks.push(fetchCustomers().then(guard(setCustomers)));
-        tasks.push(fetchInventoryBatches().then(guard(setBatches)));
-        tasks.push(fetchCustomerCommitments().then(guard(setCommitments)));
-      }
-      await Promise.allSettled(tasks);
-      if (!active) return;
-      setLoading(false);
-      setUpdatedAt(new Date());
-    }
-
-    load(true);
-    const timer = window.setInterval(() => load(false), REFRESH_MS);
-    return () => {
-      active = false;
-      window.clearInterval(timer);
-    };
-  }, [lane]);
-
-  const data: ExecLane = useMemo(() => {
-    void rev; // recompute when the display currency changes
-    if (lane === "primary") return buildPrimaryLane(imports, warehouses);
-    if (lane === "inventory") return buildInventoryLane(batches, warehouses, shipments);
-    return buildSecondaryLane(shipments, customers, batches, commitments);
-  }, [lane, imports, batches, shipments, customers, warehouses, commitments, rev]);
-
-  const stream = useMemo(() => buildLiveStream(audit, movements), [audit, movements]);
-
+  const lanes = useMemo(
+    () => ({
+      primary: buildSampleLane("primary", rev),
+      inventory: buildSampleLane("inventory", rev),
+      secondary: buildSampleLane("secondary", rev),
+    }),
+    [rev],
+  );
+  const events = useMemo(() => buildSampleEvents(), []);
+  const data = lanes[mode];
+  const meta = MODES.find((option) => option.id === mode) ?? MODES[0];
   const Icon = meta.icon;
-  const { position } = data;
-  const hasActivity = Object.keys(data.values).length > 0;
 
   return (
-    <section className="exec-live" aria-label={`Executive live — ${meta.title}`}>
-      {/* Current position — the 30-second read */}
+    <section className={`exec-live mode-${mode}`} aria-label={`Live operations — ${meta.title}`}>
+      {/* Identity + animated mode toggle + live status */}
       <header className="exec-head">
         <div className="exec-head-id">
           <span className="exec-head-icon">
@@ -132,36 +101,55 @@ export function ExecutiveLiveCenter({ lane }: { lane: LaneId }) {
           </div>
         </div>
 
-        <div className="exec-position">
-          <span className="exec-position-headline">{position.headline}</span>
-          <div className="exec-position-figures">
-            <div className="exec-figure">
-              <strong>{formatUnits(position.count)}</strong>
-              <span>{position.countLabel}</span>
-            </div>
-            <div className="exec-figure">
-              <strong>{formatDisplay(position.value, { compact: true })}</strong>
-              <span>Value</span>
-            </div>
-            <div className="exec-figure">
-              <strong>{formatUnits(position.units)}</strong>
-              <span>Units</span>
-            </div>
-          </div>
-          <div className="exec-position-chips">
-            {position.chips.map((chip) => (
-              <span className={`exec-chip tone-${chip.tone ?? "neutral"}`} key={chip.label}>
-                <b>{chip.value}</b> {chip.label}
-              </span>
-            ))}
-          </div>
+        <div className="exec-modes" role="tablist" aria-label="Overview mode">
+          {MODES.map((option) => {
+            const ModeIcon = option.icon;
+            const active = option.id === mode;
+            return (
+              <button
+                key={option.id}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                className={`exec-mode${active ? " active" : ""}`}
+                data-mode={option.id}
+                onClick={() => setMode(option.id)}
+              >
+                {active && !reduced ? (
+                  <motion.span className="exec-mode-glow" layoutId="exec-mode-glow" aria-hidden="true" />
+                ) : null}
+                <span className="exec-mode-icon">
+                  <ModeIcon size={16} aria-hidden="true" />
+                </span>
+                <span className="exec-mode-text">
+                  <span className="exec-mode-title">{option.title}</span>
+                  <span className="exec-mode-stat">{lanes[option.id].tag}</span>
+                </span>
+              </button>
+            );
+          })}
         </div>
 
-        <div className="exec-live-flag" title={updatedAt ? `Updated ${updatedAt.toLocaleTimeString()}` : "Connecting…"}>
-          <span className={`exec-live-dot${loading ? " is-loading" : ""}`} aria-hidden="true" />
-          <span>{loading ? "Syncing" : "Live"}</span>
+        <div className="exec-head-status">
+          <span className="exec-sample" title="Representative sample data for demonstration">
+            {SAMPLE_NOTICE}
+          </span>
+          <div className="exec-live-flag">
+            <span className="exec-live-dot" aria-hidden="true" />
+            <span>Live</span>
+          </div>
         </div>
       </header>
+
+      {/* The 30-second read */}
+      <p className="exec-headline">{data.headline}</p>
+
+      {/* KPI cards: value + spark + delta + interpretation */}
+      <div className="exec-kpis">
+        {data.kpis.map((kpi, index) => (
+          <KpiCard kpi={kpi} index={index} key={kpi.label} />
+        ))}
+      </div>
 
       {/* Live map + activity feed */}
       <div className="exec-body">
@@ -174,26 +162,59 @@ export function ExecutiveLiveCenter({ lane }: { lane: LaneId }) {
             routes={data.routes}
             activeCountry={country}
             formatValue={data.formatValue}
-            caption={
-              hasActivity
-                ? `${meta.title} — live by country; click a country to drop into its cities`
-                : `No ${meta.title.toLowerCase()} activity right now — the map shows zero and lights up the moment things move`
-            }
+            caption={`${meta.title} — live by country; click a country to drop into its cities`}
           />
-          {!hasActivity && !loading ? (
-            <div className="exec-map-zero" aria-hidden="true">
-              <RadioTower size={26} />
-              <strong>0</strong>
-              <span>Nothing in motion</span>
-            </div>
-          ) : null}
+          <div className="exec-map-legend" aria-hidden="true">
+            <span className="exec-map-legend-title">{meta.metric}</span>
+            <span className="exec-map-legend-bar" />
+            <span className="exec-map-legend-scale">
+              <span>Low</span>
+              <span>High</span>
+            </span>
+          </div>
         </div>
-
-        <ActivityFeed events={stream} defaultFilter={meta.category} />
+        <ActivityFeed events={events} defaultFilter={mode} />
       </div>
 
-      {/* Live operational ticker */}
-      <LiveTicker events={stream} />
+      {/* Charts: trend, ranking, composition — each interpreted in plain language */}
+      <div className="exec-charts">
+        <article className="exec-chart exec-chart-wide exec-rise">
+          <div className="exec-chart-head">
+            <h3>
+              <TrendingUp size={15} aria-hidden="true" /> {data.trend.title}
+            </h3>
+          </div>
+          <TrendArea series={data.trend.series} format={data.trend.format} legend={data.trend.legend} />
+          <p className="exec-chart-cap">{data.trend.caption}</p>
+        </article>
+
+        <article className="exec-chart exec-rise" style={{ animationDelay: "80ms" }}>
+          <div className="exec-chart-head">
+            <h3>
+              <BarChart3 size={15} aria-hidden="true" /> {data.ranking.title}
+            </h3>
+          </div>
+          <BarMeter rows={data.ranking.rows} format={data.ranking.format} />
+          <p className="exec-chart-cap">{data.ranking.caption}</p>
+        </article>
+
+        <article className="exec-chart exec-rise" style={{ animationDelay: "160ms" }}>
+          <div className="exec-chart-head">
+            <h3>
+              <PieChart size={15} aria-hidden="true" /> {data.composition.title}
+            </h3>
+          </div>
+          <DonutChart
+            slices={data.composition.slices}
+            centerLabel={data.composition.centerLabel}
+            formatValue={data.composition.format}
+          />
+          <p className="exec-chart-cap">{data.composition.caption}</p>
+        </article>
+      </div>
+
+      {/* Continuous operational ticker */}
+      <LiveTicker events={events} />
     </section>
   );
 }
