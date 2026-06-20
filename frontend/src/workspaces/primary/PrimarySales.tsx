@@ -8,6 +8,7 @@ import {
   type ApiImportFileCandidate,
 } from "../../lib/api";
 import type { DocumentRecord } from "../../types/domain";
+import { getInjectRevision, subscribeDemo } from "../../lib/demoMode";
 import { useCountry } from "../../context/CountryContext";
 import { FilterBar } from "../../components/FilterBar";
 import { WorldMap } from "../../components/WorldMap";
@@ -52,6 +53,7 @@ function isOverdue(candidate: ApiImportFileCandidate, today: string): boolean {
 export function PrimarySales() {
   const { country: envCountry } = useCountry();
   const rev = useSyncExternalStore(subscribeCurrency, getCurrencyRevision);
+  const injectRev = useSyncExternalStore(subscribeDemo, getInjectRevision, () => 0);
   const [candidates, setCandidates] = useState<ApiImportFileCandidate[]>([]);
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -77,7 +79,7 @@ export function PrimarySales() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [injectRev]);
 
   const today = new Date().toISOString().slice(0, 10);
   const query = search.trim().toLowerCase();
@@ -242,7 +244,7 @@ export function PrimarySales() {
       <section className="cockpit-hero">
         <div className="cockpit-hero-top">
           <div>
-            <p className="eyebrow">Primary Sales · Meril India → {countryFilter || "all subsidiaries"}</p>
+            <p className="eyebrow">Primary Sales · Origin → {countryFilter || "all subsidiaries"}</p>
             <h2>
               {filtered.length === 0
                 ? "No import shipments in this view"

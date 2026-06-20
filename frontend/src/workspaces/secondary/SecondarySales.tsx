@@ -1,5 +1,5 @@
 import { formatUnits } from "../../lib/currency";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { Gauge, Globe2, Send, ShieldAlert } from "lucide-react";
 
 import {
@@ -12,6 +12,7 @@ import {
   type ApiCustomerCommitment,
   type ApiProduct,
 } from "../../lib/api";
+import { getInjectRevision, subscribeDemo } from "../../lib/demoMode";
 import { useCountry } from "../../context/CountryContext";
 import { FilterBar } from "../../components/FilterBar";
 import { WorldMap } from "../../components/WorldMap";
@@ -66,6 +67,9 @@ export function SecondarySales() {
   const [risks, setRisks] = useState<ApiCommitmentRisk[]>([]);
   const [products, setProducts] = useState<ApiProduct[]>([]);
   const [loading, setLoading] = useState(true);
+  // Bumps whenever the presenter injects sample data; re-runs the fetch so the
+  // freshly injected customer commitments appear in this screen.
+  const injectRev = useSyncExternalStore(subscribeDemo, getInjectRevision, () => 0);
 
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -95,7 +99,7 @@ export function SecondarySales() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [injectRev]);
 
   const today = new Date().toISOString().slice(0, 10);
   const query = search.trim().toLowerCase();

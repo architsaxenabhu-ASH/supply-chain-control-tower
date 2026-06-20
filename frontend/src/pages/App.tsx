@@ -34,7 +34,10 @@ import { PrimaryValidate } from "../workspaces/shipdocs/PrimaryValidate";
 import { SecondaryUpload } from "../workspaces/shipdocs/SecondaryUpload";
 import { SecondaryValidate } from "../workspaces/shipdocs/SecondaryValidate";
 import { MovementPanel } from "../components/MovementPanel";
+import { DemoModeToggle } from "../components/DemoModeToggle";
+import { DemoControls } from "../components/DemoControls";
 import { ExecutiveLiveCenter } from "../workspaces/executive/ExecutiveLiveCenter";
+import { ExecutiveOpsCenter } from "../workspaces/executive/ExecutiveOpsCenter";
 import { CountryProvider, CountrySelector } from "../context/CountryContext";
 import { CurrencyProvider, CurrencyRatesPanel, CurrencySelector } from "../context/CurrencyContext";
 import { formatMoney, getCurrencyRevision, subscribeCurrency } from "../lib/currency";
@@ -1535,6 +1538,31 @@ export function App() {
     setLoginMessage("Signed out.");
   }
 
+  // Backend-free demo entry. Signs in as the demo presenter without contacting
+  // the server, so the platform is fully usable on the de-branded sample data
+  // alone — this is what lets a shared link work for remote viewers even though
+  // login normally requires the backend. Admin role => sees every screen.
+  function handleDemoLogin() {
+    // The shared link signs viewers in as a neutral GUEST, not the owner. This
+    // keeps the presenter-only controls (Add Sample Data / Demo Mode) hidden for
+    // anyone using the demo link — those appear only for the owner's real
+    // architsaxenabhu@gmail.com login. Admin role still lets a guest navigate
+    // every screen on the de-branded sample data.
+    const demoUser: ApiAuthenticatedUser = {
+      email: "guest.viewer@demo.local",
+      full_name: "Guest Viewer",
+      role_name: "Admin",
+      country_scope: [],
+      warehouse_scope: [],
+      permissions: [],
+      session_token: "demo-session",
+    };
+    window.localStorage.setItem(CURRENT_USER_STORAGE_KEY, JSON.stringify(demoUser));
+    setCurrentUser(demoUser);
+    setLoginMessage("Live demo — sample data.");
+    setApiStatus("Demo mode");
+  }
+
   async function handleDocumentUpload() {
     if (selectedFiles.length === 0) {
       setDocumentMessage("Select one or more files first.");
@@ -2224,6 +2252,7 @@ export function App() {
         isLoggingIn={isLoggingIn}
         message={loginMessage}
         onLogin={handleLogin}
+        onDemoLogin={handleDemoLogin}
       />
     );
   }
@@ -2234,10 +2263,10 @@ export function App() {
     <main className="app-shell">
       <aside className="sidebar">
         <div className="brand">
-          <div className="brand-mark">ML</div>
+          <div className="brand-mark">CT</div>
           <div>
-            <strong>Meril</strong>
-            <span>Supply Chain Control Tower</span>
+            <strong>Control Tower</strong>
+            <span>Supply Chain Platform</span>
           </div>
         </div>
         <div className="flow-pulse" aria-label="Live business flow: Primary Sales to Inventory to Secondary Sales">
@@ -2346,6 +2375,12 @@ export function App() {
             <h1>{activeNav.label}</h1>
           </div>
           <div className="topbar-actions">
+            {currentUser.email?.toLowerCase() === "architsaxenabhu@gmail.com" ? (
+              <>
+                <DemoControls />
+                <DemoModeToggle />
+              </>
+            ) : null}
             <CountrySelector />
             <CurrencySelector />
             <CurrencyRatesPanel actor={currentUser.email} />
@@ -2431,6 +2466,7 @@ export function App() {
           exit="exit"
         >
         {activeView === "exec-overview" ? <ExecutiveLiveCenter /> : null}
+        {activeView === "exec-summary" ? <ExecutiveOpsCenter /> : null}
         {activeView === "command-center" ? (
           <CommandCenter currentUser={currentUser} onNavigate={setActiveView} />
         ) : null}
@@ -5174,7 +5210,7 @@ function ImportValidationView({
               className="secondary-action"
               onClick={() => handlePostGoodsReceipt("direct")}
               disabled={isPostingReceipt || !isImportDelivered || !canPostReceipt}
-              title="Meril India → customer pass-through; does not add to subsidiary inventory"
+              title="Origin → customer pass-through; does not add to subsidiary inventory"
             >
               <Send size={16} aria-hidden="true" />
               3 · Direct sale — bypass inventory
@@ -5821,10 +5857,12 @@ function LoginView({
   isLoggingIn,
   message,
   onLogin,
+  onDemoLogin,
 }: {
   isLoggingIn: boolean;
   message: string;
   onLogin: (email: string, password: string) => Promise<void>;
+  onDemoLogin: () => void;
 }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -5837,14 +5875,14 @@ function LoginView({
     <main className="login-shell">
       <section className="login-panel">
         <div className="brand login-brand">
-          <div className="brand-mark">ML</div>
+          <div className="brand-mark">CT</div>
           <div>
-            <strong>Meril</strong>
-            <span>Supply Chain Control Tower</span>
+            <strong>Control Tower</strong>
+            <span>Supply Chain Platform</span>
           </div>
         </div>
         <p className="login-tagline">
-          Innovating without limits — end-to-end visibility for medical-device operations.
+          End-to-end visibility for global medical-device operations.
         </p>
         <div className="login-areas">
           {["Cardiovascular", "Structural Heart", "Orthopedics", "Robotics", "Oncology", "Diagnostics"].map(
@@ -5884,6 +5922,10 @@ function LoginView({
           </label>
           <button className="primary-action" onClick={handleSubmit} disabled={isLoggingIn}>
             {isLoggingIn ? "Signing in" : "Sign in"}
+          </button>
+          <button className="secondary-action demo-login-btn" type="button" onClick={onDemoLogin}>
+            <Play size={16} aria-hidden="true" />
+            View live demo (sample data)
           </button>
           <p className="status-line">{message}</p>
         </div>

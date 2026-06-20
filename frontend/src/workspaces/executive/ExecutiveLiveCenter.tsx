@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { motion } from "framer-motion";
 import {
   ArrowDownRight,
   ArrowUpRight,
   BarChart3,
+  Info,
   PieChart,
   PlaneLanding,
   Send,
@@ -16,8 +17,10 @@ import { DonutChart } from "../../components/DonutChart";
 import { BarMeter } from "../../components/charts/BarMeter";
 import { Sparkline } from "../../components/charts/Sparkline";
 import { TrendArea } from "../../components/charts/TrendArea";
+import { FlowScene } from "../../components/scenes/FlowScene";
 import { useCountry } from "../../context/CountryContext";
 import { getCurrencyRevision, subscribeCurrency } from "../../lib/currency";
+import { getDemoTick, getInjectRevision, getInjectedEvents, isDemoActive, subscribeDemo } from "../../lib/demoMode";
 import { prefersReducedMotion } from "../../motion/motion";
 import { buildSampleEvents, buildSampleLane, SAMPLE_NOTICE, type Kpi, type LaneId } from "../../lib/sampleBusinessData";
 import { LiveTicker } from "./LiveTicker";
@@ -33,6 +36,9 @@ import { ActivityFeed } from "./ActivityFeed";
 // (trend, ranking, composition — each interpreted), a filterable feed and a
 // continuous ticker. Figures come from the representative international sample
 // dataset and convert with the live currency.
+
+// Stable empty array for the external-store server snapshot (avoids re-renders).
+const EMPTY_EVENTS = [] as ReturnType<typeof buildSampleEvents>;
 
 const MODES: { id: LaneId; title: string; question: string; metric: string; icon: typeof PlaneLanding }[] = [
   { id: "primary", title: "Primary Sales", question: "What is entering the business?", metric: "Inbound value", icon: PlaneLanding },
@@ -64,6 +70,18 @@ function KpiCard({ kpi, index }: { kpi: Kpi; index: number }) {
   );
 }
 
+// A small "what visual is this" chip. The label names the technique; hovering
+// reveals the plain-language explanation — so the concept behind every chart is
+// always on show, never hidden.
+function ConceptTag({ label, how }: { label: string; how: string }) {
+  return (
+    <span className="exec-concept" title={how}>
+      <Info size={11} aria-hidden="true" />
+      {label}
+    </span>
+  );
+}
+
 export function ExecutiveLiveCenter({ lane = "primary" }: { lane?: LaneId }) {
   const { country } = useCountry();
   const reduced = prefersReducedMotion();
@@ -74,15 +92,32 @@ export function ExecutiveLiveCenter({ lane = "primary" }: { lane?: LaneId }) {
   const [rev, setRev] = useState(0);
   useEffect(() => subscribeCurrency(() => setRev(getCurrencyRevision())), []);
 
+  // Demo Mode: when the presenter starts the demo, the activity stream pulses so
+  // a fresh line flows into the feed continuously, and the "Sample data" badge
+  // is hidden so the screen reads as a real live system.
+  const demoActive = useSyncExternalStore(subscribeDemo, isDemoActive, () => false);
+  const demoTick = useSyncExternalStore(subscribeDemo, getDemoTick, () => 0);
+  const boost = useSyncExternalStore(subscribeDemo, getInjectRevision, () => 0);
+  const injected = useSyncExternalStore(subscribeDemo, getInjectedEvents, () => EMPTY_EVENTS);
+
+  // Pressing "Add Sample Data" (boost) and the demo pulse (tick) lift the lane
+  // figures, so the headline numbers, KPIs, map and charts visibly grow here too
+  // — not just in the Executive Summary.
   const lanes = useMemo(
     () => ({
-      primary: buildSampleLane("primary", rev),
-      inventory: buildSampleLane("inventory", rev),
-      secondary: buildSampleLane("secondary", rev),
+      primary: buildSampleLane("primary", rev, boost, demoTick),
+      inventory: buildSampleLane("inventory", rev, boost, demoTick),
+      secondary: buildSampleLane("secondary", rev, boost, demoTick),
     }),
-    [rev],
+    [rev, boost, demoTick],
   );
-  const events = useMemo(() => buildSampleEvents(), []);
+  // The ticker scrolls continuously on its own, so keep its source stable; the
+  // feed receives the pulsing stream so new lines visibly arrive during a demo.
+  const tickerEvents = useMemo(() => buildSampleEvents(0), []);
+  const feedEvents = useMemo(() => {
+    const base = buildSampleEvents(demoActive ? demoTick : 0);
+    return injected.length ? [...injected, ...base] : base;
+  }, [demoActive, demoTick, injected]);
   const data = lanes[mode];
   const meta = MODES.find((option) => option.id === mode) ?? MODES[0];
   const Icon = meta.icon;
@@ -131,9 +166,11 @@ export function ExecutiveLiveCenter({ lane = "primary" }: { lane?: LaneId }) {
         </div>
 
         <div className="exec-head-status">
-          <span className="exec-sample" title="Representative sample data for demonstration">
-            {SAMPLE_NOTICE}
-          </span>
+          {!demoActive ? (
+            <span className="exec-sample" title="Representative sample data for demonstration">
+              {SAMPLE_NOTICE}
+            </span>
+          ) : null}
           <div className="exec-live-flag">
             <span className="exec-live-dot" aria-hidden="true" />
             <span>Live</span>
@@ -143,6 +180,9 @@ export function ExecutiveLiveCenter({ lane = "primary" }: { lane?: LaneId }) {
 
       {/* The 30-second read */}
       <p className="exec-headline">{data.headline}</p>
+
+      {/* Signature motion scene for this mode (plane / warehouse / truck) */}
+      <FlowScene spec={data.scene} reduced={reduced} />
 
       {/* KPI cards: value + spark + delta + interpretation */}
       <div className="exec-kpis">
@@ -173,7 +213,7 @@ export function ExecutiveLiveCenter({ lane = "primary" }: { lane?: LaneId }) {
             </span>
           </div>
         </div>
-        <ActivityFeed events={events} defaultFilter={mode} />
+        <ActivityFeed events={feedEvents} defaultFilter={mode} />
       </div>
 
       {/* Charts: trend, ranking, composition — each interpreted in plain language */}
@@ -183,6 +223,7 @@ export function ExecutiveLiveCenter({ lane = "primary" }: { lane?: LaneId }) {
             <h3>
               <TrendingUp size={15} aria-hidden="true" /> {data.trend.title}
             </h3>
+            <ConceptTag label={data.trend.concept} how={data.trend.technique} />
           </div>
           <TrendArea series={data.trend.series} format={data.trend.format} legend={data.trend.legend} />
           <p className="exec-chart-cap">{data.trend.caption}</p>
@@ -193,6 +234,7 @@ export function ExecutiveLiveCenter({ lane = "primary" }: { lane?: LaneId }) {
             <h3>
               <BarChart3 size={15} aria-hidden="true" /> {data.ranking.title}
             </h3>
+            <ConceptTag label={data.ranking.concept} how={data.ranking.technique} />
           </div>
           <BarMeter rows={data.ranking.rows} format={data.ranking.format} />
           <p className="exec-chart-cap">{data.ranking.caption}</p>
@@ -203,6 +245,7 @@ export function ExecutiveLiveCenter({ lane = "primary" }: { lane?: LaneId }) {
             <h3>
               <PieChart size={15} aria-hidden="true" /> {data.composition.title}
             </h3>
+            <ConceptTag label={data.composition.concept} how={data.composition.technique} />
           </div>
           <DonutChart
             slices={data.composition.slices}
@@ -214,7 +257,7 @@ export function ExecutiveLiveCenter({ lane = "primary" }: { lane?: LaneId }) {
       </div>
 
       {/* Continuous operational ticker */}
-      <LiveTicker events={events} />
+      <LiveTicker events={tickerEvents} />
     </section>
   );
 }

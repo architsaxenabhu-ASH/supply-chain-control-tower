@@ -1,5 +1,5 @@
 import type { DocumentExtractionMaster, DocumentRecord, DocumentType } from "../types/domain";
-import { SAMPLE_API_FALLBACKS } from "./sampleApiData";
+import { SAMPLE_API_FALLBACKS, injectedRowsFor } from "./sampleApiData";
 
 const DEFAULT_API_BASE_URL =
   typeof window === "undefined"
@@ -35,6 +35,33 @@ function authHeaders(base: Record<string, string> = {}): Record<string, string> 
 
 export async function getHealth(): Promise<Response> {
   return fetch(`${API_BASE_URL.replace("/api/v1", "")}/health`);
+}
+
+// ---- Demo-presentation shared state ----------------------------------------
+// A tiny process-wide counter on the backend that lets the presenter drive a
+// live walkthrough every device sees at once. All helpers fail soft (return
+// null) so the demo still works on a single machine if the backend is absent.
+
+export type DemoLedgerState = { epoch: number; primary: number; secondary: number; updated_at?: string };
+
+export async function fetchDemoState(): Promise<DemoLedgerState | null> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/demo/state`, { headers: authHeaders() });
+    if (!response.ok) return null;
+    return (await response.json()) as DemoLedgerState;
+  } catch {
+    return null;
+  }
+}
+
+export async function postDemoAction(action: "reset" | "primary" | "secondary"): Promise<DemoLedgerState | null> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/demo/${action}`, { method: "POST", headers: authHeaders() });
+    if (!response.ok) return null;
+    return (await response.json()) as DemoLedgerState;
+  } catch {
+    return null;
+  }
 }
 
 export async function uploadDocument(
@@ -97,7 +124,8 @@ async function getJson<T>(path: string): Promise<T> {
   // When the backend has no data for a known list endpoint (or is unreachable),
   // serve representative sample data so every tab is populated for demos. Real
   // data always wins — the fallback only fires on error or an empty array.
-  const fallback = SAMPLE_API_FALLBACKS[path.split("?")[0]];
+  const basePath = path.split("?")[0];
+  const fallback = SAMPLE_API_FALLBACKS[basePath];
   try {
     const response = await fetch(`${API_BASE_URL}${path}`, { headers: authHeaders() });
     if (!response.ok) {
@@ -107,6 +135,13 @@ async function getJson<T>(path: string): Promise<T> {
     const data = (await response.json()) as T;
     if (fallback && Array.isArray(data) && data.length === 0) {
       return fallback() as T;
+    }
+    // Surface presenter-injected demo rows on top of real backend data too, so
+    // "Add Sample Data" visibly changes every tab whether or not the backend is
+    // running. (When the fallback fired above it already includes these.)
+    if (Array.isArray(data)) {
+      const injected = injectedRowsFor(basePath);
+      if (injected.length > 0) return [...injected, ...data] as unknown as T;
     }
     return data;
   } catch (error) {

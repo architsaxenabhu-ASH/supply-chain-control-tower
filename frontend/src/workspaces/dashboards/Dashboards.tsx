@@ -61,6 +61,7 @@ import {
   getCurrencyRevision,
   subscribeCurrency,
 } from "../../lib/currency";
+import { getInjectRevision, subscribeDemo } from "../../lib/demoMode";
 
 // Five summary dashboards (Phase 5H). They roll up the operations workspaces;
 // they are not operational screens. Each reuses the OPS visual language
@@ -253,6 +254,7 @@ export function PrimarySalesDashboard({ onNavigate }: DashboardNav) {
   const [candidates, setCandidates] = useState<ApiImportFileCandidate[]>([]);
   const [payables, setPayables] = useState<ApiPayable[]>([]);
   const [loading, setLoading] = useState(true);
+  const injectRev = useSyncExternalStore(subscribeDemo, getInjectRevision, () => 0);
 
   useEffect(() => {
     let active = true;
@@ -267,7 +269,7 @@ export function PrimarySalesDashboard({ onNavigate }: DashboardNav) {
     return () => {
       active = false;
     };
-  }, []);
+  }, [injectRev]);
 
   const today = todayStamp();
   const incomingValue = useMemo(() => {
@@ -302,7 +304,7 @@ export function PrimarySalesDashboard({ onNavigate }: DashboardNav) {
   const hasData = candidates.length > 0;
   const answer = !hasData
     ? "Nothing inbound yet — the pipeline is clear"
-    : `${disp(incomingValue)} of inventory is on its way from Meril India`;
+    : `${disp(incomingValue)} of inventory is on its way from the origin hub`;
   const story = !hasData
     ? "This is your inbound pipeline. As you assemble import shipments in Primary Sales → Operations, their value, status, and arrival risk surface here."
     : delays > 0
@@ -385,6 +387,7 @@ export function InventoryDashboard({ onNavigate }: DashboardNav) {
   const [commitment, setCommitment] = useState<ApiCommitmentDashboard | null>(null);
   const [commitments, setCommitments] = useState<ApiCustomerCommitment[]>([]);
   const [loading, setLoading] = useState(true);
+  const injectRev = useSyncExternalStore(subscribeDemo, getInjectRevision, () => 0);
 
   useEffect(() => {
     let active = true;
@@ -405,7 +408,7 @@ export function InventoryDashboard({ onNavigate }: DashboardNav) {
     return () => {
       active = false;
     };
-  }, []);
+  }, [injectRev]);
 
   const allocated = commitments
     .filter((c) => !["fulfilled", "delivered", "cancelled", "closed"].includes(c.status.toLowerCase()))
@@ -517,6 +520,7 @@ export function SecondarySalesDashboard({ onNavigate }: DashboardNav) {
   const [dash, setDash] = useState<ApiCommitmentDashboard | null>(null);
   const [commitments, setCommitments] = useState<ApiCustomerCommitment[]>([]);
   const [loading, setLoading] = useState(true);
+  const injectRev = useSyncExternalStore(subscribeDemo, getInjectRevision, () => 0);
 
   useEffect(() => {
     let active = true;
@@ -530,7 +534,7 @@ export function SecondarySalesDashboard({ onNavigate }: DashboardNav) {
     return () => {
       active = false;
     };
-  }, []);
+  }, [injectRev]);
 
   const salesQty = commitments.reduce((sum, c) => sum + c.delivered_quantity, 0);
   const customers = new Set(commitments.map((c) => c.customer)).size;
@@ -625,6 +629,7 @@ export function BusinessDashboard({ onNavigate }: DashboardNav) {
   const [decisions, setDecisions] = useState<ApiDecision[]>([]);
   const [actions, setActions] = useState<ApiExecutiveAction[]>([]);
   const [loading, setLoading] = useState(true);
+  const injectRev = useSyncExternalStore(subscribeDemo, getInjectRevision, () => 0);
 
   useEffect(() => {
     let active = true;
@@ -647,7 +652,7 @@ export function BusinessDashboard({ onNavigate }: DashboardNav) {
     return () => {
       active = false;
     };
-  }, []);
+  }, [injectRev]);
 
   const topCountries = useMemo(
     () => [...countries].sort((a, b) => (b.value_achievement_pct ?? 0) - (a.value_achievement_pct ?? 0)).slice(0, 6),
@@ -790,6 +795,7 @@ export function FinanceDashboard({ onNavigate }: DashboardNav) {
   const [payables, setPayables] = useState<ApiPayable[]>([]);
   const [credit, setCredit] = useState<ApiCreditControl[]>([]);
   const [loading, setLoading] = useState(true);
+  const injectRev = useSyncExternalStore(subscribeDemo, getInjectRevision, () => 0);
 
   useEffect(() => {
     let active = true;
@@ -804,7 +810,7 @@ export function FinanceDashboard({ onNavigate }: DashboardNav) {
     return () => {
       active = false;
     };
-  }, []);
+  }, [injectRev]);
 
   const recvOutstanding = useMemo(
     () => receivables.reduce((sum, r) => sum + convertAmount(r.outstanding_value || 0, { from: r.currency, book: "secondary", onDate: r.invoice_date }), 0),

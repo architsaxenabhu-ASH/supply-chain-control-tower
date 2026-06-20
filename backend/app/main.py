@@ -17,6 +17,12 @@ app = FastAPI(
 AUTH_EXEMPT_WRITE_PATHS = {
     "/api/v1/security/login",
     "/api/v1/security/users",
+    # Demo-presentation controls: a process-wide counter only, no business data,
+    # so every device (including a manager in another city) can drive/see the
+    # same live walkthrough without an authenticated session.
+    "/api/v1/demo/reset",
+    "/api/v1/demo/primary",
+    "/api/v1/demo/secondary",
 }
 WRITE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 

@@ -13,6 +13,7 @@ from app.api.routes import (
     dashboard,
     decisions,
     demand,
+    demo,
     dispatches,
     documents,
     erp_uploads,
@@ -48,6 +49,7 @@ from app.api.routes import (
 
 
 api_router = APIRouter()
+api_router.include_router(demo.router, prefix="/demo", tags=["demo"])
 api_router.include_router(audit.router, prefix="/audit", tags=["audit"])
 api_router.include_router(currency.router, prefix="/currency", tags=["currency"])
 api_router.include_router(translation.router, prefix="/translation", tags=["translation"])

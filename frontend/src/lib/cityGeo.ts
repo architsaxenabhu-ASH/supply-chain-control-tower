@@ -39,6 +39,20 @@ export const CITY_COORDS: Record<string, [number, number]> = {
   "new york": [-74.006, 40.7128],
   singapore: [103.8198, 1.3521],
   dhaka: [90.4125, 23.8103],
+  "são paulo": [-46.6333, -23.5505],
+  "sao paulo": [-46.6333, -23.5505],
+  riyadh: [46.6753, 24.7136],
+  tokyo: [139.6917, 35.6895],
+  istanbul: [28.9784, 41.0082],
+  warsaw: [21.0122, 52.2297],
+  johannesburg: [28.0473, -26.2041],
+  // expansion markets (enter on demo inject)
+  madrid: [-3.7038, 40.4168],
+  "mexico city": [-99.1332, 19.4326],
+  sydney: [151.2093, -33.8688],
+  cairo: [31.2357, 30.0444],
+  jakarta: [106.8451, -6.2088],
+  toronto: [-79.3832, 43.6532],
 };
 
 export function cityCoords(city: string): [number, number] | null {

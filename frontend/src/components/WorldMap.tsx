@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { geoNaturalEarth1, geoPath } from "d3-geo";
+import { geoArea, geoNaturalEarth1, geoPath } from "d3-geo";
 import { feature } from "topojson-client";
-import type { Feature, FeatureCollection, Geometry } from "geojson";
+import type { Feature, FeatureCollection, Geometry, MultiPolygon } from "geojson";
 import type { GeometryCollection, Topology } from "topojson-specification";
 import worldTopo from "world-atlas/countries-110m.json";
 
 import { cityCoords } from "../lib/cityGeo";
+import { INDIA_CLAIM_GEOMETRY } from "../lib/indiaClaim";
 import { prefersReducedMotion } from "../motion/motion";
 
 // An interactive operational map (Phase 6J). World → Country → City drill-down:
@@ -28,9 +29,42 @@ const EXTENT: [[number, number], [number, number]] = [
   [WIDTH - 6, HEIGHT - 6],
 ];
 
+// India must be shown with the boundary officially accepted by the Government of
+// India (full territorial claim). We replace the world-atlas (de-facto) India
+// outline with that claim and draw it LAST, so in the disputed sectors India's
+// claimed border sits on top of the neighbouring countries' fills.
+//
+// d3-geo fills a spherical polygon by winding order. If the imported claim is
+// wound opposite to the world-atlas data, d3 fills its COMPLEMENT — a giant blob
+// covering the whole map that swallows every click and breaks India's centroid
+// (so the routes disappear). Detect that (spherical area > half the globe) and
+// reverse every ring so India fills India.
+function reverseRings(geometry: MultiPolygon): MultiPolygon {
+  return {
+    type: "MultiPolygon",
+    coordinates: geometry.coordinates.map((polygon) => polygon.map((ring) => [...ring].reverse())),
+  };
+}
+
+const indiaGeometry: MultiPolygon =
+  geoArea({ type: "Feature", properties: {}, geometry: INDIA_CLAIM_GEOMETRY } as Feature<Geometry>) > 2 * Math.PI
+    ? reverseRings(INDIA_CLAIM_GEOMETRY)
+    : INDIA_CLAIM_GEOMETRY;
+
+const INDIA_CLAIM_FEATURE = {
+  type: "Feature",
+  properties: { name: "India" },
+  geometry: indiaGeometry,
+} as Feature<Geometry, { name?: string }>;
+
 const drawable = {
   type: "FeatureCollection",
-  features: countries.features.filter((item) => item.properties?.name !== "Antarctica"),
+  features: [
+    ...countries.features.filter(
+      (item) => item.properties?.name !== "Antarctica" && item.properties?.name !== "India",
+    ),
+    INDIA_CLAIM_FEATURE,
+  ],
 } as FeatureCollection<Geometry, { name?: string }>;
 
 // One fixed world projection; zoom is done with a transform, so geometry never
@@ -66,6 +100,21 @@ const NAME_ALIASES: Record<string, string> = {
 function normalise(name: string): string {
   const key = name.trim().toLowerCase();
   return NAME_ALIASES[key] ?? key;
+}
+
+// Command-centre node palette: each city node is tinted by its operating status,
+// the way a live control map flags load. Green = running clean, amber = under
+// load, red = held/delayed, cyan = a brand-new market that just came online.
+const STATUS_GREEN = "#00e676";
+const STATUS_AMBER = "#ffc400";
+const STATUS_RED = "#ff5252";
+const STATUS_NEW = "#37e6ff";
+function cityStatusColor(status?: string): string {
+  const s = (status ?? "").toLowerCase();
+  if (s.includes("new market")) return STATUS_NEW;
+  if (s.includes("delay") || s.includes("risk") || s.includes("low") || s.includes("hold") || s.includes("late") || s.includes("expir")) return STATUS_RED;
+  if (s.includes("po") || s.includes("load") || s.includes("watch") || s.includes("warn")) return STATUS_AMBER;
+  return STATUS_GREEN;
 }
 
 const FEATURE_BY_NAME = new Map<string, NamedFeature>();
@@ -396,11 +445,18 @@ export function WorldMap({
                     vectorEffect="non-scaling-stroke"
                   />
                   {!reduced ? (
-                    <circle className="map-route-mover" r={2.6}>
+                    <path
+                      className="map-route-mover"
+                      d={
+                        r.mode === "sea"
+                          ? "M-3.4 -1.5 L3.6 -1.5 L2.3 1.9 L-2.3 1.9 Z"
+                          : "M4.4 0 L-3.1 -2.7 L-1.3 0 L-3.1 2.7 Z"
+                      }
+                    >
                       <animateMotion dur={`${r.dur}s`} repeatCount="indefinite" rotate="auto">
                         <mpath href={`#exec-route-${i}`} />
                       </animateMotion>
-                    </circle>
+                    </path>
                   ) : null}
                 </g>
               ))}
@@ -430,6 +486,7 @@ export function WorldMap({
               const sy = VIEW_CY + userZoom * (by - VIEW_CY);
               const r = 4 + 9 * Math.sqrt((c.value || 0) / maxCity);
               const isSel = selectedCity?.city === c.city;
+              const color = cityStatusColor(c.status);
               return (
                 <g
                   key={c.city}
@@ -442,8 +499,8 @@ export function WorldMap({
                   onMouseLeave={() => setHover(null)}
                   onClick={() => setSelectedCity(c)}
                 >
-                  <circle className="map-dot-pulse" r={r} />
-                  <circle className="map-city-dot" r={Math.max(3, r * 0.5)} />
+                  <circle className="map-dot-pulse" r={r} style={{ fill: color }} />
+                  <circle className="map-city-dot" r={Math.max(3, r * 0.5)} style={{ fill: color, stroke: color }} />
                   <text className="map-city-label" y={-r - 5}>{c.city}</text>
                 </g>
               );

@@ -12,6 +12,7 @@ import {
   type ApiShipment,
   type ApiWarehouseLocation,
 } from "../../lib/api";
+import { getInjectRevision, subscribeDemo } from "../../lib/demoMode";
 import { useCountry } from "../../context/CountryContext";
 import { FilterBar } from "../../components/FilterBar";
 import { WorldMap, type MapCity } from "../../components/WorldMap";
@@ -45,6 +46,9 @@ export function InventoryHub() {
   // Re-run conversions whenever the currency engine changes (display currency,
   // book, or a historical rate table arriving for a batch's registration date).
   const rev = useSyncExternalStore(subscribeCurrency, getCurrencyRevision);
+  // Re-pull stock when the presenter injects sample data, so freshly received
+  // batches surface here just like a real goods-receipt would.
+  const injectRev = useSyncExternalStore(subscribeDemo, getInjectRevision, () => 0);
   const [batches, setBatches] = useState<ApiInventoryBatch[]>([]);
   const [warehouses, setWarehouses] = useState<ApiWarehouseLocation[]>([]);
   const [shipments, setShipments] = useState<ApiShipment[]>([]);
@@ -82,7 +86,7 @@ export function InventoryHub() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [injectRev]);
 
   const warehouseCountry = useMemo(() => {
     const map = new Map<string, string>();

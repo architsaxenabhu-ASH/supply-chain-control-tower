@@ -118,6 +118,18 @@ export const WORKSPACES: WorkspaceDef[] = [
       { id: "exec-overview", label: "Live Center", icon: RadioTower, signature: "glide", permissions: ["executive_view"] },
     ],
   },
+  // Executive Summary — a SEPARATE "Mission Control" page that rolls the three
+  // operating screens into one Bloomberg/Power-BI style story with live gauges,
+  // a network map and signature animations.
+  {
+    id: "exec-summary-zone",
+    label: "Executive Summary",
+    icon: Gauge,
+    section: "overview",
+    tabs: [
+      { id: "exec-summary", label: "Executive Summary", icon: Gauge, signature: "rise", permissions: ["executive_view"] },
+    ],
+  },
   // ============================ OPERATIONS ============================
   // Documents — shipment-first upload + validation; sits above the flow
   // workspaces because every shipment begins as documents.
