@@ -53,6 +53,7 @@ import {
 } from "../../lib/api";
 import { WorldMap } from "../../components/WorldMap";
 import { DonutChart } from "../../components/DonutChart";
+import { Term } from "../../components/InfoTip";
 import {
   convertAmount,
   formatDisplay,
@@ -105,7 +106,10 @@ function Hero({
         {vitals.map((vital) => (
           <div className={`vital${vital.tone ? ` tone-${vital.tone}` : ""}`} key={vital.label}>
             <strong>{vital.value}</strong>
-            <span>{vital.label}</span>
+            <span>
+              {vital.label}
+              <Term label={vital.label} />
+            </span>
           </div>
         ))}
       </div>

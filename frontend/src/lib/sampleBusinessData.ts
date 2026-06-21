@@ -1360,6 +1360,13 @@ export function buildExecutiveSnapshot(_rev = 0, boost = 0, tick = 0): ExecSnaps
   const band1 = stockUnitsTotal * 0.26;
   const band2 = Math.max(0, stockUnitsTotal - band0 - band1);
   const expiringTotal = total("expiring");
+  // "Expiry & out of stock" reports only stock customers actually want (has open
+  // demand) — not the whole catalogue. We keep the demand-backed portion of
+  // near-expiry stock (the units there is real demand to sell before they lapse);
+  // expiring stock nobody is ordering is excluded here.
+  const demandedRows = ops.filter((row) => row.reserved > 0 || row.openPOs > 0);
+  const expiringWithDemand = sum(demandedRows.map((row) => Math.min(row.expiring, row.openDemand)));
+  const demandedVolume = sum(demandedRows.map((row) => row.openDemand)) || stockUnitsTotal;
   const lowCoverage = ops.filter((row) => row.currentServ < 65);
   const outVerticals = new Set(lowCoverage.map((row) => row.vertical));
 
@@ -1375,9 +1382,9 @@ export function buildExecutiveSnapshot(_rev = 0, boost = 0, tick = 0): ExecSnaps
       { label: "180+ days", value: money(band2 * avgUnitValue), volume: `${units(band2)} units`, pct: Math.round(pct(band2, stockUnitsTotal)), tone: "warn" },
     ],
     nearExpiry: {
-      label: "Near expiry (≤90 days)",
-      value: money(expiringTotal * avgUnitValue),
-      sub: `${units(expiringTotal)} units · ${Math.round(pct(expiringTotal, stockUnitsTotal))}% of stock`,
+      label: "Near expiry, in demand (≤90 days)",
+      value: money(expiringWithDemand * avgUnitValue),
+      sub: `${units(expiringWithDemand)} units customers want · ${Math.round(pct(expiringWithDemand, demandedVolume))}% of demanded stock`,
       tone: "warn",
     },
     outOfStock: [

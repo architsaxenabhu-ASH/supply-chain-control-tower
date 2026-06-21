@@ -24,6 +24,7 @@ import { BarMeter } from "../../components/charts/BarMeter";
 import { CountUp } from "../../components/charts/CountUp";
 import { Sparkline } from "../../components/charts/Sparkline";
 import { FlowScene } from "../../components/scenes/FlowScene";
+import { Term } from "../../components/InfoTip";
 import { useCountry } from "../../context/CountryContext";
 import { getCurrencyRevision, subscribeCurrency } from "../../lib/currency";
 import { getDemoTick, getInjectRevision, getInjectedEvents, isDemoActive, subscribeDemo } from "../../lib/demoMode";
@@ -76,7 +77,10 @@ function toneClass(tone?: ExecStat["tone"]): string {
 function Cell({ stat, big }: { stat: ExecStat; big?: boolean }) {
   return (
     <div className={`ops-cell ${toneClass(stat.tone)}${big ? " is-big" : ""}`}>
-      <span className="ops-cell-label">{stat.label}</span>
+      <span className="ops-cell-label">
+        {stat.label}
+        <Term label={stat.label} />
+      </span>
       <strong className="ops-cell-value ops-figure" key={stat.value}>
         {stat.value}
       </strong>
@@ -143,12 +147,42 @@ function Panel({
         <h3>
           {icon}
           {title}
+          <Term label={title} />
         </h3>
         {hint ? <span className="ops-panel-hint">{hint}</span> : null}
       </header>
       {children}
     </article>
   );
+}
+
+// Reveal-on-scroll: a section settles into view the first time it enters the
+// viewport, so the long page reads as a story that unfolds. Visible by default
+// when reduced-motion is on or IntersectionObserver is unavailable — content is
+// never gated on the animation firing (emil's rule).
+function useInView(): { ref: (node: HTMLElement | null) => void; inView: boolean } {
+  const reduced = prefersReducedMotion();
+  const supported = typeof IntersectionObserver !== "undefined";
+  const [inView, setInView] = useState(reduced || !supported);
+  const [node, setNode] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    if (reduced || !supported || !node || inView) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            setInView(true);
+            io.disconnect();
+            break;
+          }
+        }
+      },
+      { rootMargin: "0px 0px -12% 0px", threshold: 0.08 },
+    );
+    io.observe(node);
+    return () => io.disconnect();
+  }, [node, reduced, supported, inView]);
+  return { ref: setNode, inView };
 }
 
 function Section({
@@ -166,8 +200,13 @@ function Section({
   accent: string;
   children: ReactNode;
 }) {
+  const { ref, inView } = useInView();
   return (
-    <section className="ops-section" style={{ ["--ops-accent" as string]: accent } as CSSProperties}>
+    <section
+      ref={ref}
+      className={`ops-section ${inView ? "is-in" : "is-pending"}`}
+      style={{ ["--ops-accent" as string]: accent } as CSSProperties}
+    >
       <header className="ops-section-head">
         <span className="ops-section-index">{index}</span>
         <div>
