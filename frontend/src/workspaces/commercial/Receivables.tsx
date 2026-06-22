@@ -22,6 +22,7 @@ import {
   type ApiReceivable,
 } from "../../lib/api";
 import { useCountry } from "../../context/CountryContext";
+import { useDemoRevision } from "../../lib/useDemoRevision";
 import { itemVariants, listVariants, prefersReducedMotion, signatureVariants } from "../../motion/motion";
 
 // Receivables (Phase 5A): the money flowing in. Aging ledger, payment risk,
@@ -59,6 +60,7 @@ export function Receivables({ currentUser }: { currentUser: ApiAuthenticatedUser
   const reduced = prefersReducedMotion();
   const { country } = useCountry();
   const rev = useSyncExternalStore(subscribeCurrency, getCurrencyRevision);
+  const injectRev = useDemoRevision();
   const [receivables, setReceivables] = useState<ApiReceivable[]>([]);
   const [risks, setRisks] = useState<ApiPaymentRisk[]>([]);
   const [credit, setCredit] = useState<ApiCreditControl[]>([]);
@@ -70,6 +72,7 @@ export function Receivables({ currentUser }: { currentUser: ApiAuthenticatedUser
   const [message, setMessage] = useState<{ tone: "good" | "bad"; text: string } | null>(null);
 
   const load = useCallback(() => {
+    void injectRev; // re-run on every presenter click so the ledger grows live
     setLoading(true);
     Promise.allSettled([
       fetchReceivables({
@@ -84,7 +87,7 @@ export function Receivables({ currentUser }: { currentUser: ApiAuthenticatedUser
       if (creditRows.status === "fulfilled") setCredit(creditRows.value);
       setLoading(false);
     });
-  }, [statusFilter, country]);
+  }, [statusFilter, country, injectRev]);
 
   useEffect(() => {
     load();

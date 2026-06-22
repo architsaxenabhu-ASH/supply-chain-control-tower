@@ -16,6 +16,7 @@ import {
   type ApiShipment,
 } from "../../lib/api";
 import { convertAmount, formatDisplay, formatUnits, getCurrencyRevision, subscribeCurrency } from "../../lib/currency";
+import { useDemoRevision } from "../../lib/useDemoRevision";
 
 // Historical Time Machine — Business Snapshot (Phase 6, P1). Pick a date and see
 // the whole business as it stood that day, reconstructed from transaction
@@ -32,6 +33,7 @@ function lineKey(itemCode: string, batch: string): string {
 
 export function BusinessSnapshot() {
   const rev = useSyncExternalStore(subscribeCurrency, getCurrencyRevision);
+  const injectRev = useDemoRevision();
   const [receipts, setReceipts] = useState<ApiGoodsReceipt[]>([]);
   const [dispatches, setDispatches] = useState<ApiDispatch[]>([]);
   const [shipments, setShipments] = useState<ApiShipment[]>([]);
@@ -65,7 +67,7 @@ export function BusinessSnapshot() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [injectRev]);
 
   const shipmentById = useMemo(() => {
     const map = new Map<string, ApiShipment>();

@@ -13,6 +13,7 @@ import {
   type ApiExecutiveAction,
 } from "../../lib/api";
 import { itemVariants, listVariants, prefersReducedMotion } from "../../motion/motion";
+import { useDemoRevision } from "../../lib/useDemoRevision";
 
 // My Work (Phase 5A): the queue system. No notifications — users work from
 // four queues: Actions, Reviews, Approvals, Decisions. Every row leads
@@ -49,6 +50,7 @@ export function MyWork({
   onNavigate: (view: string) => void;
 }) {
   const reduced = prefersReducedMotion();
+  const injectRev = useDemoRevision();
   const [actions, setActions] = useState<ApiExecutiveAction[]>([]);
   const [approvals, setApprovals] = useState<ApiApproval[]>([]);
   const [decisions, setDecisions] = useState<ApiDecision[]>([]);
@@ -79,7 +81,7 @@ export function MyWork({
     return () => {
       active = false;
     };
-  }, []);
+  }, [injectRev]);
 
   const sortedActions = useMemo(
     () => [...actions].sort((a, b) => severityRank(a.severity) - severityRank(b.severity)),

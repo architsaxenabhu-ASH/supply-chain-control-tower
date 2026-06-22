@@ -13,6 +13,7 @@ import {
 } from "../../lib/api";
 import type { DashboardNav } from "../dashboards/Dashboards";
 import { formatUnits, getCurrencyRevision, subscribeCurrency } from "../../lib/currency";
+import { useDemoRevision } from "../../lib/useDemoRevision";
 
 // Planning Dashboard (Phase 6) — the management planning cockpit. Past · Present
 // · Future in one view, by pure calculation (no forecasting, no models):
@@ -57,6 +58,7 @@ type VerticalRow = {
 
 export function PlanningDashboard({ onNavigate }: DashboardNav) {
   useSyncExternalStore(subscribeCurrency, getCurrencyRevision);
+  const injectRev = useDemoRevision();
   const [batches, setBatches] = useState<ApiInventoryBatch[]>([]);
   const [candidates, setCandidates] = useState<ApiImportFileCandidate[]>([]);
   const [commitments, setCommitments] = useState<ApiCustomerCommitment[]>([]);
@@ -85,7 +87,7 @@ export function PlanningDashboard({ onNavigate }: DashboardNav) {
     return () => {
       active = false;
     };
-  }, []);
+  }, [injectRev]);
 
   const horizonDate = horizon === "custom" ? customDate : addDays(horizon);
   const horizonLabel = horizon === "custom" ? customDate : horizon === 0 ? "today" : `+${horizon} days`;

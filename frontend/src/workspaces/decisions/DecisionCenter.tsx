@@ -16,6 +16,7 @@ import {
   type ApiSimilarDecision,
 } from "../../lib/api";
 import { itemVariants, listVariants, prefersReducedMotion, signatureVariants } from "../../motion/motion";
+import { useDemoRevision } from "../../lib/useDemoRevision";
 
 // Decision Center — the management decision cockpit (Phase 5L). The signature
 // feature: not a transaction screen but a place to run the management loop
@@ -67,6 +68,7 @@ function recommendFor(action: ApiExecutiveAction): string {
 
 export function DecisionCenter({ currentUser }: { currentUser: ApiAuthenticatedUser }) {
   const reduced = prefersReducedMotion();
+  const injectRev = useDemoRevision();
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("open");
   const [situations, setSituations] = useState<ApiExecutiveAction[]>([]);
   const [decisions, setDecisions] = useState<ApiDecision[]>([]);
@@ -112,7 +114,7 @@ export function DecisionCenter({ currentUser }: { currentUser: ApiAuthenticatedU
     setSelectedId(null);
     setMessage(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter]);
+  }, [statusFilter, injectRev]);
 
   const selectedDecision = useMemo(
     () => decisions.find((decision) => decision.decision_id === selectedId) ?? null,

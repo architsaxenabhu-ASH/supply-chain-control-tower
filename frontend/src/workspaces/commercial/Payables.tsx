@@ -12,6 +12,7 @@ import {
   type ApiPayablesRisk,
 } from "../../lib/api";
 import { useCountry } from "../../context/CountryContext";
+import { useDemoRevision } from "../../lib/useDemoRevision";
 import { itemVariants, listVariants, prefersReducedMotion, signatureVariants } from "../../motion/motion";
 
 // Payables (Phase 5A): the money flowing out — supplier, logistics, customs
@@ -43,6 +44,7 @@ function riskPill(level: string): string {
 export function Payables({ currentUser }: { currentUser: ApiAuthenticatedUser }) {
   const reduced = prefersReducedMotion();
   const { country } = useCountry();
+  const injectRev = useDemoRevision();
   const [payables, setPayables] = useState<ApiPayable[]>([]);
   const [risks, setRisks] = useState<ApiPayablesRisk[]>([]);
   const [statusFilter, setStatusFilter] = useState<(typeof STATUS_FILTERS)[number]>("all");
@@ -53,6 +55,7 @@ export function Payables({ currentUser }: { currentUser: ApiAuthenticatedUser })
   const [message, setMessage] = useState<{ tone: "good" | "bad"; text: string } | null>(null);
 
   const load = useCallback(() => {
+    void injectRev; // re-run on every presenter click so the ledger grows live
     setLoading(true);
     Promise.allSettled([
       fetchPayables({ status: statusFilter === "all" ? undefined : statusFilter }),
@@ -62,7 +65,7 @@ export function Payables({ currentUser }: { currentUser: ApiAuthenticatedUser })
       if (riskRows.status === "fulfilled") setRisks(riskRows.value);
       setLoading(false);
     });
-  }, [statusFilter]);
+  }, [statusFilter, injectRev]);
 
   useEffect(() => {
     load();

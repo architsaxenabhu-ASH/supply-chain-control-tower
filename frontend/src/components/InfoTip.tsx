@@ -19,6 +19,8 @@ export const GLOSSARY: Record<string, string> = {
   "out of stock": "Items customers want that we currently have none of.",
   "expiry & out of stock": "Stock that customers actually want which is about to expire, plus items in demand we've run out of. Stock nobody is ordering isn't counted here.",
   "near expiry, in demand (≤90 days)": "Near-expiry stock that customers want — the units to sell or move first, before they lapse. Expiring stock with no demand isn't counted here.",
+  "at write-off risk (no demand, ≤90 days)": "Near-expiry stock that NO customer is currently ordering — it may become a loss. Discount it, move it, or plan to write it off. The other half of expiring stock (what customers want) is the 'sell this now' figure beside it.",
+  "write-off risk": "Stock about to expire with no demand behind it — money you may lose unless you discount or move it.",
   "stock state": "A breakdown of stock into available to sell, reserved for orders, expiring soon, and expired.",
   customs: "Government clearance that imported goods must pass before they can be delivered.",
   "customs reliability": "How often our imports clear government customs on time, without hold-ups.",

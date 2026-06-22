@@ -30,6 +30,7 @@ import {
   generateInjectedCommitments,
   generateInjectedImports,
   registerInjectProviders,
+  registerPresentationProvider,
 } from "./sampleApiData";
 import { fetchDemoState, postDemoAction, type DemoLedgerState } from "./api";
 import type { ApiCustomerCommitment, ApiImportFileCandidate, ApiInventoryBatch } from "./api";
@@ -62,6 +63,9 @@ const listeners = new Set<() => void>();
 // modules importing this one (avoids an import cycle).
 registerLedgerProvider(() => ({ active: epoch > 0, primaryClicks, secondaryClicks }));
 registerMarketProvider(() => injectedMarkets);
+// A presentation is "live" once it has started (after the first reset/click).
+// While live, every covered endpoint starts at zero and grows from the counters.
+registerPresentationProvider(() => epoch > 0);
 registerInjectProviders(
   () => injectedImports,
   () => injectedCommitments,

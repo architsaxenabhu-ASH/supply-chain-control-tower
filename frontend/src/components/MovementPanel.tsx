@@ -12,6 +12,7 @@ import {
 import { computeMovement, type MovementMetrics, type MovementWindow } from "../lib/movement";
 import { formatDisplay, formatUnits, getCurrencyRevision, subscribeCurrency } from "../lib/currency";
 import { useCountry } from "../context/CountryContext";
+import { useDemoRevision } from "../lib/useDemoRevision";
 import { WorldMap, type MapDetailRow } from "./WorldMap";
 
 // Shipment movement, shown the way the user asked: four live metrics (active
@@ -50,6 +51,7 @@ function metricOf(metrics: MovementMetrics, metric: Metric): number {
 
 export function MovementPanel({ title = "Shipment movement", showDetail = true }: { title?: string; showDetail?: boolean }) {
   const { country } = useCountry();
+  const injectRev = useDemoRevision();
   const [imports, setImports] = useState<ApiImportFileCandidate[]>([]);
   const [shipments, setShipments] = useState<ApiShipment[]>([]);
   const [batches, setBatches] = useState<ApiInventoryBatch[]>([]);
@@ -74,7 +76,7 @@ export function MovementPanel({ title = "Shipment movement", showDetail = true }
     return () => {
       active = false;
     };
-  }, []);
+  }, [injectRev]);
 
   const result = useMemo(
     () => computeMovement(imports, shipments, batches, window),

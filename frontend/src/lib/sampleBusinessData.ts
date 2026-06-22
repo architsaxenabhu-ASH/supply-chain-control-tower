@@ -1084,7 +1084,7 @@ export type ExecSnapshot = {
   asOf: string;
   header: { incoming: ExecStat[]; inventory: ExecStat[]; outgoing: ExecStat[] };
   reliability: { shipment: ExecStat[]; severity: ExecStat[]; customs: ExecStat[]; protection: ExecStat[] };
-  health: { serviceability: ExecStat[]; coverageDays: number; aging: ExecBand[]; nearExpiry: ExecStat; outOfStock: ExecStat[] };
+  health: { serviceability: ExecStat[]; coverageDays: number; aging: ExecBand[]; nearExpiry: ExecStat; writeOffRisk: ExecStat; outOfStock: ExecStat[] };
   fulfillment: { orders: ExecStat[]; reliability: ExecStat[]; cycle: ExecStat[]; buckets: ExecStat[] };
   flow: { incoming: ExecStat[]; inventory: ExecStat[]; outgoing: ExecStat[]; intensity: { inbound: number; hold: number; outbound: number } };
   regional: ExecBenchmark[];
@@ -1367,6 +1367,11 @@ export function buildExecutiveSnapshot(_rev = 0, boost = 0, tick = 0): ExecSnaps
   const demandedRows = ops.filter((row) => row.reserved > 0 || row.openPOs > 0);
   const expiringWithDemand = sum(demandedRows.map((row) => Math.min(row.expiring, row.openDemand)));
   const demandedVolume = sum(demandedRows.map((row) => row.openDemand)) || stockUnitsTotal;
+  // The other half of the expiring stock: units that are about to lapse with no
+  // open demand behind them. This is the "may become a loss" figure — what to
+  // discount, move, or brace to write off — kept separate from the "sell this
+  // now" figure above. The two together account for all near-expiry stock.
+  const expiringNoDemand = Math.max(0, expiringTotal - expiringWithDemand);
   const lowCoverage = ops.filter((row) => row.currentServ < 65);
   const outVerticals = new Set(lowCoverage.map((row) => row.vertical));
 
@@ -1386,6 +1391,12 @@ export function buildExecutiveSnapshot(_rev = 0, boost = 0, tick = 0): ExecSnaps
       value: money(expiringWithDemand * avgUnitValue),
       sub: `${units(expiringWithDemand)} units customers want · ${Math.round(pct(expiringWithDemand, demandedVolume))}% of demanded stock`,
       tone: "warn",
+    },
+    writeOffRisk: {
+      label: "At write-off risk (no demand, ≤90 days)",
+      value: money(expiringNoDemand * avgUnitValue),
+      sub: `${units(expiringNoDemand)} units no one is ordering · ${Math.round(pct(expiringNoDemand, expiringTotal))}% of expiring stock`,
+      tone: expiringNoDemand > 0 ? "bad" : "good",
     },
     outOfStock: [
       { label: "Products at risk", value: String(lowCoverage.length * 2), tone: lowCoverage.length ? "bad" : "good" },

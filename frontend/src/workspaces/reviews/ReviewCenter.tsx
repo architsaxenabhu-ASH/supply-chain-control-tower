@@ -11,6 +11,7 @@ import {
   type ApiReviewItem,
 } from "../../lib/api";
 import { useCountry } from "../../context/CountryContext";
+import { useDemoRevision } from "../../lib/useDemoRevision";
 import { itemVariants, listVariants, prefersReducedMotion, signatureVariants } from "../../motion/motion";
 
 // Review Center (Phase 5A): one workspace, seven reviews, one pattern —
@@ -105,6 +106,7 @@ function itemCountry(item: ApiReviewItem): string | null {
 export function ReviewCenter({ currentUser }: { currentUser: ApiAuthenticatedUser }) {
   const reduced = prefersReducedMotion();
   const { country } = useCountry();
+  const injectRev = useDemoRevision();
   const [active, setActive] = useState<ReviewName>("inventory");
   const [review, setReview] = useState<ApiReview | null>(null);
   const [counts, setCounts] = useState<Record<string, number>>({});
@@ -134,7 +136,7 @@ export function ReviewCenter({ currentUser }: { currentUser: ApiAuthenticatedUse
     return () => {
       activeFlag = false;
     };
-  }, []);
+  }, [injectRev]);
 
   useEffect(() => {
     let activeFlag = true;
@@ -158,7 +160,7 @@ export function ReviewCenter({ currentUser }: { currentUser: ApiAuthenticatedUse
     return () => {
       activeFlag = false;
     };
-  }, [active]);
+  }, [active, injectRev]);
 
   const items = useMemo(() => {
     const rows = review?.items ?? [];

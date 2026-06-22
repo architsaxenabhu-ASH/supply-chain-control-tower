@@ -9,6 +9,7 @@ import {
   type ApiAuthenticatedUser,
 } from "../../lib/api";
 import { itemVariants, listVariants, prefersReducedMotion, transition } from "../../motion/motion";
+import { useDemoRevision } from "../../lib/useDemoRevision";
 
 // Approval Center (Phase 5A): one workspace for everything waiting on a yes.
 // Authority comes from permissions (never role names); Admin bypasses.
@@ -45,6 +46,7 @@ function formatType(value: string): string {
 
 export function ApprovalCenter({ currentUser }: { currentUser: ApiAuthenticatedUser }) {
   const reduced = prefersReducedMotion();
+  const injectRev = useDemoRevision();
   const [lane, setLane] = useState<Lane>("pending");
   const [approvals, setApprovals] = useState<ApiApproval[]>([]);
   const [loading, setLoading] = useState(true);
@@ -72,7 +74,7 @@ export function ApprovalCenter({ currentUser }: { currentUser: ApiAuthenticatedU
     return () => {
       active = false;
     };
-  }, [lane]);
+  }, [lane, injectRev]);
 
   const counts = useMemo(
     () => ({ visible: approvals.length, actionable: approvals.filter((a) => canDecide(currentUser, a.approval_type)).length }),

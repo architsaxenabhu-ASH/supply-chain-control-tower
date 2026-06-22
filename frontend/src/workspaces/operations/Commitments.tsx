@@ -12,6 +12,7 @@ import {
   type ApiCustomerCommitment,
 } from "../../lib/api";
 import { useCountry } from "../../context/CountryContext";
+import { useDemoRevision } from "../../lib/useDemoRevision";
 import { itemVariants, listVariants, prefersReducedMotion, signatureVariants } from "../../motion/motion";
 
 // Commitments (Phase 5A): promises made to customers — PO fill rate, OTIF,
@@ -44,6 +45,7 @@ function riskPill(level: string): string {
 export function Commitments() {
   const reduced = prefersReducedMotion();
   const { country } = useCountry();
+  const injectRev = useDemoRevision();
   const [rows, setRows] = useState<ApiCustomerCommitment[]>([]);
   const [dashboard, setDashboard] = useState<ApiCommitmentDashboard | null>(null);
   const [risks, setRisks] = useState<ApiCommitmentRisk[]>([]);
@@ -70,7 +72,7 @@ export function Commitments() {
     return () => {
       active = false;
     };
-  }, [statusFilter, country]);
+  }, [statusFilter, country, injectRev]);
 
   if (loading && rows.length === 0) {
     return (

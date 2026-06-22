@@ -1,5 +1,5 @@
 import type { DocumentExtractionMaster, DocumentRecord, DocumentType } from "../types/domain";
-import { SAMPLE_API_FALLBACKS, injectedRowsFor } from "./sampleApiData";
+import { SAMPLE_API_FALLBACKS, injectedRowsFor, presentationValueFor } from "./sampleApiData";
 
 const DEFAULT_API_BASE_URL =
   typeof window === "undefined"
@@ -120,11 +120,19 @@ export function getPendingReadCount(): number {
 }
 
 async function getJson<T>(path: string): Promise<T> {
+  const basePath = path.split("?")[0];
+  // During a live presentation the whole business starts at zero and grows only
+  // from the presenter's counters. For every covered endpoint we serve the
+  // counter-derived value (which wins over any backend data) so every screen,
+  // map and dashboard grows together. Endpoints not part of the presentation
+  // (master data, admin, meta) fall through to normal behaviour below.
+  const presented = presentationValueFor(basePath);
+  if (presented) return presented.value as T;
+
   pendingReads += 1;
   // When the backend has no data for a known list endpoint (or is unreachable),
   // serve representative sample data so every tab is populated for demos. Real
   // data always wins — the fallback only fires on error or an empty array.
-  const basePath = path.split("?")[0];
   const fallback = SAMPLE_API_FALLBACKS[basePath];
   try {
     const response = await fetch(`${API_BASE_URL}${path}`, { headers: authHeaders() });

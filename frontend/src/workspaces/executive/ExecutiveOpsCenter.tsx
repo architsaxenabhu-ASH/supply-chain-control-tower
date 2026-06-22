@@ -416,7 +416,7 @@ export function ExecutiveOpsCenter() {
         </div>
         <div className="ops-grid-3">
           <Panel title="Expiry & out of stock" icon={<AlertTriangle size={15} aria-hidden="true" />}>
-            <MetricRow stats={[snap.health.nearExpiry]} />
+            <MetricRow stats={[snap.health.nearExpiry, snap.health.writeOffRisk]} />
             <span className="ops-subhead">Out of stock</span>
             <MetricRow stats={snap.health.outOfStock} />
           </Panel>

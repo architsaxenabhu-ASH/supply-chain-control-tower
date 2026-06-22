@@ -21,6 +21,7 @@ import {
 } from "../../lib/api";
 import { CountryEnvironment, useCountry, type EnvironmentVital } from "../../context/CountryContext";
 import { MovementPanel } from "../../components/MovementPanel";
+import { useDemoRevision } from "../../lib/useDemoRevision";
 import { itemVariants, listVariants, prefersReducedMotion } from "../../motion/motion";
 
 const inr = (value: number) => formatMoney(value, { compact: true });
@@ -108,6 +109,7 @@ export function CommandCenter({
   );
   const [lens, setLens] = useState<LensId>(availableLenses[0]?.id ?? "general_manager");
 
+  const injectRev = useDemoRevision();
   const [summary, setSummary] = useState<ApiExecutiveCommandCenterV3 | null>(null);
   const [actions, setActions] = useState<ApiExecutiveAction[]>([]);
   const [approvals, setApprovals] = useState<ApiApproval[]>([]);
@@ -130,7 +132,7 @@ export function CommandCenter({
     return () => {
       active = false;
     };
-  }, [country]);
+  }, [country, injectRev]);
 
   useEffect(() => {
     let active = true;
@@ -155,7 +157,7 @@ export function CommandCenter({
     return () => {
       active = false;
     };
-  }, []);
+  }, [injectRev]);
 
   const cc = summary?.command_center_v2;
   const critical = actions.filter((a) => a.severity.toLowerCase() === "critical").length;

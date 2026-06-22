@@ -12,6 +12,7 @@ import {
   type ApiConsignmentRisk,
 } from "../../lib/api";
 import { useCountry } from "../../context/CountryContext";
+import { useDemoRevision } from "../../lib/useDemoRevision";
 import { itemVariants, listVariants, prefersReducedMotion, signatureVariants } from "../../motion/motion";
 
 // Consignment (Phase 5A): stock that left the warehouse but is still ours.
@@ -34,6 +35,7 @@ function riskPill(level: string): string {
 export function Consignment() {
   const reduced = prefersReducedMotion();
   const { country } = useCountry();
+  const injectRev = useDemoRevision();
   const [rows, setRows] = useState<ApiConsignment[]>([]);
   const [dashboard, setDashboard] = useState<ApiConsignmentDashboard | null>(null);
   const [risks, setRisks] = useState<ApiConsignmentRisk[]>([]);
@@ -56,7 +58,7 @@ export function Consignment() {
     return () => {
       active = false;
     };
-  }, [country]);
+  }, [country, injectRev]);
 
   const consumptionPct = useMemo(() => {
     const sent = rows.reduce((sum, row) => sum + row.quantity_sent, 0);

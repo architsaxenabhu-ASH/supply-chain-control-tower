@@ -14,20 +14,34 @@
 import type {
   ApiApproval,
   ApiAuditEvent,
+  ApiCommitmentDashboard,
+  ApiConsignment,
+  ApiConsignmentDashboard,
   ApiCountryPerformance,
+  ApiCreditControl,
   ApiCustomer,
   ApiCustomerCommitment,
   ApiDecision,
   ApiDispatch,
   ApiExecutiveAction,
+  ApiExecutiveDashboard,
+  ApiExpiryDashboard,
+  ApiExpiryRiskBatch,
   ApiGoodsReceipt,
+  ApiImportDashboard,
   ApiImportFileCandidate,
   ApiInventoryBatch,
   ApiInventoryCount,
+  ApiInventoryDashboard,
   ApiMovementEvent,
+  ApiPayable,
   ApiPerformanceScorecard,
   ApiProduct,
+  ApiReceivable,
+  ApiReturnDashboard,
+  ApiReturnRecord,
   ApiShipment,
+  ApiShipmentDashboard,
   ApiWarehouseLocation,
 } from "./api";
 
@@ -768,4 +782,679 @@ export const SAMPLE_API_FALLBACKS: Record<string, () => unknown> = {
   "/warehouses": warehouses,
   "/movements": movements,
   "/audit": audit,
+  // Computed dashboards + finance/consignment/returns, derived from the static
+  // world so every screen is populated even with no backend running (browsing).
+  "/dashboard/import": () => computeImportDashboard(staticWorld()),
+  "/dashboard/inventory": () => computeInventoryDashboard(staticWorld()),
+  "/dashboard/expiry": () => computeExpiryDashboard(staticWorld()),
+  "/dashboard/shipment": () => computeShipmentDashboard(staticWorld()),
+  "/dashboard/executive": () => computeExecutiveDashboard(staticWorld()),
+  "/customer-commitment-dashboard": () => computeCommitmentDashboard(staticWorld()),
+  "/consignment-dashboard": () => computeConsignmentDashboard(staticWorld()),
+  "/return-dashboard": () => computeReturnDashboard(staticWorld()),
+  "/reference/movement-by-country": () => computeMovementByCountry(staticWorld()),
+  "/distributor-performance-v2": () => computeDistributorPerformance(staticWorld()),
+  "/customer-performance": () => computeCustomerPerformance(staticWorld()),
+  "/receivables": () => staticWorld().receivables,
+  "/payables": () => staticWorld().payables,
+  "/credit-control": () => deriveCredit(staticWorld().receivables),
+  "/consignment-inventory": () => staticWorld().consignments,
+  "/returns": () => staticWorld().returns,
 };
+
+// =============================================================================
+// One source of truth for the live demo (Phase 7H)
+// -----------------------------------------------------------------------------
+// The presenter's two counters (Primary Sales +, Secondary Sales +) drive every
+// screen, not just the Executive overview. The rule:
+//   • Browsing normally  → the rich static sample fills every tab (above).
+//   • Live presentation  → the WHOLE business starts at zero and grows ONLY from
+//     the counters. Every list, map and dashboard is computed from the injected
+//     rows, so they all start empty and grow together, consistently, on each
+//     click — exactly like a real system coming to life.
+// Real backend data still wins whenever a presentation is NOT running.
+// =============================================================================
+
+// Whether a live presentation is running. The demo store registers this (it owns
+// the counters); we keep the indirection so this module never imports the store.
+let presentationProvider: () => boolean = () => false;
+export function registerPresentationProvider(fn: () => boolean): void {
+  presentationProvider = fn;
+}
+export function isPresentationActive(): boolean {
+  return presentationProvider();
+}
+
+// ---- Small shared lookups ---------------------------------------------------
+const PRODUCT_BY_CODE = new Map(PRODUCTS.map((p) => [p.code, p]));
+const MARKET_BY_COUNTRY = new Map(ALL_MARKETS.map((m) => [m.country, m]));
+const CUSTOMER_BY_NAME = new Map(CUSTOMERS_DEF.map((c) => [c.name, c]));
+const today = (): string => isoDay(0);
+const sum = (values: number[]): number => values.reduce((total, value) => total + value, 0);
+
+function productUnit(code: string): number {
+  return PRODUCT_BY_CODE.get(code)?.unit ?? 10000;
+}
+function productCategory(code: string): string {
+  return PRODUCT_BY_CODE.get(code)?.category ?? "Other";
+}
+// Deterministic seed from a string id, so derived rows are stable across devices.
+function hashStr(value: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < value.length; i += 1) {
+    h ^= value.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+const RECEIVED_IMPORT = new Set(["received", "closed"]);
+const CLOSED_IMPORT = new Set(["received", "closed", "cancelled", "rejected"]);
+const RECEIPTABLE_IMPORT = new Set(["arrived", "received", "closed", "goods_receipt_pending"]);
+const CLOSED_COMMITMENT = new Set(["fulfilled", "delivered", "cancelled", "closed"]);
+
+// =============================================================================
+// Derive secondary entities from the three primitives (imports / commitments /
+// batches). Used for BOTH worlds, so browsing and the live demo stay consistent.
+// =============================================================================
+
+function deriveShipments(commitments: ApiCustomerCommitment[]): ApiShipment[] {
+  return commitments
+    .filter((c) => c.allocated_quantity > 0 || c.shipped_quantity > 0)
+    .map((c) => {
+      const market = MARKET_BY_COUNTRY.get(c.country);
+      const status: ApiShipment["status"] =
+        c.ordered_quantity > 0 && c.delivered_quantity >= c.ordered_quantity
+          ? "delivered"
+          : c.shipped_quantity > 0
+            ? "dispatched"
+            : c.allocated_quantity > 0
+              ? "approved"
+              : "submitted";
+      const shipmentId = `SHP-${c.commitment_id}`;
+      return {
+        shipment_id: shipmentId,
+        request_date: c.expected_fulfillment_date ?? isoDay(-2),
+        requestor_name: `Sales ${c.country}`,
+        customer_name: c.customer,
+        destination_country: c.country,
+        city: market?.city ?? null,
+        priority: c.backorder_quantity > 0 ? "urgent" : "normal",
+        required_delivery_date: c.required_delivery_date,
+        status,
+        lines: [
+          {
+            shipment_id: shipmentId,
+            item_code: c.material,
+            batch_number: c.batch_number ?? `B-${c.material}`,
+            warehouse_location: market?.whName ?? null,
+            quantity_requested: c.ordered_quantity,
+            quantity_approved: c.allocated_quantity,
+          },
+        ],
+      };
+    });
+}
+
+function deriveDispatches(shipments: ApiShipment[]): ApiDispatch[] {
+  const couriers = ["DHL Express", "FedEx", "Aramex", "Maersk"];
+  return shipments
+    .filter((s) => s.status === "dispatched" || s.status === "delivered")
+    .map((s, i) => ({
+      dispatch_number: `DSP-${s.shipment_id}`,
+      shipment_id: s.shipment_id,
+      dispatch_date: isoDay(-(i % 7) - 1),
+      transporter_courier: pick(couriers, hashStr(s.shipment_id)),
+      tracking_number: `TRK${100000 + (hashStr(s.shipment_id) % 900000)}`,
+      dispatched_by: "Logistics",
+      status: s.status === "delivered" ? "delivered" : "in_transit",
+    }));
+}
+
+function deriveGoodsReceipts(imports: ApiImportFileCandidate[]): ApiGoodsReceipt[] {
+  return imports
+    .filter((im) => RECEIPTABLE_IMPORT.has(im.status.toLowerCase()))
+    .map((im) => {
+      const market = MARKET_BY_COUNTRY.get(im.destination_country);
+      return {
+        grn_number: `GRN-${im.import_file_number}`,
+        receipt_date: im.flight_date ?? isoDay(-1),
+        warehouse: market?.whName ?? im.destination_country,
+        supplier: ORIGIN_SUPPLIER,
+        status: "posted",
+        lines: im.lines.map((l) => ({
+          item_code: l.item_code,
+          batch_number: l.batch_number,
+          quantity_received: l.quantity,
+          expiry_date: l.expiry_date ?? isoDay(365),
+          unit_value: l.unit_value ?? productUnit(l.item_code),
+        })),
+      };
+    });
+}
+
+function deriveMovements(imports: ApiImportFileCandidate[], shipments: ApiShipment[]): ApiMovementEvent[] {
+  const rows: ApiMovementEvent[] = [];
+  let id = 1;
+  for (const im of imports) {
+    if (!RECEIPTABLE_IMPORT.has(im.status.toLowerCase())) continue;
+    const market = MARKET_BY_COUNTRY.get(im.destination_country);
+    const line = im.lines[0];
+    if (!line) continue;
+    rows.push({
+      event_id: `MV-IN-${im.import_file_number}-${id++}`,
+      event_type: "received",
+      item_code: line.item_code,
+      batch_number: line.batch_number,
+      serial_number: null,
+      quantity: im.lines.reduce((s, l) => s + l.quantity, 0),
+      warehouse: market?.whName ?? im.destination_country,
+      location: im.destination_country,
+      counterparty: ORIGIN_SUPPLIER,
+      reference: `GRN-${im.import_file_number}`,
+      actor: `WH ${market?.city ?? im.destination_country}`,
+      occurred_at: isoStamp(id * 17 + 5),
+      note: null,
+    });
+  }
+  for (const s of shipments) {
+    if (s.status !== "dispatched" && s.status !== "delivered") continue;
+    const line = s.lines[0];
+    if (!line) continue;
+    rows.push({
+      event_id: `MV-OUT-${s.shipment_id}-${id++}`,
+      event_type: "dispatched",
+      item_code: line.item_code,
+      batch_number: line.batch_number ?? "",
+      serial_number: null,
+      quantity: line.quantity_approved || line.quantity_requested,
+      warehouse: line.warehouse_location ?? s.destination_country,
+      location: s.destination_country,
+      counterparty: s.customer_name,
+      reference: s.shipment_id,
+      actor: "Logistics",
+      occurred_at: isoStamp(id * 23 + 11),
+      note: null,
+    });
+  }
+  return rows;
+}
+
+function deriveCustomers(commitments: ApiCustomerCommitment[]): ApiCustomer[] {
+  const seen = new Map<string, ApiCustomer>();
+  for (const c of commitments) {
+    if (seen.has(c.customer)) continue;
+    const def = CUSTOMER_BY_NAME.get(c.customer);
+    const market = MARKET_BY_COUNTRY.get(c.country);
+    seen.set(c.customer, {
+      customer_code: def?.code ?? `CUST-${c.customer.replace(/[^A-Za-z]/g, "").slice(0, 4).toUpperCase()}`,
+      customer_name: c.customer,
+      country: c.country,
+      city: def?.city ?? market?.city ?? null,
+      customer_type: def?.type ?? "Hospital",
+      contact_person: def?.contact ?? "—",
+    });
+  }
+  return [...seen.values()];
+}
+
+function deriveReceivables(commitments: ApiCustomerCommitment[]): ApiReceivable[] {
+  return commitments
+    .filter((c) => c.delivered_quantity > 0 || c.shipped_quantity > 0)
+    .map((c) => {
+      const qty = c.delivered_quantity > 0 ? c.delivered_quantity : c.shipped_quantity;
+      const value = qty * productUnit(c.material);
+      const market = MARKET_BY_COUNTRY.get(c.country);
+      const r = seeded(hashStr(c.commitment_id));
+      const roll = r();
+      const paidFrac = roll < 0.4 ? 1 : roll < 0.68 ? 0.5 : 0;
+      const paid = Math.round(value * paidFrac);
+      const outstanding = value - paid;
+      const overdue = outstanding > 0 && roll > 0.82;
+      const status = outstanding === 0 ? "paid" : overdue ? "overdue" : paid > 0 ? "partially_paid" : "open";
+      return {
+        receivable_id: `AR-${c.commitment_id}`,
+        distributor: market?.entity ?? c.country,
+        country: c.country,
+        invoice_number: `SI-${c.po_number}`,
+        invoice_date: isoDay(-seedInt(r, 8, 60)),
+        due_date: isoDay(seedInt(r, -12, 28)),
+        payment_terms: "Net 30",
+        invoice_value: value,
+        currency: "INR",
+        paid_value: paid,
+        outstanding_value: outstanding,
+        status,
+        payment_history: [],
+      };
+    });
+}
+
+function derivePayables(imports: ApiImportFileCandidate[]): ApiPayable[] {
+  return imports.map((im) => {
+    const goodsValue = im.lines.reduce((s, l) => s + (l.unit_value ?? 0) * l.quantity, 0);
+    const freight = Math.max(50000, Math.round(goodsValue * 0.045));
+    const market = MARKET_BY_COUNTRY.get(im.destination_country);
+    const r = seeded(hashStr(im.import_file_number));
+    const roll = r();
+    const paid = roll < 0.5 ? freight : 0;
+    const outstanding = freight - paid;
+    return {
+      payable_id: `AP-${im.import_file_number}`,
+      partner_type: "freight",
+      partner_name: im.carrier_name ?? market?.carrier ?? "Freight Partner",
+      country: im.destination_country,
+      invoice_number: `FRT-${im.shipment_number}`,
+      invoice_date: im.invoice_date ?? isoDay(-10),
+      due_date: isoDay(seedInt(r, -6, 26)),
+      payment_terms: "Net 30",
+      invoice_value: freight,
+      paid_value: paid,
+      outstanding_value: outstanding,
+      status: outstanding === 0 ? "paid" : roll > 0.85 ? "overdue" : "open",
+      payment_history: [],
+    };
+  });
+}
+
+function deriveConsignments(commitments: ApiCustomerCommitment[]): ApiConsignment[] {
+  return commitments
+    .filter((_, i) => i % 3 === 0)
+    .map((c) => {
+      const market = MARKET_BY_COUNTRY.get(c.country);
+      const r = seeded(hashStr(`CON-${c.commitment_id}`));
+      const sent = Math.max(20, c.allocated_quantity || c.ordered_quantity);
+      const consumed = Math.round(sent * (seedInt(r, 10, 80) / 100));
+      const reported = Math.min(sent, consumed + Math.round(sent * 0.1));
+      return {
+        consignment_id: `CNG-${c.commitment_id}`,
+        distributor: market?.entity ?? c.country,
+        country: c.country,
+        material: c.material,
+        batch_number: c.batch_number ?? `B-${c.material}`,
+        quantity_sent: sent,
+        quantity_reported: reported,
+        quantity_consumed: consumed,
+        quantity_remaining: Math.max(0, sent - consumed),
+        last_report_date: r() > 0.3 ? isoDay(-seedInt(r, 2, 40)) : null,
+        sent_date: isoDay(-seedInt(r, 20, 90)),
+      };
+    });
+}
+
+function deriveReturns(commitments: ApiCustomerCommitment[]): ApiReturnRecord[] {
+  const reasons = ["Damaged in transit", "Expiry approaching", "Wrong item", "Customer cancellation"];
+  return commitments
+    .filter((c, i) => c.delivered_quantity > 0 && i % 5 === 0)
+    .map((c) => {
+      const r = seeded(hashStr(`RET-${c.commitment_id}`));
+      const qty = Math.max(1, Math.round(c.delivered_quantity * (seedInt(r, 2, 12) / 100)));
+      const reusable = Math.round(qty * (seedInt(r, 30, 80) / 100));
+      const status = pick(["received", "inspected", "verified", "closed"], hashStr(c.commitment_id));
+      return {
+        return_id: `RMA-${c.commitment_id}`,
+        material: c.material,
+        batch_number: c.batch_number ?? `B-${c.material}`,
+        return_reason: pick(reasons, hashStr(c.commitment_id)),
+        returned_quantity: qty,
+        inspection_result: status === "received" ? null : "passed",
+        verification_result: status === "verified" || status === "closed" ? "approved" : null,
+        reusable_quantity: reusable,
+        rejected_quantity: qty - reusable,
+        status,
+      };
+    });
+}
+
+function deriveCredit(receivables: ApiReceivable[]): ApiCreditControl[] {
+  const byDistributor = new Map<string, { exposure: number; overdue: number }>();
+  for (const r of receivables) {
+    const entry = byDistributor.get(r.distributor) ?? { exposure: 0, overdue: 0 };
+    entry.exposure += r.outstanding_value;
+    if (r.status === "overdue") entry.overdue += r.outstanding_value;
+    byDistributor.set(r.distributor, entry);
+  }
+  return [...byDistributor.entries()].map(([distributor, e]) => {
+    const limit = Math.max(5_000_000, Math.ceil((e.exposure * 1.4) / 1_000_000) * 1_000_000);
+    const available = limit - e.exposure;
+    const status = available < 0 ? "blocked" : available < limit * 0.15 || e.overdue > 0 ? "warning" : "healthy";
+    return {
+      distributor,
+      credit_limit: limit,
+      outstanding_exposure: e.exposure,
+      available_credit: available,
+      overdue_amount: e.overdue,
+      status,
+      override: false,
+    };
+  });
+}
+
+// =============================================================================
+// Computed dashboards — pure functions of a world's raw lists.
+// =============================================================================
+
+type RawWorld = {
+  imports: ApiImportFileCandidate[];
+  batches: ApiInventoryBatch[];
+  commitments: ApiCustomerCommitment[];
+  shipments: ApiShipment[];
+  dispatches: ApiDispatch[];
+  goodsReceipts: ApiGoodsReceipt[];
+  movements: ApiMovementEvent[];
+  customers: ApiCustomer[];
+  counts: ApiInventoryCount[];
+  receivables: ApiReceivable[];
+  payables: ApiPayable[];
+  consignments: ApiConsignment[];
+  returns: ApiReturnRecord[];
+};
+
+function countBy<T>(rows: T[], key: (row: T) => string): Record<string, number> {
+  const map: Record<string, number> = {};
+  for (const row of rows) {
+    const k = key(row);
+    map[k] = (map[k] ?? 0) + 1;
+  }
+  return map;
+}
+function sumBy<T>(rows: T[], key: (row: T) => string, value: (row: T) => number): Record<string, number> {
+  const map: Record<string, number> = {};
+  for (const row of rows) {
+    const k = key(row);
+    map[k] = (map[k] ?? 0) + value(row);
+  }
+  return map;
+}
+
+function computeImportDashboard(world: RawWorld): ApiImportDashboard {
+  const im = world.imports;
+  const open = im.filter((c) => !CLOSED_IMPORT.has(c.status.toLowerCase()));
+  return {
+    total: im.length,
+    by_status: countBy(im, (c) => c.status),
+    open_shipments: open.length,
+    awaiting_receipt: im.filter((c) => ["arrived", "goods_receipt_pending"].includes(c.status.toLowerCase())).length,
+    received: im.filter((c) => RECEIVED_IMPORT.has(c.status.toLowerCase())).length,
+    by_country: countBy(open, (c) => c.destination_country),
+  };
+}
+
+function computeInventoryDashboard(world: RawWorld): ApiInventoryDashboard {
+  const b = world.batches;
+  return {
+    total_value: sum(b.map((x) => x.inventory_value)),
+    total_quantity: sum(b.map((x) => x.quantity_available)),
+    batch_count: b.length,
+    by_warehouse_value: sumBy(b, (x) => x.warehouse_location, (x) => x.inventory_value),
+    by_category_value: sumBy(b, (x) => x.product_category, (x) => x.inventory_value),
+    expiring_30: b.filter((x) => x.days_to_expiry >= 0 && x.days_to_expiry <= 30).length,
+    expiring_60: b.filter((x) => x.days_to_expiry > 30 && x.days_to_expiry <= 60).length,
+    expiring_90: b.filter((x) => x.days_to_expiry > 60 && x.days_to_expiry <= 90).length,
+    expired: b.filter((x) => x.days_to_expiry < 0).length,
+  };
+}
+
+function computeExpiryDashboard(world: RawWorld): ApiExpiryDashboard {
+  const b = world.batches;
+  const within90 = b.filter((x) => x.days_to_expiry >= 0 && x.days_to_expiry <= 90);
+  const soonest: ApiExpiryRiskBatch[] = [...b]
+    .filter((x) => x.days_to_expiry <= 180)
+    .sort((a, z) => a.days_to_expiry - z.days_to_expiry)
+    .slice(0, 8)
+    .map((x) => ({
+      item_code: x.item_code,
+      batch_number: x.batch_number,
+      warehouse: x.warehouse_location,
+      expiry_date: x.expiry_date,
+      days_to_expiry: x.days_to_expiry,
+      quantity: x.quantity_available,
+      value: x.inventory_value,
+    }));
+  return {
+    expiring_30: b.filter((x) => x.days_to_expiry >= 0 && x.days_to_expiry <= 30).length,
+    expiring_60: b.filter((x) => x.days_to_expiry > 30 && x.days_to_expiry <= 60).length,
+    expiring_90: b.filter((x) => x.days_to_expiry > 60 && x.days_to_expiry <= 90).length,
+    expiring_180: b.filter((x) => x.days_to_expiry > 90 && x.days_to_expiry <= 180).length,
+    expired: b.filter((x) => x.days_to_expiry < 0).length,
+    value_at_risk_90: sum(within90.map((x) => x.inventory_value)),
+    by_warehouse_90: sumBy(within90, (x) => x.warehouse_location, (x) => x.inventory_value),
+    soonest,
+  };
+}
+
+function computeShipmentDashboard(world: RawWorld): ApiShipmentDashboard {
+  const s = world.shipments;
+  const active = s.filter((x) => x.status !== "delivered" && x.status !== "cancelled");
+  return {
+    total: s.length,
+    by_status: countBy(s, (x) => x.status),
+    dispatched: s.filter((x) => x.status === "dispatched").length,
+    delivered: s.filter((x) => x.status === "delivered").length,
+    by_country: countBy(active, (x) => x.destination_country),
+  };
+}
+
+function computeCommitmentDashboard(world: RawWorld): ApiCommitmentDashboard {
+  const c = world.commitments;
+  const todayStr = today();
+  const open = c.filter((x) => !CLOSED_COMMITMENT.has(x.status.toLowerCase()));
+  const fulfilled = c.filter((x) => ["fulfilled", "delivered", "closed"].includes(x.status.toLowerCase()));
+  const delayed = c.filter((x) => x.required_delivery_date < todayStr && x.delivered_quantity < x.ordered_quantity);
+  const backordered = c.filter((x) => x.backorder_quantity > 0);
+  const fillRates = c.filter((x) => x.ordered_quantity > 0).map((x) => (x.allocated_quantity / x.ordered_quantity) * 100);
+  const delivered = c.filter((x) => x.delivered_quantity > 0);
+  const onTime = delivered.filter((x) => x.required_delivery_date >= (x.expected_fulfillment_date ?? x.required_delivery_date));
+  return {
+    total_commitments: c.length,
+    open_commitments: open.length,
+    fulfilled_commitments: fulfilled.length,
+    delayed_commitments: delayed.length,
+    backordered_commitments: backordered.length,
+    average_fill_rate_pct: fillRates.length ? Math.round(sum(fillRates) / fillRates.length) : null,
+    otif_pct: delivered.length ? Math.round((onTime.length / delivered.length) * 100) : null,
+    total_backorder_value: sum(backordered.map((x) => x.backorder_quantity * productUnit(x.material))),
+    high_risk_commitments: c.filter((x) => x.backorder_quantity > 0 && x.required_delivery_date < todayStr).length,
+  };
+}
+
+function computeConsignmentDashboard(world: RawWorld): ApiConsignmentDashboard {
+  const c = world.consignments;
+  return {
+    total_consignments: c.length,
+    total_quantity_sent: sum(c.map((x) => x.quantity_sent)),
+    total_remaining: sum(c.map((x) => x.quantity_remaining)),
+    no_report_count: c.filter((x) => !x.last_report_date).length,
+    aging_count: c.filter((x) => x.sent_date < isoDay(-60)).length,
+    expiry_exposure_count: c.filter((x) => x.quantity_remaining > 0 && x.sent_date < isoDay(-45)).length,
+    low_consumption_count: c.filter((x) => x.quantity_sent > 0 && x.quantity_consumed / x.quantity_sent < 0.3).length,
+    high_risk_count: c.filter((x) => !x.last_report_date && x.sent_date < isoDay(-30)).length,
+  };
+}
+
+function computeReturnDashboard(world: RawWorld): ApiReturnDashboard {
+  const r = world.returns;
+  return {
+    total_returns: r.length,
+    total_returned_quantity: sum(r.map((x) => x.returned_quantity)),
+    reusable_quantity: sum(r.map((x) => x.reusable_quantity)),
+    rejected_quantity: sum(r.map((x) => x.rejected_quantity)),
+    available_quantity: sum(r.map((x) => x.reusable_quantity)),
+    pending_inspection: r.filter((x) => !x.inspection_result).length,
+    pending_verification: r.filter((x) => x.inspection_result != null && !x.verification_result).length,
+    by_reason: countBy(r, (x) => x.return_reason ?? "Unspecified"),
+  };
+}
+
+function computeExecutiveDashboard(world: RawWorld): ApiExecutiveDashboard {
+  const im = world.imports;
+  const b = world.batches;
+  const s = world.shipments;
+  const countries = new Set<string>([...im.map((x) => x.destination_country), ...s.map((x) => x.destination_country)]);
+  return {
+    total_inventory_value: sum(b.map((x) => x.inventory_value)),
+    total_inventory_quantity: sum(b.map((x) => x.quantity_available)),
+    open_import_shipments: im.filter((x) => !CLOSED_IMPORT.has(x.status.toLowerCase())).length,
+    imports_in_transit: im.filter((x) => x.status.toLowerCase() === "in_transit").length,
+    imports_awaiting_receipt: im.filter((x) => ["arrived", "goods_receipt_pending"].includes(x.status.toLowerCase())).length,
+    imports_received: im.filter((x) => RECEIVED_IMPORT.has(x.status.toLowerCase())).length,
+    open_shipment_requests: s.filter((x) => x.status === "submitted" || x.status === "approved").length,
+    dispatched_shipments: s.filter((x) => x.status === "dispatched").length,
+    delivered_shipments: s.filter((x) => x.status === "delivered").length,
+    expiry_risk_90: b.filter((x) => x.days_to_expiry >= 0 && x.days_to_expiry <= 90).length,
+    expired_inventory: b.filter((x) => x.days_to_expiry < 0).length,
+    active_warehouses: new Set(b.map((x) => x.warehouse_location)).size,
+    active_countries: countries.size,
+    learning_rules: 0,
+    audit_events: world.goodsReceipts.length + world.dispatches.length,
+  };
+}
+
+function computeMovementByCountry(world: RawWorld): Record<string, number> {
+  const map: Record<string, number> = {};
+  for (const im of world.imports) {
+    if (CLOSED_IMPORT.has(im.status.toLowerCase())) continue;
+    map[im.destination_country] = (map[im.destination_country] ?? 0) + im.lines.reduce((s, l) => s + l.quantity, 0);
+  }
+  for (const s of world.shipments) {
+    if (s.status === "cancelled") continue;
+    const qty = s.lines.reduce((a, l) => a + (l.quantity_approved || l.quantity_requested), 0);
+    map[s.destination_country] = (map[s.destination_country] ?? 0) + qty;
+  }
+  return map;
+}
+
+// ---- Performance scorecards (target vs actual), aggregated from commitments --
+function scorecards(world: RawWorld, scope: string, key: (c: ApiCustomerCommitment) => string): ApiPerformanceScorecard[] {
+  const byName = new Map<string, number>();
+  for (const c of world.commitments) {
+    const qty = c.delivered_quantity > 0 ? c.delivered_quantity : c.shipped_quantity;
+    if (qty <= 0) continue;
+    byName.set(key(c), (byName.get(key(c)) ?? 0) + qty * productUnit(c.material));
+  }
+  return [...byName.entries()]
+    .sort((a, z) => z[1] - a[1])
+    .map(([name, actual]) => {
+      const r = seeded(hashStr(`${scope}-${name}`));
+      const achievement = seedInt(r, 82, 116);
+      const growth = seedInt(r, -4, 22);
+      return performanceRow(scope, name, Math.max(actual, 1), achievement, growth);
+    });
+}
+function computeCountryPerformance(world: RawWorld): ApiCountryPerformance[] {
+  return scorecards(world, "country", (c) => c.country);
+}
+function computeVerticalPerformance(world: RawWorld): ApiPerformanceScorecard[] {
+  return scorecards(world, "vertical", (c) => productCategory(c.material));
+}
+function computeDistributorPerformance(world: RawWorld): ApiPerformanceScorecard[] {
+  return scorecards(world, "distributor", (c) => c.distributor || c.country);
+}
+function computeCustomerPerformance(world: RawWorld): ApiPerformanceScorecard[] {
+  return scorecards(world, "customer", (c) => c.customer);
+}
+
+// =============================================================================
+// The two worlds. Static = the rich sample (browsing). Injected = built purely
+// from the presenter's counters (the live demo), so it starts at zero and grows.
+// =============================================================================
+
+function worldFrom(
+  imports: ApiImportFileCandidate[],
+  batches: ApiInventoryBatch[],
+  commitments: ApiCustomerCommitment[],
+  base?: Partial<RawWorld>,
+): RawWorld {
+  const shipments = base?.shipments ?? deriveShipments(commitments);
+  return {
+    imports,
+    batches,
+    commitments,
+    shipments,
+    dispatches: base?.dispatches ?? deriveDispatches(shipments),
+    goodsReceipts: base?.goodsReceipts ?? deriveGoodsReceipts(imports),
+    movements: base?.movements ?? deriveMovements(imports, shipments),
+    customers: base?.customers ?? deriveCustomers(commitments),
+    counts: base?.counts ?? [],
+    receivables: deriveReceivables(commitments),
+    payables: derivePayables(imports),
+    consignments: deriveConsignments(commitments),
+    returns: deriveReturns(commitments),
+  };
+}
+
+// Static world keeps the existing hand-authored lists where they exist (so
+// browsing looks exactly as before) and derives the rest.
+function staticWorld(): RawWorld {
+  return worldFrom(imports(), batches(), customerCommitments(), {
+    shipments: shipments(),
+    dispatches: dispatches(),
+    goodsReceipts: goodsReceipts(),
+    movements: movements(),
+    customers: customers(),
+    counts: inventoryCounts(),
+  });
+}
+
+// Injected world: everything flows from the three injected primitives, which are
+// pure functions of the shared counters — so it is identical on every device and
+// starts empty, growing one click at a time.
+function injectedWorld(): RawWorld {
+  return worldFrom(injectedImportsProvider(), injectedBatchesProvider(), injectedCommitmentsProvider());
+}
+
+// =============================================================================
+// Presentation routing: during a live walkthrough, every covered endpoint is
+// served from the injected world (zero-based, growing). Anything not listed here
+// falls through to normal behaviour (real backend, then static sample), so
+// master/admin/meta screens keep working.
+// =============================================================================
+const PRESENTATION_BUILDERS: Record<string, (w: RawWorld) => unknown> = {
+  "/imports": (w) => w.imports,
+  "/inventory/batches": (w) => w.batches,
+  "/customer-commitments": (w) => w.commitments,
+  "/shipments": (w) => w.shipments,
+  "/dispatches": (w) => w.dispatches,
+  "/goods-receipts": (w) => w.goodsReceipts,
+  "/movements": (w) => w.movements,
+  "/customers": (w) => w.customers,
+  "/inventory-counts": (w) => w.counts,
+  "/receivables": (w) => w.receivables,
+  "/payables": (w) => w.payables,
+  "/consignment-inventory": (w) => w.consignments,
+  "/returns": (w) => w.returns,
+  "/credit-control": (w) => deriveCredit(w.receivables),
+  "/country-performance-v2": (w) => computeCountryPerformance(w),
+  "/vertical-performance": (w) => computeVerticalPerformance(w),
+  "/distributor-performance-v2": (w) => computeDistributorPerformance(w),
+  "/customer-performance": (w) => computeCustomerPerformance(w),
+  "/dashboard/import": (w) => computeImportDashboard(w),
+  "/dashboard/inventory": (w) => computeInventoryDashboard(w),
+  "/dashboard/expiry": (w) => computeExpiryDashboard(w),
+  "/dashboard/shipment": (w) => computeShipmentDashboard(w),
+  "/dashboard/executive": (w) => computeExecutiveDashboard(w),
+  "/customer-commitment-dashboard": (w) => computeCommitmentDashboard(w),
+  "/consignment-dashboard": (w) => computeConsignmentDashboard(w),
+  "/return-dashboard": (w) => computeReturnDashboard(w),
+  "/reference/movement-by-country": (w) => computeMovementByCountry(w),
+  // Workflow / alert queues start clean at zero and surface only real activity.
+  "/executive-actions": () => [],
+  "/approvals": () => [],
+  "/decisions": () => [],
+  "/audit": () => [],
+  "/payment-risk": () => [],
+  "/payables-risk": () => [],
+  "/consignment-risk": () => [],
+  "/commitment-risk": () => [],
+  "/validation-queue": () => [],
+};
+
+/** During a live presentation, the value for an endpoint computed purely from
+ *  the counters (zero-based and growing), or null when the endpoint is not part
+ *  of the presentation (so the caller should fall through to normal behaviour). */
+export function presentationValueFor(basePath: string): { value: unknown } | null {
+  if (!isPresentationActive()) return null;
+  const builder = PRESENTATION_BUILDERS[basePath];
+  if (!builder) return null;
+  return { value: builder(injectedWorld()) };
+}

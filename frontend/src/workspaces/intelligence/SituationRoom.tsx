@@ -39,6 +39,7 @@ import {
   getCurrencyRevision,
   subscribeCurrency,
 } from "../../lib/currency";
+import { useDemoRevision } from "../../lib/useDemoRevision";
 
 // Situation Room (Phase 6) — a management investigation workspace, not a risk
 // screen. Operations Intelligence detects → the Situation Room investigates →
@@ -120,6 +121,7 @@ export function SituationRoom({
   onNavigate: (view: string) => void;
 }) {
   const rev = useSyncExternalStore(subscribeCurrency, getCurrencyRevision);
+  const injectRev = useDemoRevision();
   const [batches, setBatches] = useState<ApiInventoryBatch[]>([]);
   const [candidates, setCandidates] = useState<ApiImportFileCandidate[]>([]);
   const [commitments, setCommitments] = useState<ApiCustomerCommitment[]>([]);
@@ -158,7 +160,7 @@ export function SituationRoom({
     return () => {
       active = false;
     };
-  }, [situation.type]);
+  }, [situation.type, injectRev]);
 
   const categoryOf = useMemo(() => {
     const map = new Map<string, string>();

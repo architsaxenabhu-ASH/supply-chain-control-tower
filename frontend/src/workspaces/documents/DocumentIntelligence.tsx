@@ -29,6 +29,7 @@ import type {
   MasterCandidate,
 } from "../../types/domain";
 import type { DashboardNav } from "../dashboards/Dashboards";
+import { useDemoRevision } from "../../lib/useDemoRevision";
 
 // Document Intelligence Center (Phase 6). The document → transaction pipeline as
 // a first-class intelligence surface:
@@ -75,6 +76,7 @@ function detectCountry(candidates: MasterCandidate[]): string | null {
 }
 
 export function DocumentIntelligence({ onNavigate, currentUser }: DashboardNav & { currentUser: ApiAuthenticatedUser }) {
+  const injectRev = useDemoRevision();
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
   const [queue, setQueue] = useState<ApiValidationQueueResponse | null>(null);
   const [candidates, setCandidates] = useState<ApiImportFileCandidate[]>([]);
@@ -110,7 +112,8 @@ export function DocumentIntelligence({ onNavigate, currentUser }: DashboardNav &
 
   useEffect(() => {
     loadAll();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [injectRev]);
 
   useEffect(() => {
     if (!selectedId) {

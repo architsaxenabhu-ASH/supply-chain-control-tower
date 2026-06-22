@@ -13,6 +13,7 @@ import {
   type ApiPerformanceScorecard,
 } from "../../lib/api";
 import { useCountry } from "../../context/CountryContext";
+import { useDemoRevision } from "../../lib/useDemoRevision";
 import { itemVariants, listVariants, prefersReducedMotion, signatureVariants } from "../../motion/motion";
 
 // Commercial Performance (Phase 5A): the management drill-down —
@@ -43,6 +44,7 @@ type Path = { country?: string; vertical?: string; distributor?: string };
 export function CommercialPerformance({ currentUser }: { currentUser: ApiAuthenticatedUser }) {
   const reduced = prefersReducedMotion();
   const { country: envCountry } = useCountry();
+  const injectRev = useDemoRevision();
   const [path, setPath] = useState<Path>({});
   const [rows, setRows] = useState<ApiPerformanceScorecard[]>([]);
   const [loading, setLoading] = useState(true);
@@ -102,7 +104,7 @@ export function CommercialPerformance({ currentUser }: { currentUser: ApiAuthent
     return () => {
       active = false;
     };
-  }, [level, path.country, path.vertical, path.distributor]);
+  }, [level, path.country, path.vertical, path.distributor, injectRev]);
 
   const totals = useMemo(() => {
     const actual = rows.reduce((sum, row) => sum + (row.actual_value || 0), 0);

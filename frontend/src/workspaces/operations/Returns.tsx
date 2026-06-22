@@ -12,6 +12,7 @@ import {
   type ApiReturnDashboard,
   type ApiReturnRecord,
 } from "../../lib/api";
+import { useDemoRevision } from "../../lib/useDemoRevision";
 import { itemVariants, listVariants, prefersReducedMotion, signatureVariants } from "../../motion/motion";
 
 // Returns (Phase 5A): the return loop — returned → inspection → verification →
@@ -35,6 +36,7 @@ function statusPill(status: string): string {
 
 export function Returns({ currentUser }: { currentUser: ApiAuthenticatedUser }) {
   const reduced = prefersReducedMotion();
+  const injectRev = useDemoRevision();
   const [rows, setRows] = useState<ApiReturnRecord[]>([]);
   const [dashboard, setDashboard] = useState<ApiReturnDashboard | null>(null);
   const [statusFilter, setStatusFilter] = useState<(typeof STATUS_FILTERS)[number]>("all");
@@ -60,7 +62,7 @@ export function Returns({ currentUser }: { currentUser: ApiAuthenticatedUser }) 
       if (dash.status === "fulfilled") setDashboard(dash.value);
       setLoading(false);
     });
-  }, [statusFilter]);
+  }, [statusFilter, injectRev]);
 
   useEffect(() => {
     load();

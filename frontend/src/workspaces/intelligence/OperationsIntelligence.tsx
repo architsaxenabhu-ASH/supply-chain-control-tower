@@ -38,6 +38,7 @@ import {
 import type { DashboardNav } from "../dashboards/Dashboards";
 import { SituationRoom, type ResponsibilityDomain, type SituationSpec } from "./SituationRoom";
 import { MovementPanel } from "../../components/MovementPanel";
+import { useDemoRevision } from "../../lib/useDemoRevision";
 
 // Operations Intelligence Center (Phase 6, P1 of this sprint) — the primary
 // management workspace. It does not only show what is wrong: it shows what
@@ -112,6 +113,7 @@ function resolvedFor(event: ApiAuditEvent): { label: string; icon: IntelItem["ic
 }
 
 export function OperationsIntelligence({ onNavigate, currentUser }: DashboardNav & { currentUser: ApiAuthenticatedUser }) {
+  const injectRev = useDemoRevision();
   const [lane, setLane] = useState<Lane>("attention");
   const [openSituation, setOpenSituation] = useState<SituationSpec | null>(null);
   const [actions, setActions] = useState<ApiExecutiveAction[]>([]);
@@ -155,7 +157,7 @@ export function OperationsIntelligence({ onNavigate, currentUser }: DashboardNav
     return () => {
       active = false;
     };
-  }, []);
+  }, [injectRev]);
 
   const attention: IntelItem[] = useMemo(() => {
     const items: IntelItem[] = actions.map((action, index) => {
