@@ -349,6 +349,10 @@ function buildPrimary(g = 1): SampleLane {
 
   for (const row of PRIMARY_ROWS) {
     const market = MARKETS[row.country];
+    // No activity (e.g. right after "Start at zero") → the country is not on the
+    // map at all: no value, no node, and no animated route. Movement only ever
+    // shows where shipments are actually moving.
+    if (row.value <= 0 && row.shipments <= 0) continue;
     values[row.country] = row.value;
     tooltips[row.country] = [
       { label: "Incoming", value: `${row.shipments} shipments` },
@@ -540,6 +544,7 @@ function buildInventory(g = 1): SampleLane {
 
   for (const row of INVENTORY_ROWS) {
     const market = MARKETS[row.country];
+    if (row.value <= 0 && row.units <= 0) continue; // no stock → not on the map
     const available = row.units - row.reserved;
     values[row.country] = row.value;
     tooltips[row.country] = [
@@ -748,6 +753,7 @@ function buildSecondary(g = 1): SampleLane {
   const verticalRevenue = VERTICALS.map(() => 0);
   for (const row of SECONDARY_ROWS) {
     const market = MARKETS[row.country];
+    if (row.revenue <= 0 && row.orders <= 0) continue; // no sales → not on the map
     values[row.country] = row.revenue;
     row.mix.forEach((share, index) => {
       verticalRevenue[index] += row.revenue * share;
@@ -1630,6 +1636,7 @@ export function buildExecutiveSnapshot(_rev = 0, boost = 0, tick = 0): ExecSnaps
   const cities: MapCity[] = [];
   for (const row of ops) {
     const networkValue = row.incomingValue + row.stockValue + row.revenue;
+    if (networkValue <= 0) continue; // inactive country → off the map (e.g. at reset)
     values[row.country] = networkValue;
     tooltips[row.country] = [
       { label: "Incoming", value: money(row.incomingValue) },
@@ -1661,14 +1668,18 @@ export function buildExecutiveSnapshot(_rev = 0, boost = 0, tick = 0): ExecSnaps
       });
     }
   }
-  const routes: MapRoute[] = [
-    ...PRIMARY_ROWS_BASE.filter((row) => MARKETS[row.country]).map((row) => ({
+  // India → country inbound routes, but ONLY where shipments are actually moving
+  // (driven by the live counters), so the network map is empty right after reset
+  // and grows as Primary Sales are added.
+  const modeByCountry = new Map(PRIMARY_ROWS_BASE.map((row) => [row.country, row.mode] as const));
+  const routes: MapRoute[] = ops
+    .filter((row) => row.shipments > 0 && MARKETS[row.country])
+    .map((row) => ({
       from: ORIGIN,
       to: row.country,
       intensity: Math.max(1, Math.round(row.shipments / 2)),
-      mode: row.mode,
-    })),
-  ];
+      mode: modeByCountry.get(row.country) ?? "air",
+    }));
   // Secondary distribution is intra-country: from each country's delivery hub out
   // to its other major cities — never country-to-country. Only countries that are
   // actually selling get these routes, so the map grows with the demo.
