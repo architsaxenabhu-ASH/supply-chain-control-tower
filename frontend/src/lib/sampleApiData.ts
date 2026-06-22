@@ -21,8 +21,10 @@ import type {
   ApiCreditControl,
   ApiCustomer,
   ApiCustomerCommitment,
+  ApiDashboardSummary,
   ApiDecision,
   ApiDispatch,
+  ApiErpTemplate,
   ApiExecutiveAction,
   ApiExecutiveDashboard,
   ApiExpiryDashboard,
@@ -40,6 +42,7 @@ import type {
   ApiReceivable,
   ApiReturnDashboard,
   ApiReturnRecord,
+  ApiSecurityOverview,
   ApiShipment,
   ApiShipmentDashboard,
   ApiValidationQueueItem,
@@ -780,8 +783,33 @@ export function generateInjectedBatches(seq: number): ApiInventoryBatch[] {
   return activeMarkets(seq).map((market, k) => makeInjectedBatch(seq, k, market));
 }
 
+// Role templates + a couple of seed users, so Access Management works (and a new
+// user can be created with a real role) even with no backend running. Roles are
+// system templates, not business data — safe to provide for the demo.
+function securityOverview(): ApiSecurityOverview {
+  return {
+    role_definitions: [
+      { role_name: "Admin", description: "System setup and full control", permissions: ["masters", "security", "imports", "inventory", "shipments", "audit", "reports_export"] },
+      { role_name: "General Manager", description: "Executive oversight across all countries", permissions: ["executive_view", "audit", "reports_export", "country_dashboard"] },
+      { role_name: "Country Incharge", description: "Country-level import and shipment approval", permissions: ["import_approval", "shipment_approval", "country_dashboard"] },
+      { role_name: "Warehouse Executive", description: "Goods receipt, dispatch, and cycle count entry", permissions: ["goods_receipt", "dispatch", "inventory_count"] },
+      { role_name: "Warehouse Manager", description: "Warehouse approval and reconciliation", permissions: ["inventory_approval", "dispatch_approval", "reconciliation"] },
+      { role_name: "Sales User", description: "Shipment request and customer visibility", permissions: ["shipment_request", "customer_read"] },
+      { role_name: "Finance User", description: "Inventory value and export visibility", permissions: ["inventory_value", "reports_export"] },
+      { role_name: "QA / QC Manager", description: "Expiry, batch traceability, and quality-hold authority", permissions: ["expiry_review", "batch_traceability", "quality_hold", "inventory_count"] },
+    ],
+    users: [
+      { email: "k.rao@northwind.example", full_name: "Kiran Rao", role_name: "Admin", country_scope: [], warehouse_scope: [], is_active: true, has_password: true, created_at: isoDay(-120), updated_at: isoDay(-3) },
+      { email: "gm@northwind.example", full_name: "Grace Meadows", role_name: "General Manager", country_scope: [], warehouse_scope: [], is_active: true, has_password: true, created_at: isoDay(-90), updated_at: isoDay(-2) },
+      { email: "qa.de@northwind.example", full_name: "Dieter Vogel", role_name: "QA / QC Manager", country_scope: ["Germany"], warehouse_scope: [], is_active: true, has_password: true, created_at: isoDay(-60), updated_at: isoDay(-1) },
+    ],
+    approval_rules: [],
+  };
+}
+
 /** Path (without query string) → sample data factory. Consumed by `getJson`. */
 export const SAMPLE_API_FALLBACKS: Record<string, () => unknown> = {
+  "/security": securityOverview,
   "/executive-actions": executiveActions,
   "/approvals": approvals,
   "/decisions": decisions,
@@ -818,6 +846,12 @@ export const SAMPLE_API_FALLBACKS: Record<string, () => unknown> = {
   "/credit-control": () => deriveCredit(staticWorld().receivables),
   "/consignment-inventory": () => staticWorld().consignments,
   "/returns": () => staticWorld().returns,
+  // Endpoints the app shell loads on startup — without these the shell's
+  // Promise.all rejects when no backend is running and the live status rail
+  // never updates.
+  "/dashboard/summary": () => computeDashboardSummary(staticWorld()),
+  "/validation/queue": () => deriveValidationQueue(staticWorld()),
+  "/erp-uploads/templates": erpTemplates,
 };
 
 // =============================================================================
@@ -1424,6 +1458,35 @@ function computeExecutiveDashboard(world: RawWorld): ApiExecutiveDashboard {
   };
 }
 
+function computeDashboardSummary(world: RawWorld): ApiDashboardSummary {
+  const inv = computeInventoryDashboard(world);
+  const exp = computeExpiryDashboard(world);
+  return {
+    total_inventory_value: inv.total_value,
+    total_inventory_quantity: inv.total_quantity,
+    inventory_by_warehouse: inv.by_warehouse_value,
+    inventory_by_category: inv.by_category_value,
+    expiring_stock_alerts: exp.expiring_90 + exp.expired,
+    expiring_in_30_days: exp.expiring_30,
+    expiring_in_60_days: exp.expiring_60,
+    expiring_in_90_days: exp.expiring_90,
+    expired_inventory_count: exp.expired,
+    open_shipment_requests: world.shipments.filter((s) => s.status === "submitted" || s.status === "approved").length,
+    dispatched_shipments: world.shipments.filter((s) => s.status === "dispatched").length,
+    goods_received_today: world.goodsReceipts.length,
+    inventory_variance_summary: {},
+    top_customers: [],
+  };
+}
+
+function erpTemplates(): ApiErpTemplate[] {
+  return [
+    { template_key: "inventory_balance", template_name: "Inventory Balance", description: "Stock on hand by item and warehouse", source_module: "inventory", columns: ["item_code", "warehouse", "quantity", "value"] },
+    { template_key: "sales_register", template_name: "Sales Register", description: "Customer deliveries and revenue", source_module: "secondary", columns: ["po_number", "customer", "material", "quantity", "value"] },
+    { template_key: "goods_receipt", template_name: "Goods Receipt Register", description: "Inbound goods receipts", source_module: "primary", columns: ["grn_number", "supplier", "item_code", "quantity"] },
+  ];
+}
+
 function computeMovementByCountry(world: RawWorld): Record<string, number> {
   const map: Record<string, number> = {};
   for (const im of world.imports) {
@@ -1551,12 +1614,13 @@ const PRESENTATION_BUILDERS: Record<string, (w: RawWorld) => unknown> = {
   "/consignment-dashboard": (w) => computeConsignmentDashboard(w),
   "/return-dashboard": (w) => computeReturnDashboard(w),
   "/reference/movement-by-country": (w) => computeMovementByCountry(w),
+  "/dashboard/summary": (w) => computeDashboardSummary(w),
   // Workflow / alert queues auto-fill from the same flow, so a from-zero
   // presentation surfaces real work as imports & orders arrive (not empty).
   "/executive-actions": (w) => deriveExecutiveActions(w),
   "/approvals": (w) => deriveApprovals(w),
   "/decisions": (w) => deriveDecisions(w),
-  "/validation-queue": (w) => deriveValidationQueue(w),
+  "/validation/queue": (w) => deriveValidationQueue(w),
   // No synthetic audit/risk lists during a presentation (these record real
   // user actions / model output) — they stay empty until genuinely produced.
   "/audit": () => [],

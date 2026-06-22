@@ -789,7 +789,9 @@ function buildSecondary(g = 1): SampleLane {
   }
 
   // Light up any markets the presenter has injected (new countries entering).
-  mergeInjectedMarkets(values, tooltips, sidePanel, cities, routes, money);
+  // Pass null for routes: secondary is subsidiary→customer WITHIN a country, so it
+  // must never draw an India→country line (those belong to Primary only).
+  mergeInjectedMarkets(values, tooltips, sidePanel, cities, null, money);
 
   const trend = trendFrom(
     series(31, Math.round(totalRevenue * 0.7), totalRevenue, 0.07),

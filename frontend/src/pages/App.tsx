@@ -36,6 +36,7 @@ import { SecondaryValidate } from "../workspaces/shipdocs/SecondaryValidate";
 import { MovementPanel } from "../components/MovementPanel";
 import { DemoModeToggle } from "../components/DemoModeToggle";
 import { DemoControls } from "../components/DemoControls";
+import { useDemoRevision } from "../lib/useDemoRevision";
 import { ExecutiveLiveCenter } from "../workspaces/executive/ExecutiveLiveCenter";
 import { ExecutiveOpsCenter } from "../workspaces/executive/ExecutiveOpsCenter";
 import { CountryProvider, CountrySelector } from "../context/CountryContext";
@@ -1311,6 +1312,10 @@ export function App() {
   const [auditEvents, setAuditEvents] = useState<ApiAuditEvent[]>([]);
   const [learningInsights, setLearningInsights] = useState<ApiLearningInsights | null>(null);
   const [importQueue, setImportQueue] = useState<ApiImportFileCandidate[]>([]);
+  // Advances on every presenter click (Start at zero / Primary + / Secondary +)
+  // so the shell's live heartbeat (the Primary/Inventory/Secondary status rail)
+  // refetches and tracks the demo instead of sitting on its first load.
+  const injectRev = useDemoRevision();
   const [securityOverview, setSecurityOverview] = useState<ApiSecurityOverview>(fallbackSecurityOverview);
   const [securityMessage, setSecurityMessage] = useState("Enter users and approval rules for email-based access.");
   const [apiStatus, setApiStatus] = useState("Using sample data");
@@ -1449,7 +1454,8 @@ export function App() {
     return () => {
       isMounted = false;
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [injectRev]);
 
   useEffect(() => {
     let isMounted = true;
