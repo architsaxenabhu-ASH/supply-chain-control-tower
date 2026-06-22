@@ -464,6 +464,7 @@ export function ExecutiveOpsCenter() {
             sidePanel={snap.map.sidePanel}
             cities={snap.map.cities}
             routes={snap.map.routes}
+            geoRoutes={snap.map.geoRoutes}
             activeCountry={country}
             formatValue={snap.map.formatValue}
             caption="Live network value by country — click a country to drop into its cities"

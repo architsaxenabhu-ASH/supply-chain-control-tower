@@ -16,7 +16,8 @@
 // Monetary values are held in INR (the platform base currency) so the live
 // currency switcher converts them just like real figures.
 
-import type { MapCity, MapRoute } from "../components/WorldMap";
+import type { GeoRoute, MapCity, MapRoute } from "../components/WorldMap";
+import { citiesForCountry } from "./cityGeo";
 import { formatMoney, formatUnits } from "./currency";
 import type { LiveCategory, LiveEvent } from "./liveTicker";
 
@@ -93,6 +94,7 @@ export type SampleLane = {
   sidePanel: Record<string, { label: string; value: string; tone?: "good" | "bad" | "warn" }[]>;
   cities: MapCity[];
   routes: MapRoute[];
+  geoRoutes: GeoRoute[]; // precise city-level arcs (secondary = hub → other cities)
   trend: TrendChart;
   ranking: RankChart;
   composition: DonutChartData;
@@ -222,6 +224,14 @@ export const EXPANSION_MARKETS: { country: string; city: string; lon: number; la
   { country: "Egypt", city: "Cairo", lon: 31.24, lat: 30.04, region: "Africa" },
   { country: "Indonesia", city: "Jakarta", lon: 106.85, lat: -6.21, region: "Asia & Australia" },
   { country: "Canada", city: "Toronto", lon: -79.38, lat: 43.65, region: "North America" },
+  { country: "Netherlands", city: "Amsterdam", lon: 4.9041, lat: 52.3676, region: "Europe" },
+  { country: "South Africa", city: "Johannesburg", lon: 28.0473, lat: -26.2041, region: "Africa" },
+  { country: "South Korea", city: "Seoul", lon: 126.978, lat: 37.5665, region: "Asia & Australia" },
+  { country: "Singapore", city: "Singapore", lon: 103.8198, lat: 1.3521, region: "Asia & Australia" },
+  { country: "China", city: "Shanghai", lon: 121.4737, lat: 31.2304, region: "Asia & Australia" },
+  { country: "Argentina", city: "Buenos Aires", lon: -58.3816, lat: -34.6037, region: "Latin America" },
+  { country: "Nigeria", city: "Lagos", lon: 3.3792, lat: 6.5244, region: "Africa" },
+  { country: "Kenya", city: "Nairobi", lon: 36.8219, lat: -1.2921, region: "Africa" },
 ];
 
 // Provider indirection (same no-cycle pattern as the API inject providers): the
@@ -335,6 +345,7 @@ function buildPrimary(g = 1): SampleLane {
   const sidePanel: SampleLane["sidePanel"] = {};
   const cities: MapCity[] = [];
   const routes: MapRoute[] = [];
+  const geoRoutes: GeoRoute[] = []; // primary uses country-level routes above
 
   for (const row of PRIMARY_ROWS) {
     const market = MARKETS[row.country];
@@ -461,6 +472,7 @@ function buildPrimary(g = 1): SampleLane {
     sidePanel,
     cities,
     routes,
+    geoRoutes,
     trend,
     ranking,
     composition,
@@ -653,6 +665,7 @@ function buildInventory(g = 1): SampleLane {
     sidePanel,
     cities,
     routes: [],
+    geoRoutes: [],
     trend,
     ranking,
     composition,
@@ -701,13 +714,6 @@ const SECONDARY_ROWS_BASE: SecondaryRow[] = [
   { country: "United Kingdom", revenue: 27_000_000, orders: 13, units: 6900, delivered: 10, commitmentsOpen: 1, topCustomer: "Thames Health Trust", mix: [0.32, 0.2, 0.2, 0.18, 0.1] },
 ];
 
-const SECONDARY_ROUTES: MapRoute[] = [
-  { from: "Germany", to: "Poland", intensity: 2, mode: "air" },
-  { from: "Germany", to: "France", intensity: 2, mode: "air" },
-  { from: "United Arab Emirates", to: "Saudi Arabia", intensity: 3, mode: "air" },
-  { from: "United States of America", to: "Brazil", intensity: 1, mode: "air" },
-];
-
 function buildSecondary(g = 1): SampleLane {
   const ledger = activeLedgerRows();
   const SECONDARY_ROWS = ledger
@@ -724,7 +730,20 @@ function buildSecondary(g = 1): SampleLane {
   const tooltips: SampleLane["tooltips"] = {};
   const sidePanel: SampleLane["sidePanel"] = {};
   const cities: MapCity[] = [];
-  const routes: MapRoute[] = [...SECONDARY_ROUTES];
+  const routes: MapRoute[] = [];
+  // Secondary is intra-country: from the delivery hub (where primary lands) out
+  // to the other major cities of the SAME country — never country-to-country.
+  const geoRoutes: GeoRoute[] = [];
+  for (const row of SECONDARY_ROWS) {
+    if (row.orders <= 0) continue;
+    const geo = citiesForCountry(row.country);
+    if (!geo) continue;
+    const hub: [number, number] = [geo.hub.lon, geo.hub.lat];
+    const intensity = Math.max(1, Math.min(4, Math.round(row.orders / 5)));
+    for (const c of geo.others.slice(0, 3)) {
+      geoRoutes.push({ from: hub, to: [c.lon, c.lat], mode: "road", intensity });
+    }
+  }
 
   const verticalRevenue = VERTICALS.map(() => 0);
   for (const row of SECONDARY_ROWS) {
@@ -846,6 +865,7 @@ function buildSecondary(g = 1): SampleLane {
     sidePanel,
     cities,
     routes,
+    geoRoutes,
     trend,
     ranking,
     composition,
@@ -1100,6 +1120,7 @@ export type ExecSnapshot = {
     sidePanel: SampleLane["sidePanel"];
     cities: MapCity[];
     routes: MapRoute[];
+    geoRoutes: GeoRoute[];
     formatValue: (value: number) => string;
   };
 };
@@ -1647,8 +1668,21 @@ export function buildExecutiveSnapshot(_rev = 0, boost = 0, tick = 0): ExecSnaps
       intensity: Math.max(1, Math.round(row.shipments / 2)),
       mode: row.mode,
     })),
-    ...SECONDARY_ROUTES,
   ];
+  // Secondary distribution is intra-country: from each country's delivery hub out
+  // to its other major cities — never country-to-country. Only countries that are
+  // actually selling get these routes, so the map grows with the demo.
+  const geoRoutes: GeoRoute[] = [];
+  for (const row of ops) {
+    if (row.orders <= 0) continue;
+    const geo = citiesForCountry(row.country);
+    if (!geo) continue;
+    const hub: [number, number] = [geo.hub.lon, geo.hub.lat];
+    const intensity = Math.max(1, Math.min(4, Math.round(row.orders / 5)));
+    for (const c of geo.others.slice(0, 3)) {
+      geoRoutes.push({ from: hub, to: [c.lon, c.lat], mode: "road", intensity });
+    }
+  }
   // Newly injected markets join the network map alongside the core countries.
   mergeInjectedMarkets(values, tooltips, sidePanel, cities, routes, money);
 
@@ -1697,6 +1731,6 @@ export function buildExecutiveSnapshot(_rev = 0, boost = 0, tick = 0): ExecSnaps
     ],
     headerSpark,
     donuts,
-    map: { values, tooltips, sidePanel, cities, routes, formatValue: (value) => money(value) },
+    map: { values, tooltips, sidePanel, cities, routes, geoRoutes, formatValue: (value) => money(value) },
   };
 }

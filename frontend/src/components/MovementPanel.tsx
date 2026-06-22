@@ -13,7 +13,13 @@ import { computeMovement, type MovementMetrics, type MovementWindow } from "../l
 import { formatDisplay, formatUnits, getCurrencyRevision, subscribeCurrency } from "../lib/currency";
 import { useCountry } from "../context/CountryContext";
 import { useDemoRevision } from "../lib/useDemoRevision";
-import { WorldMap, type MapDetailRow } from "./WorldMap";
+import { citiesForCountry } from "../lib/cityGeo";
+import { WorldMap, type GeoRoute, type MapCity, type MapDetailRow } from "./WorldMap";
+
+// India is the single source. Primary shipments fly from here to each country's
+// delivery hub; secondary then distributes from that hub to the country's other
+// major cities. Mumbai stands in for the origin gateway.
+const ORIGIN_HUB: [number, number] = [72.8777, 19.076];
 
 // Shipment movement, shown the way the user asked: four live metrics (active
 // shipments, units, weight, value), a map that colours by the chosen metric,
@@ -118,6 +124,66 @@ export function MovementPanel({ title = "Shipment movement", showDetail = true }
     return out;
   }, [result]);
 
+  // Animated movement: India → each active country's delivery hub (primary), and
+  // hub → that country's other major cities (secondary distribution). A country
+  // only gets routes when its shipments are actually moving.
+  const geoRoutes = useMemo(() => {
+    const out: GeoRoute[] = [];
+    for (const cm of Object.values(result.byCountry)) {
+      const geo = citiesForCountry(cm.country);
+      if (!geo) continue;
+      const hub: [number, number] = [geo.hub.lon, geo.hub.lat];
+      if (cm.primary.shipments > 0) {
+        out.push({ from: ORIGIN_HUB, to: hub, mode: "air", intensity: Math.min(5, cm.primary.shipments) });
+      }
+      if (cm.secondary.shipments > 0) {
+        for (const c of geo.others.slice(0, 3)) {
+          out.push({ from: hub, to: [c.lon, c.lat], mode: "road", intensity: Math.min(4, cm.secondary.shipments) });
+        }
+      }
+    }
+    return out;
+  }, [result]);
+
+  // City nodes shown on drill-in: the hub where primary lands, plus the cities
+  // secondary distributes to within the same country.
+  const mapCities = useMemo(() => {
+    const out: MapCity[] = [];
+    for (const cm of Object.values(result.byCountry)) {
+      const geo = citiesForCountry(cm.country);
+      if (!geo) continue;
+      if (cm.primary.shipments <= 0 && cm.secondary.shipments <= 0) continue;
+      out.push({
+        country: cm.country,
+        city: geo.hub.city,
+        lon: geo.hub.lon,
+        lat: geo.hub.lat,
+        value: metricOf(cm.total, metric),
+        valueLabel: formatMetric(metric, metricOf(cm.total, metric)),
+        volume: `${formatUnits(cm.total.shipments)} shipments`,
+        movement: `${formatUnits(cm.primary.shipments)} in · ${formatUnits(cm.secondary.shipments)} out`,
+        status: "Delivery hub",
+      });
+      if (cm.secondary.shipments > 0) {
+        const cities = geo.others.slice(0, 3);
+        const per = metricOf(cm.secondary, metric) / Math.max(1, cities.length);
+        for (const c of cities) {
+          out.push({
+            country: cm.country,
+            city: c.city,
+            lon: c.lon,
+            lat: c.lat,
+            value: per,
+            valueLabel: formatMetric(metric, per),
+            movement: "secondary distribution",
+            status: "Distribution city",
+          });
+        }
+      }
+    }
+    return out;
+  }, [result, metric]);
+
   const isActive = window === "active";
   const countLabel = isActive ? "Active shipments" : "Shipments moved";
   const windowLabel = WINDOWS.find((w) => w.id === window)?.label ?? "";
@@ -194,6 +260,8 @@ export function MovementPanel({ title = "Shipment movement", showDetail = true }
         values={values}
         details={details}
         sidePanel={sidePanel}
+        geoRoutes={geoRoutes}
+        cities={mapCities}
         activeCountry={country}
         formatValue={(v) => formatMetric(metric, v)}
         caption={

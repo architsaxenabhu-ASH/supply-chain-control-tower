@@ -141,6 +141,17 @@ export type MapDetailRow = { label: string; value: number };
 // when there is real in-motion activity to represent.
 export type MapRoute = { from: string; to: string; intensity?: number; mode?: "air" | "sea" };
 
+// A precise coordinate-to-coordinate animated route (longitude/latitude pairs),
+// so we can show India → the delivery hub city (primary) AND the hub → other
+// cities of the same country (secondary distribution), not just country-to-
+// country. "road" = intra-country distribution by truck.
+export type GeoRoute = {
+  from: [number, number];
+  to: [number, number];
+  mode?: "air" | "sea" | "road";
+  intensity?: number;
+};
+
 // A city receiving activity, placed by its geographic coordinates.
 export type MapCity = {
   country: string;
@@ -169,6 +180,9 @@ export type WorldMapProps = {
   tooltips?: Record<string, { label: string; value: string }[]>;
   /** Animated routes between countries; only drawn at world level (performance). */
   routes?: MapRoute[];
+  /** Precise lon/lat animated routes (India→hub city, hub→other cities). Drawn at
+   *  world level and enlarged when a country is zoomed in. */
+  geoRoutes?: GeoRoute[];
   /** City-level nodes; only rendered once a country is zoomed into (performance). */
   cities?: MapCity[];
   /** Persistent side-panel rows per country, shown when a country is selected. */
@@ -196,6 +210,7 @@ export function WorldMap({
   details,
   tooltips,
   routes,
+  geoRoutes,
   cities,
   sidePanel,
   fitToRegion,
@@ -265,6 +280,32 @@ export function WorldMap({
     }
     return out;
   }, [routes]);
+
+  // Precise lon/lat routes (India→hub city, hub→other cities). Projected once;
+  // the surrounding <g> transform zooms them in when a country is focused.
+  const resolvedGeoRoutes = useMemo(() => {
+    if (!geoRoutes || geoRoutes.length === 0) return [];
+    const out: { d: string; mode: "air" | "sea" | "road"; dur: number }[] = [];
+    for (const r of geoRoutes) {
+      const a = WORLD_PROJECTION(r.from);
+      const b = WORLD_PROJECTION(r.to);
+      if (!a || !b) continue;
+      const [x0, y0] = a;
+      const [x1, y1] = b;
+      const dist = Math.hypot(x1 - x0, y1 - y0);
+      if (dist < 0.5) continue;
+      const mode = r.mode ?? "air";
+      const lift = mode === "road" ? 0.16 : 0.3; // intra-country arcs sit flatter
+      const cx = (x0 + x1) / 2;
+      const cy = (y0 + y1) / 2 - dist * lift;
+      out.push({
+        d: `M ${x0} ${y0} Q ${cx} ${cy} ${x1} ${y1}`,
+        mode,
+        dur: Math.max(2.5, 7 - (r.intensity ?? 1)),
+      });
+    }
+    return out;
+  }, [geoRoutes]);
 
   // What the map is focused on: a clicked country, else the lit region, else
   // the whole world. The focus drives a smooth transform-zoom.
@@ -455,6 +496,40 @@ export function WorldMap({
                     >
                       <animateMotion dur={`${r.dur}s`} repeatCount="indefinite" rotate="auto">
                         <mpath href={`#exec-route-${i}`} />
+                      </animateMotion>
+                    </path>
+                  ) : null}
+                </g>
+              ))}
+            </g>
+          ) : null}
+
+          {/* Precise city-level routes — India→hub (primary) and hub→other
+              cities (secondary). Shown at world level and enlarged on drill-in. */}
+          {resolvedGeoRoutes.length > 0 ? (
+            <g className="map-route-layer" aria-hidden="true">
+              {resolvedGeoRoutes.map((r, i) => (
+                <g key={`geo-${i}`} className={`map-route mode-${r.mode}`}>
+                  <path
+                    id={`geo-route-${i}`}
+                    className="map-route-path"
+                    d={r.d}
+                    fill="none"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                  {!reduced ? (
+                    <path
+                      className="map-route-mover"
+                      d={
+                        r.mode === "sea"
+                          ? "M-3.4 -1.5 L3.6 -1.5 L2.3 1.9 L-2.3 1.9 Z"
+                          : r.mode === "road"
+                            ? "M-3 -1.6 L1.4 -1.6 L1.4 -0.4 L3 -0.4 L3 1.6 L-3 1.6 Z"
+                            : "M4.4 0 L-3.1 -2.7 L-1.3 0 L-3.1 2.7 Z"
+                      }
+                    >
+                      <animateMotion dur={`${r.dur}s`} repeatCount="indefinite" rotate="auto">
+                        <mpath href={`#geo-route-${i}`} />
                       </animateMotion>
                     </path>
                   ) : null}

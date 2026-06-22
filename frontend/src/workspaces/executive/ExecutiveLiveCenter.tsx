@@ -200,6 +200,7 @@ export function ExecutiveLiveCenter({ lane = "primary" }: { lane?: LaneId }) {
             sidePanel={data.sidePanel}
             cities={data.cities}
             routes={data.routes}
+            geoRoutes={data.geoRoutes}
             activeCountry={country}
             formatValue={data.formatValue}
             caption={`${meta.title} — live by country; click a country to drop into its cities`}

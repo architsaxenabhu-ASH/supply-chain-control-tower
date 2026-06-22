@@ -42,6 +42,8 @@ import type {
   ApiReturnRecord,
   ApiShipment,
   ApiShipmentDashboard,
+  ApiValidationQueueItem,
+  ApiValidationQueueResponse,
   ApiWarehouseLocation,
 } from "./api";
 
@@ -142,6 +144,14 @@ const EXPANSION_MARKETS: MarketDef[] = [
   { country: "Egypt", city: "Cairo", whCode: "EG-CAI-01", whName: "Cairo DC", entity: "Northwind Egypt LLC", carrier: "Meridian Air Cargo" },
   { country: "Indonesia", city: "Jakarta", whCode: "ID-JKT-01", whName: "Jakarta DC", entity: "Northwind Indonesia PT", carrier: "Pacific Air Cargo" },
   { country: "Canada", city: "Toronto", whCode: "CA-TOR-01", whName: "Toronto DC", entity: "Northwind Canada Inc.", carrier: "Atlantic Sea Lines" },
+  { country: "Netherlands", city: "Amsterdam", whCode: "NL-AMS-01", whName: "Amsterdam DC", entity: "Northwind Benelux B.V.", carrier: "Continental Air Cargo" },
+  { country: "South Africa", city: "Johannesburg", whCode: "ZA-JNB-01", whName: "Johannesburg DC", entity: "Northwind South Africa Pty", carrier: "Meridian Air Cargo" },
+  { country: "South Korea", city: "Seoul", whCode: "KR-SEL-01", whName: "Seoul DC", entity: "Northwind Korea Ltd.", carrier: "Pacific Air Cargo" },
+  { country: "Singapore", city: "Singapore", whCode: "SG-SIN-01", whName: "Singapore DC", entity: "Northwind Asia Pte", carrier: "Pacific Air Cargo" },
+  { country: "China", city: "Shanghai", whCode: "CN-SHA-01", whName: "Shanghai DC", entity: "Northwind China Co.", carrier: "Pacific Air Cargo" },
+  { country: "Argentina", city: "Buenos Aires", whCode: "AR-BUE-01", whName: "Buenos Aires DC", entity: "Northwind Argentina S.A.", carrier: "Atlantic Sea Lines" },
+  { country: "Nigeria", city: "Lagos", whCode: "NG-LOS-01", whName: "Lagos DC", entity: "Northwind Nigeria Ltd.", carrier: "Meridian Air Cargo" },
+  { country: "Kenya", city: "Nairobi", whCode: "KE-NBO-01", whName: "Nairobi DC", entity: "Northwind East Africa Ltd.", carrier: "Meridian Air Cargo" },
 ];
 
 const EXPANSION_CUSTOMERS: CustomerDef[] = [
@@ -151,6 +161,14 @@ const EXPANSION_CUSTOMERS: CustomerDef[] = [
   { code: "CUST-EG-01", name: "Cairo Medical Group", country: "Egypt", city: "Cairo", type: "Hospital Group", contact: "Dr. A. Hassan" },
   { code: "CUST-ID-01", name: "Jakarta Care Network", country: "Indonesia", city: "Jakarta", type: "Hospital Network", contact: "Dr. B. Santoso" },
   { code: "CUST-CA-01", name: "Toronto Health System", country: "Canada", city: "Toronto", type: "Hospital Network", contact: "Dr. E. Tremblay" },
+  { code: "CUST-NL-01", name: "Amsterdam Medical Centre", country: "Netherlands", city: "Amsterdam", type: "Hospital", contact: "Dr. S. Bakker" },
+  { code: "CUST-ZA-01", name: "Johannesburg Health Group", country: "South Africa", city: "Johannesburg", type: "Hospital Group", contact: "Dr. T. Nkosi" },
+  { code: "CUST-KR-01", name: "Seoul Medical Center", country: "South Korea", city: "Seoul", type: "Hospital", contact: "Dr. J. Kim" },
+  { code: "CUST-SG-01", name: "Singapore General Partners", country: "Singapore", city: "Singapore", type: "Hospital Network", contact: "Dr. W. Tan" },
+  { code: "CUST-CN-01", name: "Shanghai Health Network", country: "China", city: "Shanghai", type: "Hospital Network", contact: "Dr. L. Wang" },
+  { code: "CUST-AR-01", name: "Buenos Aires Salud", country: "Argentina", city: "Buenos Aires", type: "Hospital", contact: "Dr. M. González" },
+  { code: "CUST-NG-01", name: "Lagos Care Group", country: "Nigeria", city: "Lagos", type: "Hospital Group", contact: "Dr. C. Okafor" },
+  { code: "CUST-KE-01", name: "Nairobi Health Trust", country: "Kenya", city: "Nairobi", type: "Health Trust", contact: "Dr. A. Otieno" },
 ];
 
 /** All markets/customers known to a hover lookup (base + every expansion). */
@@ -831,6 +849,7 @@ const MARKET_BY_COUNTRY = new Map(ALL_MARKETS.map((m) => [m.country, m]));
 const CUSTOMER_BY_NAME = new Map(CUSTOMERS_DEF.map((c) => [c.name, c]));
 const today = (): string => isoDay(0);
 const sum = (values: number[]): number => values.reduce((total, value) => total + value, 0);
+const units = (value: number): string => Math.round(value).toLocaleString("en-US");
 
 function productUnit(code: string): number {
   return PRODUCT_BY_CODE.get(code)?.unit ?? 10000;
@@ -1128,6 +1147,101 @@ function deriveCredit(receivables: ApiReceivable[]): ApiCreditControl[] {
       override: false,
     };
   });
+}
+
+// =============================================================================
+// Workflow queues — derived from the same flow so a from-zero presentation fills
+// Alerts / Approvals / Decisions / Validation as imports & orders arrive (not
+// empty). Everything keys off the injected imports/commitments/batches.
+// =============================================================================
+
+function deriveExecutiveActions(world: RawWorld): ApiExecutiveAction[] {
+  const out: ApiExecutiveAction[] = [];
+  for (const im of world.imports) {
+    const s = im.status.toLowerCase();
+    if (s === "delayed") {
+      out.push({ action_type: "expedite", severity: "high", reference: im.shipment_name ?? im.import_file_number, title: `${im.destination_country} shipment delayed`, detail: `${im.shipment_name ?? im.import_file_number} is past ETA — chase the carrier.`, source: "Primary Sales" });
+    } else if (s === "customs") {
+      out.push({ action_type: "customs", severity: "medium", reference: im.import_file_number, title: `At customs — ${im.destination_country}`, detail: `${im.shipment_name ?? im.import_file_number} is held at customs clearance.`, source: "Primary Sales" });
+    }
+  }
+  for (const b of world.batches) {
+    if (b.days_to_expiry >= 0 && b.days_to_expiry <= 90) {
+      out.push({ action_type: "expiry", severity: b.days_to_expiry <= 30 ? "high" : "medium", reference: b.batch_number, title: `Expiry risk — ${b.warehouse_location}`, detail: `${units(b.quantity_available)} units of ${b.product_description} within ${b.days_to_expiry} days.`, source: "Inventory" });
+    }
+  }
+  for (const c of world.commitments) {
+    if (c.backorder_quantity > 0) {
+      out.push({ action_type: "commitment", severity: "medium", reference: c.po_number, title: `Backorder — ${c.customer}`, detail: `${units(c.backorder_quantity)} units short for ${c.customer} (${c.country}).`, source: "Secondary Sales" });
+    }
+  }
+  for (const s of world.shipments) {
+    if (s.status === "submitted") {
+      out.push({ action_type: "approve", severity: "low", reference: s.shipment_id, title: `Order awaiting approval`, detail: `${s.customer_name} order pending country approval.`, source: "Secondary Sales" });
+    }
+  }
+  const rank = { high: 0, medium: 1, low: 2 } as Record<string, number>;
+  return out.sort((a, b) => (rank[a.severity] ?? 3) - (rank[b.severity] ?? 3)).slice(0, 12);
+}
+
+function deriveApprovals(world: RawWorld): ApiApproval[] {
+  const out: ApiApproval[] = [];
+  for (const im of world.imports) {
+    const s = im.status.toLowerCase();
+    if (s === "arrived" || s === "customs" || s === "goods_receipt_pending") {
+      out.push({ approval_id: `APR-${im.import_file_number}`, approval_type: "import", reference: im.import_file_number, requestor: `ops.${im.destination_country.slice(0, 2).toLowerCase()}@northwind.example`, request_date: im.flight_date ?? isoDay(-1), approver: null, approval_date: null, reason: null, outcome: "pending", note: `${im.shipment_name ?? im.import_file_number} inbound to ${im.destination_country}` });
+    }
+  }
+  for (const sh of world.shipments) {
+    if (sh.status === "submitted") {
+      out.push({ approval_id: `APR-${sh.shipment_id}`, approval_type: "shipment", reference: sh.shipment_id, requestor: `sales.${sh.destination_country.slice(0, 2).toLowerCase()}@northwind.example`, request_date: sh.request_date, approver: null, approval_date: null, reason: null, outcome: "pending", note: `${sh.customer_name} — ${sh.destination_country}` });
+    }
+  }
+  return out.slice(0, 20);
+}
+
+function deriveDecisions(world: RawWorld): ApiDecision[] {
+  const out: ApiDecision[] = [];
+  const expiring = world.batches.filter((b) => b.days_to_expiry >= 0 && b.days_to_expiry <= 90).slice(0, 2);
+  for (const b of expiring) {
+    out.push({ decision_id: `DEC-${b.batch_number}`, decision_type: "expiry", reason: `Discount or move near-expiry ${b.product_description} at ${b.warehouse_location}`, user: "gm@northwind.example", role: "General Manager", problem_type: "expiry", owner: "Supply Chain", context: `${units(b.quantity_available)} units within ${b.days_to_expiry} days`, options_considered: ["Discount", "Reallocate", "Write off"], decided_at: isoStamp(120), related_product: b.item_code, related_batch: b.batch_number, related_shipment: null, related_customer: null, related_supplier: null, expected_outcome: "Recover value before expiry", actual_outcome: null, effectiveness: null, status: "open" });
+  }
+  const back = world.commitments.filter((c) => c.backorder_quantity > 0).slice(0, 2);
+  for (const c of back) {
+    out.push({ decision_id: `DEC-${c.commitment_id}`, decision_type: "allocation", reason: `Cover backorder for ${c.customer}`, user: `country.mgr.${c.country.slice(0, 2).toLowerCase()}@northwind.example`, role: "Country Manager", problem_type: "allocation", owner: `Sales ${c.country}`, context: `${units(c.backorder_quantity)} units short`, options_considered: ["Expedite import", "Reallocate stock", "Partial ship"], decided_at: isoStamp(300), related_product: c.material, related_batch: null, related_shipment: null, related_customer: c.customer, related_supplier: null, expected_outcome: "Fulfil the order", actual_outcome: null, effectiveness: null, status: "open" });
+  }
+  return out;
+}
+
+function deriveValidationQueue(world: RawWorld): ApiValidationQueueResponse {
+  const items: ApiValidationQueueItem[] = [];
+  for (const im of world.imports.slice(0, 12)) {
+    const line = im.lines[0];
+    items.push({
+      queue_id: `VQ-${im.import_file_number}`,
+      document_id: im.import_file_number,
+      filename: `${im.shipment_name ?? im.import_file_number}.pdf`,
+      document_type: "commercial_invoice" as ApiValidationQueueItem["document_type"],
+      field_name: "unit_value",
+      extracted_value: line ? String(line.unit_value ?? "") : null,
+      corrected_value: null,
+      effective_value: line ? String(line.unit_value ?? "") : null,
+      confidence_score: 0.72,
+      validation_status: "pending",
+      issue_type: "low_confidence",
+      issue_label: "Low confidence — please confirm",
+      required_group: null,
+      source_engine: "ocr",
+      created_at: im.invoice_date ?? isoDay(-1),
+    });
+  }
+  return {
+    items,
+    total_count: items.length,
+    missing_required_count: 0,
+    pending_review_count: items.length,
+    corrected_count: 0,
+  };
 }
 
 // =============================================================================
@@ -1437,16 +1551,19 @@ const PRESENTATION_BUILDERS: Record<string, (w: RawWorld) => unknown> = {
   "/consignment-dashboard": (w) => computeConsignmentDashboard(w),
   "/return-dashboard": (w) => computeReturnDashboard(w),
   "/reference/movement-by-country": (w) => computeMovementByCountry(w),
-  // Workflow / alert queues start clean at zero and surface only real activity.
-  "/executive-actions": () => [],
-  "/approvals": () => [],
-  "/decisions": () => [],
+  // Workflow / alert queues auto-fill from the same flow, so a from-zero
+  // presentation surfaces real work as imports & orders arrive (not empty).
+  "/executive-actions": (w) => deriveExecutiveActions(w),
+  "/approvals": (w) => deriveApprovals(w),
+  "/decisions": (w) => deriveDecisions(w),
+  "/validation-queue": (w) => deriveValidationQueue(w),
+  // No synthetic audit/risk lists during a presentation (these record real
+  // user actions / model output) — they stay empty until genuinely produced.
   "/audit": () => [],
   "/payment-risk": () => [],
   "/payables-risk": () => [],
   "/consignment-risk": () => [],
   "/commitment-risk": () => [],
-  "/validation-queue": () => [],
 };
 
 /** During a live presentation, the value for an endpoint computed purely from

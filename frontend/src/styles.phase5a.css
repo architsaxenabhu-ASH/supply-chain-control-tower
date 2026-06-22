@@ -2598,6 +2598,10 @@ select option {
 }
 .map-route.mode-sea .map-route-path { stroke-dasharray: 2 7; opacity: 0.4; }
 .map-route-mover { fill: var(--country-accent); filter: drop-shadow(0 0 4px var(--country-accent-glow, rgba(56, 189, 248, 0.5))); }
+/* Secondary (intra-country distribution by road) reads green, distinct from the
+   inbound air/sea routes that are tinted with the active country accent. */
+.map-route.mode-road .map-route-path { stroke: var(--map-road, #34d399); stroke-dasharray: 3 5; opacity: 0.6; }
+.map-route.mode-road .map-route-mover { fill: var(--map-road, #34d399); filter: drop-shadow(0 0 4px rgba(52, 211, 153, 0.55)); }
 @keyframes map-route-flow { to { stroke-dashoffset: -22; } }
 
 @media (max-width: 1080px) {
