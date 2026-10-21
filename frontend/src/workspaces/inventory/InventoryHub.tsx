@@ -18,6 +18,7 @@ import { FilterBar } from "../../components/FilterBar";
 import { WorldMap, type MapCity } from "../../components/WorldMap";
 import { DonutChart } from "../../components/DonutChart";
 import { cityCoords, cityFromLabel } from "../../lib/cityGeo";
+import { StockIntelligence } from "./StockIntelligence";
 
 // Inventory workspace (Phase 5C): stock and risk, not sales.
 // Answers "What do we have?" — available / reserved / allocated units,
@@ -462,6 +463,8 @@ export function InventoryHub() {
           </section>
         </aside>
       </div>
+
+      <StockIntelligence />
 
       <section className="panel cockpit-panel">
         <div className="panel-heading">

@@ -1042,6 +1042,95 @@ export function fetchSystemHealth(): Promise<ApiSystemHealth> {
   return getJson<ApiSystemHealth>("/dashboard/system-health");
 }
 
+// --- Inventory intelligence (ABC / VED / FSN / XYZ / FEFO / reorder / priority) -
+export type ApiMethodStatus = {
+  key: string;
+  name: string;
+  plain_title: string;
+  what_it_tells_you: string;
+  status: "live" | "needs_data";
+  note: string | null;
+};
+
+export type ApiClassBucket = { key: string; label: string; count: number; value: number };
+
+export type ApiMatrixRow = { abc: string; vital: number; essential: number; desirable: number };
+
+export type ApiSkuIntelligence = {
+  item_code: string;
+  product_description: string;
+  product_category: string;
+  warehouses: string[];
+  on_hand_qty: number;
+  on_hand_value: number;
+  avg_monthly_demand: number;
+  annual_consumption_value: number;
+  months_cover: number | null;
+  abc_class: "A" | "B" | "C";
+  criticality: "Vital" | "Essential" | "Desirable";
+  criticality_basis: string;
+  fsn_class: "Fast" | "Slow" | "Non-moving";
+  xyz_class: "X" | "Y" | "Z";
+  demand_cv: number | null;
+  reorder_point: number;
+  safety_stock: number;
+  service_level: number;
+  below_reorder: boolean;
+  min_days_to_expiry: number | null;
+  nearest_expiry_date: string | null;
+  expiry_risk_qty: number;
+  expiry_risk_value: number;
+  supplier: string | null;
+  supplier_risk: "Normal" | "Watch" | "High";
+  supplier_risk_basis: string;
+  priority_score: number;
+  priority_band: string;
+  review_cadence: string;
+  recommended_action: string;
+};
+
+export type ApiInventoryAlert = {
+  kind: "reorder" | "expiry" | "dead_stock";
+  severity: "high" | "medium" | "low";
+  item_code: string;
+  batch_number: string | null;
+  title: string;
+  detail: string;
+  action: string;
+};
+
+export type ApiOwnerMetrics = {
+  inventory_value: number;
+  critical_stockout_count: number;
+  critical_stockout_value: number;
+  expiry_risk_value: number;
+  dead_stock_value: number;
+  fill_rate: number | null;
+  inventory_turnover: number | null;
+  days_of_inventory: number | null;
+  supplier_delay_risk_count: number;
+};
+
+export type ApiInventoryIntelligence = {
+  generated_at: string;
+  currency_note: string;
+  assumptions: Record<string, string>;
+  owner_metrics: ApiOwnerMetrics;
+  abc_breakdown: ApiClassBucket[];
+  ved_breakdown: ApiClassBucket[];
+  fsn_breakdown: ApiClassBucket[];
+  xyz_breakdown: ApiClassBucket[];
+  abc_ved_matrix: ApiMatrixRow[];
+  priority_bands: ApiClassBucket[];
+  skus: ApiSkuIntelligence[];
+  alerts: ApiInventoryAlert[];
+  methods: ApiMethodStatus[];
+};
+
+export function fetchInventoryIntelligence(): Promise<ApiInventoryIntelligence> {
+  return getJson<ApiInventoryIntelligence>("/inventory/intelligence");
+}
+
 export type ApiMovementEvent = {
   event_id: string;
   event_type: string;

@@ -3728,3 +3728,500 @@ summary:active,
   .infotip:focus-within .infotip-pop { transform: translate(-50%, 0) scale(1); }
   .infotip-btn:active { transform: none; }
 }
+
+/* ============================================================
+   Phase 7G — Topbar account menu (origin-aware animated dropdown)
+   Consolidates the secondary utility actions into one menu so the
+   demo-critical controls stay visible. Sits in the z-scale between
+   sticky (20) and modal (50).
+   ============================================================ */
+:root { --z-dropdown: 40; }
+
+.topbar-menu { position: relative; display: inline-flex; }
+
+.topbar-account {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 38px;
+  padding: 0 10px 0 6px;
+  border: 1px solid var(--tower-border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--tower-panel) 90%, transparent);
+  color: var(--tower-text);
+  cursor: pointer;
+  max-width: 260px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .topbar-account:hover { border-color: var(--tower-border-strong); }
+}
+.topbar-account.is-open {
+  border-color: color-mix(in srgb, var(--country-accent) 60%, var(--tower-border));
+  background: var(--tower-panel-strong);
+}
+
+.topbar-account-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--country-accent) 24%, transparent);
+  color: var(--country-accent-strong);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.topbar-account-id {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.15;
+  min-width: 0;
+}
+.topbar-account-name {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+.topbar-account-role {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--tower-muted);
+}
+
+.topbar-account-chevron {
+  flex: 0 0 auto;
+  color: var(--tower-muted);
+  transition: transform 180ms var(--ease-out);
+}
+.topbar-account.is-open .topbar-account-chevron { transform: rotate(180deg); }
+
+.topbar-menu-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: var(--z-dropdown);
+  min-width: 236px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid var(--tower-border);
+  border-radius: 13px;
+  background: var(--tower-panel-strong);
+  box-shadow: var(--tower-shadow);
+  /* emil: popovers scale from their trigger, not from center. */
+  transform-origin: top right;
+}
+
+.topbar-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--tower-text);
+  font-size: 13px;
+  font-weight: 650;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 160ms var(--ease-press), color 160ms var(--ease-press);
+}
+.topbar-menu-item svg { color: var(--tower-muted); flex: 0 0 auto; }
+@media (hover: hover) and (pointer: fine) {
+  .topbar-menu-item:hover { background: color-mix(in srgb, var(--country-accent) 14%, transparent); }
+  .topbar-menu-item:hover svg { color: var(--country-accent-strong); }
+}
+.topbar-menu-item:focus-visible {
+  outline: 2px solid var(--country-accent);
+  outline-offset: -2px;
+}
+.topbar-menu-item[disabled] { opacity: 0.42; cursor: not-allowed; }
+
+.topbar-menu-item-danger { color: var(--tower-crimson); }
+.topbar-menu-item-danger svg { color: var(--tower-crimson); }
+@media (hover: hover) and (pointer: fine) {
+  .topbar-menu-item-danger:hover { background: color-mix(in srgb, var(--tower-crimson) 16%, transparent); }
+  .topbar-menu-item-danger:hover svg { color: var(--tower-crimson); }
+}
+
+.topbar-menu-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--tower-border);
+}
+
+/* Tighter screens: collapse to avatar + chevron only. */
+@media (max-width: 1180px) {
+  .topbar-account-id { display: none; }
+  .topbar-account { padding: 0 8px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .topbar-account-chevron { transition: none; }
+}
+
+/* ============================================================
+   Phase 7G — Animated section navigation
+   When a top-level section is opened, its workspace rail cascades
+   in (Emil's stagger, 30-80ms steps). Each section's items carry
+   unique keys, so switching sections remounts them and the entrance
+   re-fires; data-only re-renders keep the same keys and do not
+   replay. Reduced-motion users get the settled state immediately.
+   ============================================================ */
+@media (prefers-reduced-motion: no-preference) {
+  .ws-rail > .ws-item,
+  .ws-rail > .ws-group-label {
+    animation: wsRailIn 300ms var(--ease-out) backwards;
+  }
+  .ws-rail > *:nth-child(1) { animation-delay: 16ms; }
+  .ws-rail > *:nth-child(2) { animation-delay: 48ms; }
+  .ws-rail > *:nth-child(3) { animation-delay: 80ms; }
+  .ws-rail > *:nth-child(4) { animation-delay: 112ms; }
+  .ws-rail > *:nth-child(5) { animation-delay: 144ms; }
+  .ws-rail > *:nth-child(6) { animation-delay: 176ms; }
+  .ws-rail > *:nth-child(7) { animation-delay: 204ms; }
+  .ws-rail > *:nth-child(8) { animation-delay: 230ms; }
+  .ws-rail > *:nth-child(9) { animation-delay: 252ms; }
+  .ws-rail > *:nth-child(n + 10) { animation-delay: 270ms; }
+
+  @keyframes wsRailIn {
+    from { opacity: 0; transform: translateX(-9px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  /* The active workspace's icon gives a tiny, one-shot acknowledgement when
+     a section is opened — settles, never loops. */
+  .ws-item.active svg { animation: wsActiveIcon 360ms var(--ease-out) backwards; }
+  @keyframes wsActiveIcon {
+    0% { transform: scale(0.82); opacity: 0.6; }
+    60% { transform: scale(1.06); }
+    100% { transform: scale(1); opacity: 1; }
+  }
+}
+
+/* ============================================================
+   Phase 7G — Cinematic sign-in (first impression for leadership)
+   Two-column identity + form on wide screens, stacked on narrow.
+   A soft aurora drifts behind the glass form card. The sign-in
+   logic is unchanged — this is presentation only.
+   ============================================================ */
+.login-shell { position: relative; overflow: hidden; }
+
+.login-aurora {
+  position: absolute;
+  inset: -10%;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(38% 48% at 18% 30%, color-mix(in srgb, var(--tower-cyan) 24%, transparent), transparent 70%),
+    radial-gradient(36% 44% at 82% 72%, color-mix(in srgb, var(--tower-emerald) 20%, transparent), transparent 72%),
+    radial-gradient(30% 40% at 62% 8%, color-mix(in srgb, var(--country-accent) 16%, transparent), transparent 70%);
+  filter: blur(10px);
+  animation: loginAurora 20s ease-in-out infinite alternate;
+}
+@keyframes loginAurora {
+  from { transform: translate3d(-2%, -1%, 0) scale(1.02); opacity: 0.85; }
+  to { transform: translate3d(2%, 1.5%, 0) scale(1.09); opacity: 1; }
+}
+
+.login-stage {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(360px, 452px);
+  align-items: center;
+  gap: clamp(24px, 5vw, 64px);
+  width: min(1080px, 100%);
+}
+
+.login-aside { display: grid; gap: 20px; align-content: center; padding: 6px; }
+.login-hero-title {
+  margin: 0;
+  font-size: clamp(28px, 3.6vw, 44px);
+  line-height: 1.06;
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+  max-width: 19ch;
+}
+.login-hero-sub {
+  margin: 0;
+  max-width: 52ch;
+  color: var(--tower-muted);
+  font-size: 15px;
+  line-height: 1.55;
+}
+.login-trust {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--tower-muted);
+  font-size: 12.5px;
+  font-weight: 650;
+}
+.login-trust-pip {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--tower-emerald);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--tower-emerald) 22%, transparent);
+}
+.login-stage .login-panel { width: 100%; }
+
+@media (max-width: 880px) {
+  .login-stage {
+    grid-template-columns: minmax(0, 1fr);
+    width: min(440px, 100%);
+    gap: 22px;
+  }
+  .login-hero-title { font-size: clamp(24px, 7vw, 32px); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .login-aside > *,
+  .login-stage .login-panel {
+    animation: loginIn 520ms var(--ease-out) backwards;
+  }
+  .login-aside > *:nth-child(1) { animation-delay: 60ms; }
+  .login-aside > *:nth-child(2) { animation-delay: 120ms; }
+  .login-aside > *:nth-child(3) { animation-delay: 170ms; }
+  .login-aside > *:nth-child(4) { animation-delay: 210ms; }
+  .login-aside > *:nth-child(5) { animation-delay: 250ms; }
+  .login-stage .login-panel { animation-delay: 150ms; }
+  @keyframes loginIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .login-aurora { animation: none; }
+}
+
+/* ============================================================
+   Phase 7G — Graceful empty + loading states
+   The platform starts every demo "from zero", so screens are
+   often legitimately empty while data flows in. This turns the
+   ~30 shared `.empty-state` messages from plain grey text into a
+   calm, intentional "awaiting activity" block (a gentle live pip
+   + the message), so a from-zero screen reads as ready, not
+   broken. Plus a reusable shimmer skeleton for loading rows.
+   ============================================================ */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 0;
+  padding: 22px 20px;
+  text-align: center;
+  color: var(--tower-muted);
+  font-size: 13.5px;
+  line-height: 1.5;
+  border: 1px dashed color-mix(in srgb, var(--tower-border-strong) 70%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--country-accent) 4%, transparent);
+  animation: emptyStateIn 360ms var(--ease-out) backwards;
+}
+.empty-state::before {
+  content: "";
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--country-accent);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--country-accent) 55%, transparent);
+  animation: emptyStatePip 2.4s var(--ease-out) infinite;
+}
+@keyframes emptyStateIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes emptyStatePip {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--country-accent) 50%, transparent); }
+  70% { box-shadow: 0 0 0 9px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+/* Reusable shimmer skeleton (component: Skeleton.tsx). */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--tower-muted) 16%, transparent);
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--tower-text) 10%, transparent),
+    transparent
+  );
+  animation: skeletonSweep 1.4s ease-in-out infinite;
+}
+.skeleton-line { height: 12px; margin: 7px 0; }
+.skeleton-group { display: grid; gap: 6px; padding: 4px 0; }
+@keyframes skeletonSweep {
+  100% { transform: translateX(100%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .empty-state { animation: none; }
+  .empty-state::before { animation: none; }
+  .skeleton::after { animation: none; }
+}
+
+/* ============================================================
+   Phase 7H — Stock Intelligence (healthcare inventory analysis)
+   ============================================================ */
+.si-panel { display: grid; gap: 16px; }
+.si-sub { margin: -4px 0 0; color: var(--tower-muted, #93a3b4); font-size: 13px; max-width: 80ch; line-height: 1.5; }
+
+.si-how {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 11px; border-radius: 999px;
+  border: 1px solid var(--tower-border, #243140);
+  background: var(--tower-panel, #141b24);
+  color: var(--tower-muted, #93a3b4);
+  font-size: 12px; font-weight: 600; cursor: pointer;
+  transition: color var(--dur-press, 140ms) var(--ease-out, ease), border-color var(--dur-press, 140ms) var(--ease-out, ease);
+}
+.si-how:hover { color: var(--tower-text, #e6edf3); border-color: var(--tower-border-strong, #33485c); }
+.si-how-chev { transition: transform 180ms var(--ease-out, ease); }
+.si-how.is-open .si-how-chev { transform: rotate(180deg); }
+
+/* Tone helpers scoped to the panel */
+.si-panel .tone-good { color: var(--tower-emerald, #34d399); }
+.si-panel .tone-warn { color: var(--tower-amber, #fbbf24); }
+.si-panel .tone-bad { color: var(--tower-crimson, #f87171); }
+.si-panel .tone-info { color: var(--country-accent, #38bdf8); }
+.si-panel .tone-accent { color: var(--tower-cyan, #38bdf8); }
+.si-panel .tone-muted { color: var(--tower-muted, #93a3b4); }
+
+.si-dot { width: 9px; height: 9px; border-radius: 50%; background: currentColor; flex: 0 0 auto; }
+
+/* Owner metric cards */
+.si-metric-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.si-metric {
+  display: grid; gap: 4px; padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid var(--tower-border, #243140);
+  background: var(--tower-panel, #141b24);
+}
+.si-metric strong { font-size: clamp(1.2rem, 2.4vw, 1.6rem); font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; line-height: 1.05; color: var(--tower-text, #e6edf3); }
+.si-metric.tone-good strong { color: var(--tower-emerald, #34d399); }
+.si-metric.tone-warn strong { color: var(--tower-amber, #fbbf24); }
+.si-metric.tone-bad strong { color: var(--tower-crimson, #f87171); }
+.si-metric-label { font-size: 12.5px; font-weight: 600; color: var(--tower-text, #e6edf3); }
+.si-metric-hint { font-size: 11.5px; color: var(--tower-muted, #93a3b4); line-height: 1.35; }
+
+/* Classification cards (ABC / VED / FSN / XYZ) */
+.si-class-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.si-class-card {
+  display: grid; gap: 10px; padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid var(--tower-border, #243140);
+  background: var(--tower-panel, #141b24);
+}
+.si-class-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.si-class-head strong { font-size: 13px; color: var(--tower-text, #e6edf3); }
+.si-class-head span { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; color: var(--tower-muted, #93a3b4); }
+.si-class-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
+.si-class-list li { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--tower-muted, #93a3b4); }
+.si-class-label { flex: 1 1 auto; }
+.si-class-list strong { color: var(--tower-text, #e6edf3); font-variant-numeric: tabular-nums; }
+
+/* Classification badges in the table */
+.si-badges { display: inline-flex; gap: 4px; }
+.si-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; border-radius: 6px;
+  font-size: 11px; font-weight: 700; cursor: default;
+  background: color-mix(in srgb, currentColor 14%, transparent);
+}
+
+/* Action list (supervisor alerts) */
+.si-alerts {
+  border-radius: 14px;
+  border: 1px solid var(--tower-border, #243140);
+  background: var(--tower-panel, #141b24);
+  overflow: hidden;
+}
+.si-alerts-head { display: flex; align-items: center; gap: 8px; padding: 11px 14px; border-bottom: 1px solid var(--tower-border, #243140); color: var(--tower-amber, #fbbf24); }
+.si-alerts-head strong { color: var(--tower-text, #e6edf3); font-size: 13px; }
+.si-alerts-head span { margin-left: auto; font-size: 12px; color: var(--tower-muted, #93a3b4); }
+.si-alerts ul { list-style: none; margin: 0; padding: 0; }
+.si-alert { display: flex; align-items: center; gap: 11px; padding: 10px 14px; border-top: 1px solid color-mix(in srgb, var(--tower-border, #243140) 60%, transparent); }
+.si-alert:first-child { border-top: 0; }
+.si-alert-body { flex: 1 1 auto; display: grid; gap: 2px; min-width: 0; }
+.si-alert-body strong { font-size: 12.5px; color: var(--tower-text, #e6edf3); }
+.si-alert-body span { font-size: 11.5px; color: var(--tower-muted, #93a3b4); }
+.si-alert-action { flex: 0 0 auto; font-size: 11.5px; font-weight: 600; color: var(--country-accent, #38bdf8); text-align: right; max-width: 38%; }
+
+/* Priority table */
+.si-table-wrap { overflow-x: auto; border-radius: 14px; border: 1px solid var(--tower-border, #243140); }
+.si-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.si-table thead th { text-align: left; padding: 10px 14px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--tower-muted, #93a3b4); background: var(--tower-panel, #141b24); border-bottom: 1px solid var(--tower-border, #243140); white-space: nowrap; }
+.si-table tbody td { padding: 10px 14px; border-top: 1px solid color-mix(in srgb, var(--tower-border, #243140) 55%, transparent); color: var(--tower-text, #e6edf3); vertical-align: middle; font-variant-numeric: tabular-nums; }
+.si-row-flag td { background: color-mix(in srgb, var(--tower-crimson, #f87171) 7%, transparent); }
+.si-item { display: grid; gap: 1px; }
+.si-item strong { font-size: 12.5px; }
+.si-item span { font-size: 11px; color: var(--tower-muted, #93a3b4); }
+.si-priority { display: inline-flex; align-items: center; gap: 8px; }
+.si-score { display: inline-flex; align-items: center; justify-content: center; min-width: 26px; height: 24px; padding: 0 6px; border-radius: 7px; font-weight: 700; background: color-mix(in srgb, var(--country-accent, #38bdf8) 16%, transparent); color: var(--country-accent, #38bdf8); }
+.si-band { font-size: 11px; color: var(--tower-muted, #93a3b4); white-space: nowrap; }
+.si-action { color: var(--tower-muted, #93a3b4); max-width: 280px; }
+
+.si-foot { margin: 0; font-size: 11.5px; color: var(--tower-muted, #93a3b4); }
+
+/* "How this is calculated" expander */
+.si-method { display: grid; gap: 14px; padding: 14px 16px; border-radius: 14px; border: 1px dashed var(--tower-border-strong, #33485c); background: color-mix(in srgb, var(--country-accent, #38bdf8) 4%, transparent); animation: si-method-in 220ms var(--ease-out, ease); }
+.si-assumptions { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+.si-assume { display: grid; gap: 2px; }
+.si-assume span { font-size: 11px; text-transform: capitalize; color: var(--tower-muted, #93a3b4); }
+.si-assume strong { font-size: 12px; color: var(--tower-text, #e6edf3); font-weight: 600; }
+.si-method-table { display: grid; gap: 8px; }
+.si-method-row { display: flex; gap: 12px; align-items: flex-start; padding: 9px 0; border-top: 1px solid color-mix(in srgb, var(--tower-border, #243140) 55%, transparent); }
+.si-method-row:first-child { border-top: 0; }
+.si-method-status { flex: 0 0 auto; margin-top: 2px; font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; padding: 3px 8px; border-radius: 999px; }
+.si-method-status.is-live { background: color-mix(in srgb, var(--tower-emerald, #34d399) 16%, transparent); color: var(--tower-emerald, #34d399); }
+.si-method-status.is-pending { background: color-mix(in srgb, var(--tower-amber, #fbbf24) 14%, transparent); color: var(--tower-amber, #fbbf24); }
+.si-method-main { display: grid; gap: 2px; }
+.si-method-main strong { font-size: 13px; color: var(--tower-text, #e6edf3); }
+.si-method-name { font-size: 11px; color: var(--country-accent, #38bdf8); font-weight: 600; }
+.si-method-tell { font-size: 12px; color: var(--tower-muted, #93a3b4); }
+.si-method-note { font-size: 11px; color: var(--tower-amber, #fbbf24); }
+
+@keyframes si-method-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
+
+@media (max-width: 1180px) {
+  .si-metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .si-class-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 720px) {
+  .si-metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .si-class-grid { grid-template-columns: 1fr; }
+  .si-alert { flex-wrap: wrap; }
+  .si-alert-action { max-width: 100%; text-align: left; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .si-method { animation: none; }
+  .si-how-chev { transition: none; }
+}

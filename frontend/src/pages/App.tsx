@@ -36,6 +36,8 @@ import { SecondaryValidate } from "../workspaces/shipdocs/SecondaryValidate";
 import { MovementPanel } from "../components/MovementPanel";
 import { DemoModeToggle } from "../components/DemoModeToggle";
 import { DemoControls } from "../components/DemoControls";
+import { TopbarMenu } from "../components/TopbarMenu";
+import { Skeleton } from "../components/Skeleton";
 import { useDemoRevision } from "../lib/useDemoRevision";
 import { ExecutiveLiveCenter } from "../workspaces/executive/ExecutiveLiveCenter";
 import { ExecutiveOpsCenter } from "../workspaces/executive/ExecutiveOpsCenter";
@@ -2391,30 +2393,17 @@ export function App() {
             <CurrencySelector />
             <CurrencyRatesPanel actor={currentUser.email} />
             <span className="connection-status">{apiStatus}</span>
-            <span className="connection-status">{currentUser.email} / {currentUser.role_name}</span>
-            <button className="secondary-action" onClick={handleLogout}>
-              Logout
-            </button>
-            <button
-              className="secondary-action"
-              onClick={() => setTheme((current) => (current === "dark" ? "light" : "dark"))}
-              aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-            >
-              {theme === "dark" ? <Sun size={17} aria-hidden="true" /> : <Moon size={17} aria-hidden="true" />}
-              {theme === "dark" ? "Light" : "Dark"}
-            </button>
-            <button className="secondary-action" onClick={handleRefreshApp}>
-              <RefreshCw size={17} aria-hidden="true" />
-              Refresh
-            </button>
-            <button className="secondary-action" onClick={handleStartWalkthrough}>
-              <Play size={17} aria-hidden="true" />
-              Tour Guide
-            </button>
-            <button className="secondary-action" onClick={handleExportActiveView} disabled={!canExportActiveView}>
-              <Download size={17} aria-hidden="true" />
-              Export
-            </button>
+            <TopbarMenu
+              userEmail={currentUser.email}
+              roleName={currentUser.role_name}
+              theme={theme}
+              onToggleTheme={() => setTheme((current) => (current === "dark" ? "light" : "dark"))}
+              onRefresh={handleRefreshApp}
+              onStartTour={handleStartWalkthrough}
+              onExport={handleExportActiveView}
+              canExport={canExportActiveView}
+              onLogout={handleLogout}
+            />
           </div>
         </header>
 
@@ -2785,7 +2774,17 @@ function AnalyticsView({ currentUser }: { currentUser: ApiAuthenticatedUser }) {
       </div>
 
       {error ? <p className="status-line">{error}</p> : null}
-      {isLoading ? <p className="status-line">Loading…</p> : null}
+      {isLoading ? (
+        <section className="kpi-grid" aria-label="Loading dashboard" aria-busy="true">
+          {Array.from({ length: 8 }).map((_, index) => (
+            <div className="metric-card" key={index}>
+              <Skeleton width="56%" height={11} />
+              <Skeleton width="78%" height={22} style={{ marginTop: 12 }} />
+              <Skeleton width="46%" height={10} style={{ marginTop: 12 }} />
+            </div>
+          ))}
+        </section>
+      ) : null}
 
       {tab === "executive" && executive ? (
         <section className="kpi-grid" aria-label="Executive dashboard">
@@ -5879,26 +5878,37 @@ function LoginView({
 
   return (
     <main className="login-shell">
-      <section className="login-panel">
-        <div className="brand login-brand">
-          <div className="brand-mark">CT</div>
-          <div>
-            <strong>Control Tower</strong>
-            <span>Supply Chain Platform</span>
+      <div className="login-aurora" aria-hidden="true" />
+      <div className="login-stage">
+        <section className="login-aside">
+          <div className="brand login-brand">
+            <div className="brand-mark">CT</div>
+            <div>
+              <strong>Control Tower</strong>
+              <span>Supply Chain Platform</span>
+            </div>
           </div>
-        </div>
-        <p className="login-tagline">
-          End-to-end visibility for global medical-device operations.
-        </p>
-        <div className="login-areas">
-          {["Cardiovascular", "Structural Heart", "Orthopedics", "Robotics", "Oncology", "Diagnostics"].map(
-            (area) => (
-              <span className="login-area-chip" key={area}>
-                {area}
-              </span>
-            ),
-          )}
-        </div>
+          <h2 className="login-hero-title">
+            One live picture of every shipment, every market — factory to customer.
+          </h2>
+          <p className="login-hero-sub">
+            End-to-end visibility for global medical-device operations, from import to the final delivery.
+          </p>
+          <div className="login-areas">
+            {["Cardiovascular", "Structural Heart", "Orthopedics", "Robotics", "Oncology", "Diagnostics"].map(
+              (area) => (
+                <span className="login-area-chip" key={area}>
+                  {area}
+                </span>
+              ),
+            )}
+          </div>
+          <div className="login-trust">
+            <span className="login-trust-pip" aria-hidden="true" />
+            Secure, role-based access · live across every location
+          </div>
+        </section>
+        <section className="login-panel">
         <div>
           <p className="eyebrow">Secure Access</p>
           <h1>Sign in</h1>
@@ -5935,7 +5945,8 @@ function LoginView({
           </button>
           <p className="status-line">{message}</p>
         </div>
-      </section>
+        </section>
+      </div>
     </main>
   );
 }

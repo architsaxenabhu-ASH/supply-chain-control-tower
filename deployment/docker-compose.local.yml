@@ -1,0 +1,46 @@
+# Local container setup — runs the app on your machine using YOUR existing
+# data (the data/ folder), with no external database to manage.
+#
+# This is the easy "run my app in Docker on my laptop" option. It is separate
+# from docker-compose.yml (the production-style Postgres setup), which is left
+# untouched.
+#
+# What you get:
+#   • Frontend (the website)  ->  http://localhost:3000
+#   • Backend  (the API)      ->  http://localhost:8000
+#
+# Your live data is kept: the backend reads and writes the same data/ folder you
+# already use, so every product, batch, shipment and document you have shows up.
+#
+# Start:  docker compose -f deployment/docker-compose.local.yml up -d --build
+# Stop:   docker compose -f deployment/docker-compose.local.yml down
+# (Or just double-click start-docker.bat in the project root.)
+
+services:
+  backend:
+    build:
+      context: ../backend
+    # "no" = the app only runs when YOU start it (start-docker.bat). It will not
+    # auto-start on login or when Docker Desktop happens to open.
+    restart: "no"
+    # No DATABASE_URL is set, so the backend uses its built-in SQLite database
+    # inside the data/ folder — exactly like running it directly on Windows.
+    ports:
+      - "8000:8000"
+    volumes:
+      # Bind-mount your real data folder into the container. This is what keeps
+      # all of your current data (products, batches, shipments, uploads).
+      - ../data:/app/data
+
+  frontend:
+    build:
+      context: ../frontend
+      args:
+        # Empty = the browser calls the host's :8000 (correct for local use).
+        VITE_API_BASE_URL: ""
+    # "no" = only runs when YOU start it (see note on the backend service above).
+    restart: "no"
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
